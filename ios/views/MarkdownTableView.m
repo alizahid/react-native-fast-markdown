@@ -206,8 +206,13 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
     self.contentSize = CGSizeMake(_totalWidth, _tableHeight);
     [self addSubview:gridContainer];
 
-    self.layer.cornerRadius = 6;
-    self.layer.masksToBounds = YES;
+    // Apply corner radius to the inner grid so corner cells are clipped
+    // cleanly. The scroll view itself has no corner radius — that was
+    // causing the cells at the edges to look cut off because the scroll
+    // view's mask clipped them.
+    CGFloat radius = (style && style.borderRadius > 0) ? style.borderRadius : 6;
+    gridContainer.layer.cornerRadius = radius;
+    gridContainer.layer.masksToBounds = YES;
   }
   return self;
 }

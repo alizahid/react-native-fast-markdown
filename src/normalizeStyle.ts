@@ -94,6 +94,7 @@ const defaultStyle: MarkdownStyle = {
   table: {
     borderColor: '#ddd',
     borderWidth: 1,
+    borderRadius: 6,
     cellPadding: 8,
   },
   thematicBreak: {

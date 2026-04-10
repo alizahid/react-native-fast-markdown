@@ -32,6 +32,7 @@ export interface MarkdownListItemStyle extends TextStyle {
 export interface MarkdownTableStyle {
   alternateRowBackgroundColor?: ColorValue
   borderColor?: ColorValue
+  borderRadius?: number
   borderWidth?: number
   cellBackgroundColor?: ColorValue
   cellPadding?: number
