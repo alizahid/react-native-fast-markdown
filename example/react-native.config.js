@@ -1,0 +1,20 @@
+// biome-ignore lint/correctness/noGlobalDirnameFilename: CJS
+const path = require('node:path')
+const pkg = require('../package.json')
+
+module.exports = {
+  project: {
+    ios: {
+      automaticPodsInstallation: true,
+    },
+  },
+  dependencies: {
+    [pkg.name]: {
+      root: path.join(__dirname, '..'),
+      platforms: {
+        ios: {},
+        android: {},
+      },
+    },
+  },
+}
