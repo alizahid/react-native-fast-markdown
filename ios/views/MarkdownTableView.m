@@ -1,11 +1,13 @@
 #import "MarkdownTableView.h"
 #import "ASTNodeWrapper.h"
+#import "RenderContext.h"
+#import "RendererFactory.h"
 #import "StyleConfig.h"
 
 static const CGFloat kDefaultCellPadding = 10.0;
 static const CGFloat kDefaultBorderWidth = 1.0;
 static const CGFloat kMinColumnWidth = 60.0;
-static const CGFloat kMaxColumnWidthRatio = 0.8; // Cap single column at 80% of container
+static const CGFloat kMaxColumnWidthRatio = 0.8;
 
 @implementation MarkdownTableView {
   CGFloat _tableHeight;
@@ -74,36 +76,44 @@ static const CGFloat kMaxColumnWidthRatio = 0.8; // Cap single column at 80% of 
       return self;
     }
 
-    // Extract cell text
-    NSMutableArray<NSMutableArray<NSString *> *> *cellTexts = [NSMutableArray new];
-    for (ASTNodeWrapper *row in allRows) {
-      NSMutableArray<NSString *> *rowTexts = [NSMutableArray new];
+    // Render each cell's content as an attributed string via RendererFactory.
+    // This handles bold, italic, code, links, etc. inside cells.
+    NSMutableArray<NSMutableArray<NSAttributedString *> *> *cellContents =
+        [NSMutableArray new];
+    for (NSUInteger r = 0; r < allRows.count; r++) {
+      ASTNodeWrapper *row = allRows[r];
+      BOOL isHeader = r < headerRowCount;
+      UIFont *baseFont = isHeader ? headerFont : cellFont;
+
+      NSMutableArray<NSAttributedString *> *rowContents = [NSMutableArray new];
       for (NSUInteger c = 0; c < colCount; c++) {
+        NSAttributedString *content = nil;
         if (c < row.children.count) {
-          NSString *text = [self extractText:row.children[c]];
-          [rowTexts addObject:text];
-        } else {
-          [rowTexts addObject:@""];
+          content = [self renderCellContent:row.children[c]
+                                   baseFont:baseFont
+                                  textColor:textColor
+                                styleConfig:styleConfig];
         }
+        if (!content) {
+          content = [[NSAttributedString alloc] initWithString:@""];
+        }
+        [rowContents addObject:content];
       }
-      [cellTexts addObject:rowTexts];
+      [cellContents addObject:rowContents];
     }
 
-    // Measure natural column widths
+    // Measure natural column widths based on attributed string sizes
     CGFloat maxCellWidth = maxWidth * kMaxColumnWidthRatio;
     NSMutableArray<NSNumber *> *colWidths = [NSMutableArray new];
     for (NSUInteger c = 0; c < colCount; c++) {
       CGFloat maxW = kMinColumnWidth;
-      for (NSUInteger r = 0; r < cellTexts.count; r++) {
-        NSString *text = cellTexts[r][c];
-        UIFont *font = (r < headerRowCount) ? headerFont : cellFont;
-        CGSize textSize = [text boundingRectWithSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)
-                                             options:NSStringDrawingUsesLineFragmentOrigin
-                                          attributes:@{NSFontAttributeName: font}
-                                             context:nil].size;
+      for (NSUInteger r = 0; r < cellContents.count; r++) {
+        NSAttributedString *content = cellContents[r][c];
+        CGSize textSize = [content boundingRectWithSize:CGSizeMake(CGFLOAT_MAX, CGFLOAT_MAX)
+                                                options:NSStringDrawingUsesLineFragmentOrigin
+                                                context:nil].size;
         maxW = MAX(maxW, ceil(textSize.width) + cellPadding * 2);
       }
-      // Cap column width at the max allowed — long cells will wrap
       maxW = MIN(maxW, maxCellWidth);
       [colWidths addObject:@(maxW)];
     }
@@ -114,27 +124,23 @@ static const CGFloat kMaxColumnWidthRatio = 0.8; // Cap single column at 80% of 
       _totalWidth += w.doubleValue + borderWidth;
     }
 
-    // Calculate per-row heights (cells may wrap to multiple lines now)
+    // Calculate per-row heights based on wrapped attributed strings
     NSMutableArray<NSNumber *> *rowHeights = [NSMutableArray new];
-    for (NSUInteger r = 0; r < cellTexts.count; r++) {
-      BOOL isHeader = r < headerRowCount;
-      UIFont *font = isHeader ? headerFont : cellFont;
-      CGFloat maxCellHeight = ceil(font.lineHeight) + cellPadding * 2;
-
+    for (NSUInteger r = 0; r < cellContents.count; r++) {
+      CGFloat maxCellHeight = ceil(cellFont.lineHeight) + cellPadding * 2;
       for (NSUInteger c = 0; c < colCount; c++) {
-        NSString *text = cellTexts[r][c];
-        CGFloat colW = colWidths[c].doubleValue - cellPadding * 2;
-        CGSize textSize = [text boundingRectWithSize:CGSizeMake(colW, CGFLOAT_MAX)
-                                             options:NSStringDrawingUsesLineFragmentOrigin
-                                          attributes:@{NSFontAttributeName: font}
-                                             context:nil].size;
+        NSAttributedString *content = cellContents[r][c];
+        CGFloat innerWidth = colWidths[c].doubleValue - cellPadding * 2;
+        CGSize textSize = [content boundingRectWithSize:CGSizeMake(innerWidth, CGFLOAT_MAX)
+                                                options:NSStringDrawingUsesLineFragmentOrigin
+                                                context:nil].size;
         CGFloat cellHeight = ceil(textSize.height) + cellPadding * 2;
         maxCellHeight = MAX(maxCellHeight, cellHeight);
       }
       [rowHeights addObject:@(maxCellHeight)];
     }
 
-    // Build the grid with variable row heights
+    // Build the grid
     CGFloat y = 0;
     UIView *gridContainer = [[UIView alloc] init];
 
@@ -176,15 +182,14 @@ static const CGFloat kMaxColumnWidthRatio = 0.8; // Cap single column at 80% of 
           [cellView addSubview:leftBorder];
         }
 
-        // Text label (now multi-line)
+        // Cell label — use attributed text directly
         UILabel *label = [[UILabel alloc] initWithFrame:
             CGRectMake(cellPadding, cellPadding,
                        colW - cellPadding * 2,
                        rowHeight - cellPadding * 2)];
-        label.text = (r < cellTexts.count && c < cellTexts[r].count)
-            ? cellTexts[r][c] : @"";
-        label.font = isHeader ? headerFont : cellFont;
-        label.textColor = textColor;
+        label.attributedText = (r < cellContents.count && c < cellContents[r].count)
+            ? cellContents[r][c]
+            : [[NSAttributedString alloc] initWithString:@""];
         label.numberOfLines = 0;
         label.lineBreakMode = NSLineBreakByWordWrapping;
         [cellView addSubview:label];
@@ -207,26 +212,44 @@ static const CGFloat kMaxColumnWidthRatio = 0.8; // Cap single column at 80% of 
   return self;
 }
 
+- (NSAttributedString *)renderCellContent:(ASTNodeWrapper *)cellNode
+                                 baseFont:(UIFont *)baseFont
+                                textColor:(UIColor *)textColor
+                              styleConfig:(StyleConfig *)styleConfig {
+  RenderContext *context = [[RenderContext alloc] init];
+  context.styleConfig = styleConfig;
+  [context pushAttributes:@{
+    NSFontAttributeName : baseFont,
+    NSForegroundColorAttributeName : textColor,
+  }];
+
+  NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
+  // TableCell's children are inline nodes (Text, Strong, Emphasis, Code, Link, etc.)
+  for (ASTNodeWrapper *child in cellNode.children) {
+    id<NodeRenderer> renderer = [RendererFactory rendererForNode:child];
+    if (renderer) {
+      [renderer renderNode:child into:output context:context];
+    }
+  }
+
+  // Trim trailing newline if any
+  if (output.length > 0) {
+    unichar last = [output.string characterAtIndex:output.length - 1];
+    if (last == '\n') {
+      [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
+    }
+  }
+
+  return [output copy];
+}
+
 - (void)layoutSubviews {
   [super layoutSubviews];
 
-  // Enable scrolling/indicators only when content exceeds visible width
   BOOL scrollable = _totalWidth > self.bounds.size.width + 0.5;
   self.scrollEnabled = scrollable;
   self.showsHorizontalScrollIndicator = scrollable;
   self.bounces = scrollable;
-}
-
-- (NSString *)extractText:(ASTNodeWrapper *)node {
-  if (node.content.length > 0) {
-    return node.content;
-  }
-
-  NSMutableString *text = [NSMutableString new];
-  for (ASTNodeWrapper *child in node.children) {
-    [text appendString:[self extractText:child]];
-  }
-  return text;
 }
 
 @end
