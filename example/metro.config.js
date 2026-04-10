@@ -1,7 +1,8 @@
 const { getDefaultConfig } = require('expo/metro-config')
 const path = require('node:path')
 
-const projectRoot = import.meta.dirname
+// biome-ignore lint/correctness/noGlobalDirnameFilename: CJS file
+const projectRoot = __dirname
 const libraryRoot = path.resolve(projectRoot, '..')
 
 const config = getDefaultConfig(projectRoot)

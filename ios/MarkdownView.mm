@@ -63,23 +63,20 @@ static const NSUInteger kMaxCacheSize = 128;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _textView.frame = self.bounds;
-
-  // Notify Fabric that our size may have changed
-  if (_textView.attributedText.length > 0) {
-    CGSize fittingSize = [_textView sizeThatFits:CGSizeMake(self.bounds.size.width, CGFLOAT_MAX)];
-    if (fittingSize.height != self.bounds.size.height) {
-      [self invalidateIntrinsicContentSize];
-    }
-  }
 }
 
-- (CGSize)intrinsicContentSize {
-  if (!_textView.attributedText || _textView.attributedText.length == 0) {
-    return CGSizeMake(UIViewNoIntrinsicMetric, 0);
-  }
+- (void)emitContentSizeChange {
+  if (!_eventEmitter || !_textView.attributedText) return;
+
   CGFloat width = self.bounds.size.width > 0 ? self.bounds.size.width : UIScreen.mainScreen.bounds.size.width;
   CGSize size = [_textView sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
-  return size;
+
+  const auto &eventEmitter =
+      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+  eventEmitter.onContentSizeChange({
+      .width = static_cast<double>(size.width),
+      .height = static_cast<double>(size.height),
+  });
 }
 
 - (void)updateProps:(const Props::Shared &)props
@@ -138,6 +135,7 @@ static const NSUInteger kMaxCacheSize = 128;
   NSAttributedString *cached = _renderCache[cacheKey];
   if (cached) {
     _textView.attributedText = cached;
+    [self emitContentSizeChange];
     return;
   }
 
@@ -153,7 +151,7 @@ static const NSUInteger kMaxCacheSize = 128;
                          customTags:customTags];
     [self cacheResult:result forKey:cacheKey];
     _textView.attributedText = result;
-    [self invalidateIntrinsicContentSize];
+    [self emitContentSizeChange];
     return;
   }
 

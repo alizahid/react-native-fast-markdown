@@ -38,8 +38,8 @@ export interface MarkdownInputViewNativeProps extends ViewProps {
 
   // Events
   onChangeText?: DirectEventHandler<Readonly<{ text: string }>>
-  onEditorBlur?: DirectEventHandler<Readonly<{ target: Int32 }>>
-  onEditorFocus?: DirectEventHandler<Readonly<{ target: Int32 }>>
+  onEditorBlur?: DirectEventHandler<Readonly<{ focused: boolean }>>
+  onEditorFocus?: DirectEventHandler<Readonly<{ focused: boolean }>>
   onLinkDetected?: DirectEventHandler<Readonly<{ url: string }>>
   onMentionQuery?: DirectEventHandler<Readonly<{ query: string }>>
   placeholder?: string

@@ -459,14 +459,14 @@ using namespace facebook::react;
   if (!_eventEmitter) return;
   const auto &emitter =
       static_cast<const MarkdownInputViewEventEmitter &>(*_eventEmitter);
-  emitter.onEditorFocus({.target = 0});
+  emitter.onEditorFocus({.focused = true});
 }
 
 - (void)textViewDidEndEditing:(UITextView *)textView {
   if (!_eventEmitter) return;
   const auto &emitter =
       static_cast<const MarkdownInputViewEventEmitter &>(*_eventEmitter);
-  emitter.onEditorBlur({.target = 0});
+  emitter.onEditorBlur({.focused = false});
 }
 
 @end

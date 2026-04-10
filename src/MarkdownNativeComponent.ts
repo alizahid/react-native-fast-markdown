@@ -12,9 +12,12 @@ export interface MarkdownViewNativeProps extends ViewProps {
   customTags?: ReadonlyArray<string>
   markdown: string
   markdownStyle?: string // JSON-serialized MarkdownStyle
-  onLinkLongPress?: DirectEventHandler<Readonly<{ url: string; title: string }>>
 
   // Events
+  onContentSizeChange?: DirectEventHandler<
+    Readonly<{ width: Double; height: Double }>
+  >
+  onLinkLongPress?: DirectEventHandler<Readonly<{ url: string; title: string }>>
   onLinkPress?: DirectEventHandler<Readonly<{ url: string; title: string }>>
   onMentionPress?: DirectEventHandler<Readonly<{ user: string }>>
   onTaskListItemPress?: DirectEventHandler<

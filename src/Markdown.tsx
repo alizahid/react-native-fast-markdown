@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { type ViewProps } from 'react-native'
 import MarkdownViewNative from './MarkdownNativeComponent'
 import { normalizeMarkdownStyle } from './normalizeStyle'
@@ -36,6 +36,7 @@ export function Markdown({
   children,
   markdownStyle,
   customTags,
+  style,
   onLinkPress,
   onLinkLongPress,
   onMentionPress,
@@ -47,12 +48,23 @@ export function Markdown({
     [markdownStyle],
   )
 
+  const [height, setHeight] = useState<number | undefined>(undefined)
+
+  const handleContentSizeChange = useCallback(
+    (e: { nativeEvent: { width: number; height: number } }) => {
+      setHeight(e.nativeEvent.height)
+    },
+    [],
+  )
+
   return (
     <MarkdownViewNative
       {...viewProps}
       customTags={customTags}
       markdown={children}
       markdownStyle={serializedStyle}
+      style={[style, height !== undefined ? { height } : undefined]}
+      onContentSizeChange={handleContentSizeChange}
       onLinkLongPress={
         onLinkLongPress
           ? (e) =>
