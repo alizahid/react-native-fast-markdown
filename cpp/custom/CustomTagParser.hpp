@@ -15,6 +15,14 @@ public:
   static std::vector<ASTNode> parse(const std::string &html,
                                     const std::set<std::string> &registeredTags);
 
+  // Parse a single HTML tag fragment. Returns true if valid tag found.
+  // Used by MarkdownParser to detect opening/closing custom tags
+  // delivered as separate MD_TEXT_HTML callbacks.
+  static bool parseSingleTag(const std::string &html,
+                             std::string &tagName,
+                             std::map<std::string, std::string> &props,
+                             bool &isSelfClosing, bool &isClosing);
+
 private:
   // Parse a single tag: <TagName prop="value" /> or <TagName prop="value">
   // Returns true if successfully parsed, fills outNode.

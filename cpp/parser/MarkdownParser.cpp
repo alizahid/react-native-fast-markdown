@@ -230,12 +230,42 @@ void MarkdownParser::flushPendingHtml(ParseContext &ctx) {
 
   const auto &customTags = ctx.options->customTags;
   if (!customTags.empty()) {
-    auto parsed = CustomTagParser::parse(ctx.pendingHtml, customTags);
-    if (!parsed.empty()) {
-      ASTNode *parent = ctx.stack.back();
-      for (auto &node : parsed) {
+    std::string tagName;
+    std::map<std::string, std::string> props;
+    bool isSelfClosing = false;
+    bool isClosing = false;
+
+    if (CustomTagParser::parseSingleTag(ctx.pendingHtml, tagName, props,
+                                        isSelfClosing, isClosing) &&
+        customTags.count(tagName) > 0) {
+
+      if (isClosing) {
+        // </TagName> — pop the custom tag node from the stack
+        // Find the matching open tag on the stack
+        if (ctx.stack.size() > 1) {
+          ASTNode *top = ctx.stack.back();
+          if (top->type == NodeType::CustomTag && top->tagName == tagName) {
+            ctx.stack.pop_back();
+          }
+        }
+      } else if (isSelfClosing) {
+        // <TagName prop="val" /> — add as a leaf node
+        ASTNode node(NodeType::CustomTag);
+        node.tagName = tagName;
+        node.tagProps = props;
+        ASTNode *parent = ctx.stack.back();
         parent->children.push_back(std::move(node));
+      } else {
+        // <TagName> — opening tag, push onto stack
+        // Children will be added until </TagName>
+        ASTNode node(NodeType::CustomTag);
+        node.tagName = tagName;
+        node.tagProps = props;
+        ASTNode *parent = ctx.stack.back();
+        parent->children.push_back(std::move(node));
+        ctx.stack.push_back(&parent->children.back());
       }
+
       ctx.pendingHtml.clear();
       return;
     }
