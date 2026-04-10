@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState } from 'react'
 import {
   Alert,
   Pressable,
@@ -6,24 +6,27 @@ import {
   StyleSheet,
   Text,
   View,
-} from "react-native";
-import type { EditorStyleState } from "react-native-markdown";
-import { MarkdownInput, useMarkdownInput } from "react-native-markdown";
+} from 'react-native'
+import {
+  type EditorStyleState,
+  MarkdownInput,
+  useMarkdownInput,
+} from 'react-native-markdown'
 
 const initialMarkdown = `\
 **Hello** *world*! This is a ~~demo~~ of the markdown editor.
 
 Try selecting text and using the toolbar below.
-`;
+`
 
 function ToolbarButton({
   label,
   active,
   onPress,
 }: {
-  label: string;
-  active?: boolean;
-  onPress: () => void;
+  label: string
+  active?: boolean
+  onPress: () => void
 }) {
   return (
     <Pressable
@@ -36,11 +39,11 @@ function ToolbarButton({
         {label}
       </Text>
     </Pressable>
-  );
+  )
 }
 
 export function EditorScreen() {
-  const editor = useMarkdownInput();
+  const editor = useMarkdownInput()
   const [styleState, setStyleState] = useState<EditorStyleState>({
     bold: false,
     italic: false,
@@ -50,25 +53,25 @@ export function EditorScreen() {
     link: null,
     heading: null,
     list: null,
-  });
-  const [markdown, setMarkdown] = useState(initialMarkdown);
+  })
+  const [markdown, setMarkdown] = useState(initialMarkdown)
 
   const handleChangeState = useCallback((state: EditorStyleState) => {
-    setStyleState(state);
-  }, []);
+    setStyleState(state)
+  }, [])
 
   const handleInsertLink = useCallback(() => {
     if (styleState.link) {
-      editor.removeLink();
+      editor.removeLink()
     } else {
-      editor.insertLink("https://example.com", "Example Link");
+      editor.insertLink('https://example.com', 'Example Link')
     }
-  }, [editor, styleState.link]);
+  }, [editor, styleState.link])
 
   const handleShowMarkdown = useCallback(async () => {
-    const md = await editor.getMarkdown();
-    Alert.alert("Markdown Output", md || "(empty)");
-  }, [editor]);
+    const md = await editor.getMarkdown()
+    Alert.alert('Markdown Output', md || '(empty)')
+  }, [editor])
 
   return (
     <View style={styles.container}>
@@ -149,12 +152,12 @@ export function EditorScreen() {
           <View style={styles.toolbarSep} />
 
           <ToolbarButton
-            active={styleState.list === "unordered"}
+            active={styleState.list === 'unordered'}
             label="UL"
             onPress={editor.toggleUnorderedList}
           />
           <ToolbarButton
-            active={styleState.list === "ordered"}
+            active={styleState.list === 'ordered'}
             label="OL"
             onPress={editor.toggleOrderedList}
           />
@@ -169,19 +172,19 @@ export function EditorScreen() {
 
           <ToolbarButton
             label="@"
-            onPress={() => editor.insertMention("Ali")}
+            onPress={() => editor.insertMention('Ali')}
           />
           <ToolbarButton label="Show MD" onPress={handleShowMarkdown} />
         </ScrollView>
       </View>
     </View>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f2f2f7",
+    backgroundColor: '#f2f2f7',
   },
   editorContainer: {
     flex: 1,
@@ -192,17 +195,17 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#666",
+    fontWeight: '600',
+    color: '#666',
     marginBottom: 8,
     marginTop: 16,
     marginLeft: 4,
   },
   editorCard: {
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
     borderRadius: 12,
-    overflow: "hidden",
-    shadowColor: "#000",
+    overflow: 'hidden',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
@@ -215,10 +218,10 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   previewCard: {
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
@@ -226,14 +229,14 @@ const styles = StyleSheet.create({
   },
   previewText: {
     fontSize: 13,
-    fontFamily: "Menlo",
-    color: "#555",
+    fontFamily: 'Menlo',
+    color: '#555',
     lineHeight: 20,
   },
   toolbar: {
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: "#e5e5e5",
+    borderTopColor: '#e5e5e5',
     paddingBottom: 34, // safe area
   },
   toolbarContent: {
@@ -243,24 +246,24 @@ const styles = StyleSheet.create({
   },
   toolbarSep: {
     width: 1,
-    backgroundColor: "#e5e5e5",
+    backgroundColor: '#e5e5e5',
     marginHorizontal: 4,
   },
   toolbarBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: "#f2f2f7",
+    backgroundColor: '#f2f2f7',
   },
   toolbarBtnActive: {
-    backgroundColor: "#007aff",
+    backgroundColor: '#007aff',
   },
   toolbarBtnText: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
+    fontWeight: '600',
+    color: '#333',
   },
   toolbarBtnTextActive: {
-    color: "#fff",
+    color: '#fff',
   },
-});
+})

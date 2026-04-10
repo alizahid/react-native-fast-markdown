@@ -1,5 +1,5 @@
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
-import { Markdown } from "react-native-markdown";
+import { Alert, ScrollView, StyleSheet, View } from 'react-native'
+import { Markdown } from 'react-native-markdown'
 
 const tablesMarkdown = `\
 ## Tables
@@ -18,7 +18,7 @@ const tablesMarkdown = `\
 | React Native | 120k | JavaScript |
 | Flutter | 165k | Dart |
 | SwiftUI | N/A | Swift |
-`;
+`
 
 const taskListMarkdown = `\
 ## Task Lists
@@ -29,7 +29,7 @@ const taskListMarkdown = `\
 - [ ] Add syntax highlighting
 - [ ] Write documentation
 - [ ] Publish to npm
-`;
+`
 
 const autolinksMarkdown = `\
 ## Autolinks
@@ -41,7 +41,7 @@ URLs are automatically detected:
 - hello@example.com
 
 Plain text with a link in the middle: visit https://example.com for more info.
-`;
+`
 
 const strikethroughMarkdown = `\
 ## Strikethrough
@@ -51,7 +51,7 @@ This text has ~~deleted words~~ in it.
 ~~Entire paragraph struck through.~~
 
 Mix it with **bold ~~and struck~~** text.
-`;
+`
 
 export function GFMFeaturesScreen() {
   return (
@@ -63,9 +63,9 @@ export function GFMFeaturesScreen() {
       <Markdown
         onTaskListItemPress={(event) => {
           Alert.alert(
-            "Task toggled",
-            `Item ${event.index}: ${event.checked ? "checked" : "unchecked"}`
-          );
+            'Task toggled',
+            `Item ${event.index}: ${event.checked ? 'checked' : 'unchecked'}`,
+          )
         }}
       >
         {taskListMarkdown}
@@ -75,7 +75,7 @@ export function GFMFeaturesScreen() {
 
       <Markdown
         onLinkPress={(event) => {
-          Alert.alert("Autolink pressed", event.url);
+          Alert.alert('Autolink pressed', event.url)
         }}
       >
         {autolinksMarkdown}
@@ -85,20 +85,20 @@ export function GFMFeaturesScreen() {
 
       <Markdown>{strikethroughMarkdown}</Markdown>
     </ScrollView>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: '#fff',
   },
   content: {
     padding: 16,
   },
   divider: {
     height: 1,
-    backgroundColor: "#e5e5e5",
+    backgroundColor: '#e5e5e5',
     marginVertical: 24,
   },
-});
+})

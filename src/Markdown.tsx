@@ -1,35 +1,35 @@
-import { useMemo } from "react";
-import type { ViewProps } from "react-native";
-import MarkdownViewNative from "./MarkdownNativeComponent";
-import { normalizeMarkdownStyle } from "./normalizeStyle";
-import type {
-  LinkPressEvent,
-  MarkdownStyle,
-  MentionPressEvent,
-  TaskListItemPressEvent,
-} from "./types";
+import { useMemo } from 'react'
+import { type ViewProps } from 'react-native'
+import MarkdownViewNative from './MarkdownNativeComponent'
+import { normalizeMarkdownStyle } from './normalizeStyle'
+import {
+  type LinkPressEvent,
+  type MarkdownStyle,
+  type MentionPressEvent,
+  type TaskListItemPressEvent,
+} from './types'
 
 export interface MarkdownProps extends ViewProps {
   /** Markdown string to render */
-  children: string;
+  children: string
 
   /** Registered custom HTML-like tag names */
-  customTags?: string[];
+  customTags?: Array<string>
 
   /** Custom styles for markdown elements */
-  markdownStyle?: MarkdownStyle;
+  markdownStyle?: MarkdownStyle
 
   /** Called when a link is long pressed */
-  onLinkLongPress?: (event: LinkPressEvent) => void;
+  onLinkLongPress?: (event: LinkPressEvent) => void
 
   /** Called when a link is pressed */
-  onLinkPress?: (event: LinkPressEvent) => void;
+  onLinkPress?: (event: LinkPressEvent) => void
 
   /** Called when a mention is pressed */
-  onMentionPress?: (event: MentionPressEvent) => void;
+  onMentionPress?: (event: MentionPressEvent) => void
 
   /** Called when a task list checkbox is pressed */
-  onTaskListItemPress?: (event: TaskListItemPressEvent) => void;
+  onTaskListItemPress?: (event: TaskListItemPressEvent) => void
 }
 
 export function Markdown({
@@ -44,8 +44,8 @@ export function Markdown({
 }: MarkdownProps) {
   const serializedStyle = useMemo(
     () => normalizeMarkdownStyle(markdownStyle),
-    [markdownStyle]
-  );
+    [markdownStyle],
+  )
 
   return (
     <MarkdownViewNative
@@ -86,5 +86,5 @@ export function Markdown({
           : undefined
       }
     />
-  );
+  )
 }

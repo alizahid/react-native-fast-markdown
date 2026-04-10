@@ -1,6 +1,5 @@
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import type { MarkdownStyle } from "react-native-markdown";
-import { Markdown } from "react-native-markdown";
+import { ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Markdown, type MarkdownStyle } from 'react-native-markdown'
 
 const sampleMarkdown = `\
 # Styled Heading
@@ -25,191 +24,191 @@ custom styling
 ---
 
 End of sample.
-`;
+`
 
-const defaultTheme: MarkdownStyle = {};
+const defaultTheme: MarkdownStyle = {}
 
 const darkTheme: MarkdownStyle = {
   paragraph: {
-    color: "#e0e0e0",
+    color: '#e0e0e0',
     fontSize: 16,
     lineHeight: 26,
   },
   heading1: {
-    color: "#fff",
+    color: '#fff',
     fontSize: 30,
-    fontWeight: "bold",
+    fontWeight: 'bold',
   },
   heading2: {
-    color: "#f0f0f0",
+    color: '#f0f0f0',
     fontSize: 24,
-    fontWeight: "600",
+    fontWeight: '600',
   },
   strong: {
-    color: "#fff",
-    fontWeight: "bold",
+    color: '#fff',
+    fontWeight: 'bold',
   },
   emphasis: {
-    color: "#ccc",
-    fontStyle: "italic",
+    color: '#ccc',
+    fontStyle: 'italic',
   },
   link: {
-    color: "#6eb5ff",
+    color: '#6eb5ff',
   },
   code: {
-    color: "#f8a4c8",
-    backgroundColor: "#2a2a2a",
-    fontFamily: "Menlo",
+    color: '#f8a4c8',
+    backgroundColor: '#2a2a2a',
+    fontFamily: 'Menlo',
     fontSize: 14,
   },
   codeBlock: {
-    color: "#e0e0e0",
-    backgroundColor: "#1e1e1e",
-    fontFamily: "Menlo",
+    color: '#e0e0e0',
+    backgroundColor: '#1e1e1e',
+    fontFamily: 'Menlo',
     fontSize: 13,
     borderRadius: 8,
     padding: 16,
   },
   blockquote: {
-    borderLeftColor: "#6eb5ff",
+    borderLeftColor: '#6eb5ff',
     borderLeftWidth: 4,
-    color: "#aaa",
-    fontStyle: "italic",
+    color: '#aaa',
+    fontStyle: 'italic',
   },
   listItem: {
-    color: "#e0e0e0",
+    color: '#e0e0e0',
     fontSize: 16,
   },
   thematicBreak: {
-    backgroundColor: "#444",
+    backgroundColor: '#444',
     height: 1,
     marginVertical: 20,
   },
-};
+}
 
 const serifTheme: MarkdownStyle = {
   paragraph: {
-    fontFamily: "Georgia",
+    fontFamily: 'Georgia',
     fontSize: 18,
     lineHeight: 30,
-    color: "#333",
+    color: '#333',
   },
   heading1: {
-    fontFamily: "Georgia",
+    fontFamily: 'Georgia',
     fontSize: 36,
-    fontWeight: "bold",
-    color: "#1a1a1a",
+    fontWeight: 'bold',
+    color: '#1a1a1a',
   },
   heading2: {
-    fontFamily: "Georgia",
+    fontFamily: 'Georgia',
     fontSize: 28,
-    fontWeight: "600",
-    color: "#222",
+    fontWeight: '600',
+    color: '#222',
   },
   strong: {
-    fontWeight: "bold",
-    color: "#000",
+    fontWeight: 'bold',
+    color: '#000',
   },
   emphasis: {
-    fontStyle: "italic",
-    color: "#555",
+    fontStyle: 'italic',
+    color: '#555',
   },
   link: {
-    color: "#8b0000",
+    color: '#8b0000',
   },
   code: {
-    fontFamily: "Courier",
+    fontFamily: 'Courier',
     fontSize: 16,
-    backgroundColor: "#f5f0e8",
-    color: "#5c4033",
+    backgroundColor: '#f5f0e8',
+    color: '#5c4033',
   },
   codeBlock: {
-    fontFamily: "Courier",
+    fontFamily: 'Courier',
     fontSize: 15,
-    backgroundColor: "#f5f0e8",
-    color: "#5c4033",
+    backgroundColor: '#f5f0e8',
+    color: '#5c4033',
     borderRadius: 4,
     padding: 16,
   },
   blockquote: {
-    fontFamily: "Georgia",
-    fontStyle: "italic",
-    borderLeftColor: "#8b0000",
+    fontFamily: 'Georgia',
+    fontStyle: 'italic',
+    borderLeftColor: '#8b0000',
     borderLeftWidth: 3,
-    color: "#666",
+    color: '#666',
   },
   listItem: {
-    fontFamily: "Georgia",
+    fontFamily: 'Georgia',
     fontSize: 18,
-    color: "#333",
+    color: '#333',
   },
   thematicBreak: {
-    backgroundColor: "#ccc",
+    backgroundColor: '#ccc',
     height: 1,
     marginVertical: 24,
   },
-};
+}
 
 const compactTheme: MarkdownStyle = {
   paragraph: {
     fontSize: 13,
     lineHeight: 18,
-    color: "#444",
+    color: '#444',
   },
   heading1: {
     fontSize: 20,
-    fontWeight: "bold",
-    color: "#111",
+    fontWeight: 'bold',
+    color: '#111',
   },
   heading2: {
     fontSize: 17,
-    fontWeight: "600",
-    color: "#222",
+    fontWeight: '600',
+    color: '#222',
   },
   strong: {
-    fontWeight: "700",
+    fontWeight: '700',
   },
   code: {
     fontSize: 12,
-    backgroundColor: "#eef",
-    color: "#336",
+    backgroundColor: '#eef',
+    color: '#336',
   },
   codeBlock: {
     fontSize: 11,
-    backgroundColor: "#f0f0ff",
-    color: "#336",
+    backgroundColor: '#f0f0ff',
+    color: '#336',
     padding: 8,
     borderRadius: 4,
   },
   blockquote: {
-    borderLeftColor: "#99f",
+    borderLeftColor: '#99f',
     borderLeftWidth: 2,
     fontSize: 13,
-    color: "#666",
+    color: '#666',
   },
   link: {
-    color: "#2563eb",
+    color: '#2563eb',
   },
   listItem: {
     fontSize: 13,
   },
   thematicBreak: {
-    backgroundColor: "#ddd",
+    backgroundColor: '#ddd',
     height: 1,
     marginVertical: 8,
   },
-};
+}
 
 const themes: Array<{
-  name: string;
-  style: MarkdownStyle;
-  background: string;
+  name: string
+  style: MarkdownStyle
+  background: string
 }> = [
-  { name: "Default", style: defaultTheme, background: "#fff" },
-  { name: "Dark", style: darkTheme, background: "#121212" },
-  { name: "Serif", style: serifTheme, background: "#faf8f5" },
-  { name: "Compact", style: compactTheme, background: "#fff" },
-];
+  { name: 'Default', style: defaultTheme, background: '#fff' },
+  { name: 'Dark', style: darkTheme, background: '#121212' },
+  { name: 'Serif', style: serifTheme, background: '#faf8f5' },
+  { name: 'Compact', style: compactTheme, background: '#fff' },
+]
 
 export function StylingScreen() {
   return (
@@ -223,13 +222,13 @@ export function StylingScreen() {
         </View>
       ))}
     </ScrollView>
-  );
+  )
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f2f2f7",
+    backgroundColor: '#f2f2f7',
   },
   content: {
     padding: 16,
@@ -237,8 +236,8 @@ const styles = StyleSheet.create({
   },
   sectionLabel: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#666",
+    fontWeight: '600',
+    color: '#666',
     marginBottom: 8,
     marginTop: 16,
     marginLeft: 4,
@@ -246,10 +245,10 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 12,
     padding: 16,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
   },
-});
+})

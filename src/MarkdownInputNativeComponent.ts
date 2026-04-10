@@ -1,128 +1,130 @@
-import type { HostComponent, ViewProps } from "react-native";
-import { codegenNativeCommands, codegenNativeComponent } from "react-native";
-import type {
-  DirectEventHandler,
-  Double,
-  Int32,
-} from "react-native/Libraries/Types/CodegenTypes";
+import {
+  codegenNativeCommands,
+  codegenNativeComponent,
+  type HostComponent,
+  type ViewProps,
+} from 'react-native'
+import {
+  type DirectEventHandler,
+  type Double,
+  type Int32,
+} from 'react-native/Libraries/Types/CodegenTypes'
 
 export interface MarkdownInputViewNativeProps extends ViewProps {
-  autoCapitalize?: string;
-  autoFocus?: boolean;
-  cursorColor?: string;
-  customTags?: readonly string[];
-  defaultValue?: string;
-  editable?: boolean;
-  markdownStyle?: string; // JSON-serialized MarkdownStyle
-  multiline?: boolean;
-  onChangeMarkdown?: DirectEventHandler<Readonly<{ markdown: string }>>;
+  autoCapitalize?: string
+  autoFocus?: boolean
+  cursorColor?: string
+  customTags?: ReadonlyArray<string>
+  defaultValue?: string
+  editable?: boolean
+  markdownStyle?: string // JSON-serialized MarkdownStyle
+  multiline?: boolean
+  onChangeMarkdown?: DirectEventHandler<Readonly<{ markdown: string }>>
   onChangeSelection?: DirectEventHandler<
     Readonly<{ start: Double; end: Double }>
-  >;
+  >
   onChangeState?: DirectEventHandler<
     Readonly<{
-      bold: boolean;
-      italic: boolean;
-      strikethrough: boolean;
-      underline: boolean;
-      code: boolean;
-      linkUrl: string;
-      heading: Int32;
-      list: string;
+      bold: boolean
+      italic: boolean
+      strikethrough: boolean
+      underline: boolean
+      code: boolean
+      linkUrl: string
+      heading: Int32
+      list: string
     }>
-  >;
+  >
 
   // Events
-  onChangeText?: DirectEventHandler<Readonly<{ text: string }>>;
-  onEditorBlur?: DirectEventHandler<Readonly<{ target: Int32 }>>;
-  onEditorFocus?: DirectEventHandler<Readonly<{ target: Int32 }>>;
-  onLinkDetected?: DirectEventHandler<Readonly<{ url: string }>>;
-  onMentionQuery?: DirectEventHandler<Readonly<{ query: string }>>;
-  placeholder?: string;
-  placeholderTextColor?: string;
-  scrollEnabled?: boolean;
-  selectionColor?: string;
+  onChangeText?: DirectEventHandler<Readonly<{ text: string }>>
+  onEditorBlur?: DirectEventHandler<Readonly<{ target: Int32 }>>
+  onEditorFocus?: DirectEventHandler<Readonly<{ target: Int32 }>>
+  onLinkDetected?: DirectEventHandler<Readonly<{ url: string }>>
+  onMentionQuery?: DirectEventHandler<Readonly<{ query: string }>>
+  placeholder?: string
+  placeholderTextColor?: string
+  scrollEnabled?: boolean
+  selectionColor?: string
 }
 
-type MarkdownInputViewComponent = HostComponent<MarkdownInputViewNativeProps>;
+type MarkdownInputViewComponent = HostComponent<MarkdownInputViewNativeProps>
 
 interface NativeCommands {
-  blur: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void;
-  focus: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void;
+  blur: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
+  focus: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
   insertCustomTag: (
     viewRef: React.ElementRef<MarkdownInputViewComponent>,
     tag: string,
-    propsJson: string
-  ) => void;
+    propsJson: string,
+  ) => void
   insertLink: (
     viewRef: React.ElementRef<MarkdownInputViewComponent>,
     url: string,
-    text: string
-  ) => void;
+    text: string,
+  ) => void
   insertMention: (
     viewRef: React.ElementRef<MarkdownInputViewComponent>,
-    user: string
-  ) => void;
-  insertSpoiler: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>
-  ) => void;
-  removeLink: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void;
+    user: string,
+  ) => void
+  insertSpoiler: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
+  removeLink: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
   setSelection: (
     viewRef: React.ElementRef<MarkdownInputViewComponent>,
     start: Int32,
-    end: Int32
-  ) => void;
+    end: Int32,
+  ) => void
   setValue: (
     viewRef: React.ElementRef<MarkdownInputViewComponent>,
-    value: string
-  ) => void;
+    value: string,
+  ) => void
   toggleBlockquote: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>
-  ) => void;
-  toggleBold: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void;
-  toggleCode: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void;
+    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+  ) => void
+  toggleBold: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
+  toggleCode: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
   toggleHeading: (
     viewRef: React.ElementRef<MarkdownInputViewComponent>,
-    level: Int32
-  ) => void;
-  toggleItalic: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void;
+    level: Int32,
+  ) => void
+  toggleItalic: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
   toggleOrderedList: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>
-  ) => void;
+    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+  ) => void
   toggleStrikethrough: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>
-  ) => void;
+    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+  ) => void
   toggleUnderline: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>
-  ) => void;
+    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+  ) => void
   toggleUnorderedList: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>
-  ) => void;
+    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+  ) => void
 }
 
 export const Commands = codegenNativeCommands<NativeCommands>({
   supportedCommands: [
-    "focus",
-    "blur",
-    "setValue",
-    "setSelection",
-    "toggleBold",
-    "toggleItalic",
-    "toggleStrikethrough",
-    "toggleUnderline",
-    "toggleCode",
-    "toggleHeading",
-    "toggleOrderedList",
-    "toggleUnorderedList",
-    "toggleBlockquote",
-    "insertLink",
-    "removeLink",
-    "insertMention",
-    "insertSpoiler",
-    "insertCustomTag",
+    'focus',
+    'blur',
+    'setValue',
+    'setSelection',
+    'toggleBold',
+    'toggleItalic',
+    'toggleStrikethrough',
+    'toggleUnderline',
+    'toggleCode',
+    'toggleHeading',
+    'toggleOrderedList',
+    'toggleUnorderedList',
+    'toggleBlockquote',
+    'insertLink',
+    'removeLink',
+    'insertMention',
+    'insertSpoiler',
+    'insertCustomTag',
   ],
-});
+})
 
 export default codegenNativeComponent<MarkdownInputViewNativeProps>(
-  "MarkdownInputView"
-) as MarkdownInputViewComponent;
+  'MarkdownInputView',
+) as MarkdownInputViewComponent

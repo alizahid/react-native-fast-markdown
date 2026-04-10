@@ -1,74 +1,74 @@
-import React, { forwardRef, useCallback, useMemo } from "react";
-import type { ColorValue, ViewProps } from "react-native";
+import React, { forwardRef, useCallback, useMemo } from 'react'
+import { type ColorValue, type ViewProps } from 'react-native'
 import MarkdownInputViewNative, {
   Commands,
-} from "./MarkdownInputNativeComponent";
-import { normalizeMarkdownStyle } from "./normalizeStyle";
-import type {
-  EditorStyleState,
-  MarkdownInputHandle,
-  MarkdownStyle,
-} from "./types";
+} from './MarkdownInputNativeComponent'
+import { normalizeMarkdownStyle } from './normalizeStyle'
+import {
+  type EditorStyleState,
+  type MarkdownInputHandle,
+  type MarkdownStyle,
+} from './types'
 
 export interface MarkdownInputProps extends ViewProps {
   /** Auto-capitalize behavior */
-  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'
 
   /** Whether to auto-focus on mount */
-  autoFocus?: boolean;
+  autoFocus?: boolean
 
   /** Cursor color */
-  cursorColor?: ColorValue;
+  cursorColor?: ColorValue
 
   /** Registered custom HTML-like tag names */
-  customTags?: string[];
+  customTags?: Array<string>
   /** Initial markdown content */
-  defaultValue?: string;
+  defaultValue?: string
 
   /** Whether the input is editable */
-  editable?: boolean;
+  editable?: boolean
 
   /** Custom styles for markdown elements */
-  markdownStyle?: MarkdownStyle;
+  markdownStyle?: MarkdownStyle
 
   /** Whether the input supports multiple lines */
-  multiline?: boolean;
+  multiline?: boolean
 
   /** Called when input loses focus */
-  onBlur?: () => void;
+  onBlur?: () => void
 
   /** Called when markdown output changes */
-  onChangeMarkdown?: (markdown: string) => void;
+  onChangeMarkdown?: (markdown: string) => void
 
   /** Called when selection changes */
-  onChangeSelection?: (selection: { start: number; end: number }) => void;
+  onChangeSelection?: (selection: { start: number; end: number }) => void
 
   /** Called when formatting state at cursor changes */
-  onChangeState?: (state: EditorStyleState) => void;
+  onChangeState?: (state: EditorStyleState) => void
 
   /** Called when raw text changes */
-  onChangeText?: (text: string) => void;
+  onChangeText?: (text: string) => void
 
   /** Called when input receives focus */
-  onFocus?: () => void;
+  onFocus?: () => void
 
   /** Called when a URL is detected in text */
-  onLinkDetected?: (url: string) => void;
+  onLinkDetected?: (url: string) => void
 
   /** Called when user triggers a mention query (e.g. types @) */
-  onMentionQuery?: (query: string) => void;
+  onMentionQuery?: (query: string) => void
 
   /** Placeholder text */
-  placeholder?: string;
+  placeholder?: string
 
   /** Placeholder text color */
-  placeholderTextColor?: ColorValue;
+  placeholderTextColor?: ColorValue
 
   /** Whether scrolling is enabled */
-  scrollEnabled?: boolean;
+  scrollEnabled?: boolean
 
   /** Selection highlight color */
-  selectionColor?: ColorValue;
+  selectionColor?: ColorValue
 }
 
 export const MarkdownInput = forwardRef<
@@ -85,7 +85,7 @@ export const MarkdownInput = forwardRef<
     multiline = true,
     autoFocus = false,
     scrollEnabled = true,
-    autoCapitalize = "sentences",
+    autoCapitalize = 'sentences',
     cursorColor,
     selectionColor,
     onChangeText,
@@ -98,15 +98,15 @@ export const MarkdownInput = forwardRef<
     onBlur,
     ...viewProps
   },
-  ref
+  ref,
 ) {
   const nativeRef =
-    React.useRef<React.ElementRef<typeof MarkdownInputViewNative>>(null);
+    React.useRef<React.ElementRef<typeof MarkdownInputViewNative>>(null)
 
   const serializedStyle = useMemo(
     () => normalizeMarkdownStyle(markdownStyle),
-    [markdownStyle]
-  );
+    [markdownStyle],
+  )
 
   // Expose imperative handle
   React.useImperativeHandle(
@@ -114,17 +114,17 @@ export const MarkdownInput = forwardRef<
     () => ({
       focus() {
         if (nativeRef.current) {
-          Commands.focus(nativeRef.current);
+          Commands.focus(nativeRef.current)
         }
       },
       blur() {
         if (nativeRef.current) {
-          Commands.blur(nativeRef.current);
+          Commands.blur(nativeRef.current)
         }
       },
       setValue(value: string) {
         if (nativeRef.current) {
-          Commands.setValue(nativeRef.current, value);
+          Commands.setValue(nativeRef.current, value)
         }
       },
       getMarkdown() {
@@ -132,79 +132,79 @@ export const MarkdownInput = forwardRef<
         return new Promise<string>((resolve) => {
           // For now, trigger a state read from native
           if (nativeRef.current) {
-            Commands.setValue(nativeRef.current, "");
+            Commands.setValue(nativeRef.current, '')
           }
-          resolve("");
-        });
+          resolve('')
+        })
       },
       setSelection(start: number, end: number) {
         if (nativeRef.current) {
-          Commands.setSelection(nativeRef.current, start, end);
+          Commands.setSelection(nativeRef.current, start, end)
         }
       },
       toggleBold() {
         if (nativeRef.current) {
-          Commands.toggleBold(nativeRef.current);
+          Commands.toggleBold(nativeRef.current)
         }
       },
       toggleItalic() {
         if (nativeRef.current) {
-          Commands.toggleItalic(nativeRef.current);
+          Commands.toggleItalic(nativeRef.current)
         }
       },
       toggleStrikethrough() {
         if (nativeRef.current) {
-          Commands.toggleStrikethrough(nativeRef.current);
+          Commands.toggleStrikethrough(nativeRef.current)
         }
       },
       toggleUnderline() {
         if (nativeRef.current) {
-          Commands.toggleUnderline(nativeRef.current);
+          Commands.toggleUnderline(nativeRef.current)
         }
       },
       toggleCode() {
         if (nativeRef.current) {
-          Commands.toggleCode(nativeRef.current);
+          Commands.toggleCode(nativeRef.current)
         }
       },
       toggleHeading(level: number) {
         if (nativeRef.current) {
-          Commands.toggleHeading(nativeRef.current, level);
+          Commands.toggleHeading(nativeRef.current, level)
         }
       },
       toggleOrderedList() {
         if (nativeRef.current) {
-          Commands.toggleOrderedList(nativeRef.current);
+          Commands.toggleOrderedList(nativeRef.current)
         }
       },
       toggleUnorderedList() {
         if (nativeRef.current) {
-          Commands.toggleUnorderedList(nativeRef.current);
+          Commands.toggleUnorderedList(nativeRef.current)
         }
       },
       toggleBlockquote() {
         if (nativeRef.current) {
-          Commands.toggleBlockquote(nativeRef.current);
+          Commands.toggleBlockquote(nativeRef.current)
         }
       },
       insertLink(url: string, text?: string) {
         if (nativeRef.current) {
-          Commands.insertLink(nativeRef.current, url, text ?? "");
+          Commands.insertLink(nativeRef.current, url, text ?? '')
         }
       },
       removeLink() {
         if (nativeRef.current) {
-          Commands.removeLink(nativeRef.current);
+          Commands.removeLink(nativeRef.current)
         }
       },
       insertMention(user: string) {
         if (nativeRef.current) {
-          Commands.insertMention(nativeRef.current, user);
+          Commands.insertMention(nativeRef.current, user)
         }
       },
       insertSpoiler() {
         if (nativeRef.current) {
-          Commands.insertSpoiler(nativeRef.current);
+          Commands.insertSpoiler(nativeRef.current)
         }
       },
       insertCustomTag(tag: string, props?: Record<string, string>) {
@@ -212,26 +212,26 @@ export const MarkdownInput = forwardRef<
           Commands.insertCustomTag(
             nativeRef.current,
             tag,
-            JSON.stringify(props ?? {})
-          );
+            JSON.stringify(props ?? {}),
+          )
         }
       },
     }),
-    []
-  );
+    [],
+  )
 
   const handleChangeState = useCallback(
     (e: {
       nativeEvent: {
-        bold: boolean;
-        italic: boolean;
-        strikethrough: boolean;
-        underline: boolean;
-        code: boolean;
-        linkUrl: string;
-        heading: number;
-        list: string;
-      };
+        bold: boolean
+        italic: boolean
+        strikethrough: boolean
+        underline: boolean
+        code: boolean
+        linkUrl: string
+        heading: number
+        list: string
+      }
     }) => {
       onChangeState?.({
         bold: e.nativeEvent.bold,
@@ -242,13 +242,13 @@ export const MarkdownInput = forwardRef<
         link: e.nativeEvent.linkUrl ? { url: e.nativeEvent.linkUrl } : null,
         heading: e.nativeEvent.heading > 0 ? e.nativeEvent.heading : null,
         list:
-          e.nativeEvent.list === "ordered" || e.nativeEvent.list === "unordered"
+          e.nativeEvent.list === 'ordered' || e.nativeEvent.list === 'unordered'
             ? e.nativeEvent.list
             : null,
-      });
+      })
     },
-    [onChangeState]
-  );
+    [onChangeState],
+  )
 
   return (
     <MarkdownInputViewNative
@@ -295,5 +295,5 @@ export const MarkdownInput = forwardRef<
       scrollEnabled={scrollEnabled}
       selectionColor={selectionColor ? String(selectionColor) : undefined}
     />
-  );
-});
+  )
+})

@@ -1,52 +1,52 @@
-import { Platform, processColor } from "react-native";
-import type { MarkdownStyle } from "./types";
+import { Platform, processColor } from 'react-native'
+import { type MarkdownStyle } from './types'
 
-const styleCache = new WeakMap<MarkdownStyle, string>();
+const styleCache = new WeakMap<MarkdownStyle, string>()
 
 const defaultFonts = Platform.select({
   ios: {
-    body: "System",
-    mono: "Menlo",
+    body: 'System',
+    mono: 'Menlo',
   },
   android: {
-    body: "sans-serif",
-    mono: "monospace",
+    body: 'sans-serif',
+    mono: 'monospace',
   },
   default: {
-    body: "System",
-    mono: "monospace",
+    body: 'System',
+    mono: 'monospace',
   },
-});
+})
 
 const defaultStyle: MarkdownStyle = {
   heading1: {
     fontSize: 32,
-    fontWeight: "bold",
+    fontWeight: 'bold',
     fontFamily: defaultFonts.body,
   },
   heading2: {
     fontSize: 28,
-    fontWeight: "bold",
+    fontWeight: 'bold',
     fontFamily: defaultFonts.body,
   },
   heading3: {
     fontSize: 24,
-    fontWeight: "600",
+    fontWeight: '600',
     fontFamily: defaultFonts.body,
   },
   heading4: {
     fontSize: 20,
-    fontWeight: "600",
+    fontWeight: '600',
     fontFamily: defaultFonts.body,
   },
   heading5: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: '600',
     fontFamily: defaultFonts.body,
   },
   heading6: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: '600',
     fontFamily: defaultFonts.body,
   },
   paragraph: {
@@ -55,137 +55,137 @@ const defaultStyle: MarkdownStyle = {
     fontFamily: defaultFonts.body,
   },
   strong: {
-    fontWeight: "bold",
+    fontWeight: 'bold',
   },
   emphasis: {
-    fontStyle: "italic",
+    fontStyle: 'italic',
   },
   strikethrough: {
-    textDecorationLine: "line-through",
+    textDecorationLine: 'line-through',
   },
   underline: {
-    textDecorationLine: "underline",
+    textDecorationLine: 'underline',
   },
   code: {
     fontFamily: defaultFonts.mono,
     fontSize: 14,
-    backgroundColor: "#f0f0f0",
+    backgroundColor: '#f0f0f0',
     borderRadius: 3,
     padding: 2,
   },
   codeBlock: {
     fontFamily: defaultFonts.mono,
     fontSize: 14,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: '#f5f5f5',
     borderRadius: 6,
     padding: 12,
   },
   link: {
-    color: "#0066cc",
+    color: '#0066cc',
   },
   blockquote: {
-    borderLeftColor: "#ddd",
+    borderLeftColor: '#ddd',
     borderLeftWidth: 3,
-    fontStyle: "italic",
+    fontStyle: 'italic',
   },
   listItem: {
     fontSize: 16,
   },
   table: {
-    borderColor: "#ddd",
+    borderColor: '#ddd',
     borderWidth: 1,
     cellPadding: 8,
   },
   thematicBreak: {
-    backgroundColor: "#ddd",
+    backgroundColor: '#ddd',
     height: 1,
     marginVertical: 16,
   },
   mention: {
-    color: "#0066cc",
-    fontWeight: "600",
-    prefix: "@",
+    color: '#0066cc',
+    fontWeight: '600',
+    prefix: '@',
   },
   spoiler: {
-    overlayColor: "#000",
-    mode: "solid",
+    overlayColor: '#000',
+    mode: 'solid',
   },
-};
+}
 
 function normalizeColorValues(
-  style: Record<string, unknown>
+  style: Record<string, unknown>,
 ): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
+  const result: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(style)) {
     if (
-      typeof value === "string" &&
-      (key.toLowerCase().includes("color") ||
-        key === "backgroundColor" ||
-        key === "overlayColor")
+      typeof value === 'string' &&
+      (key.toLowerCase().includes('color') ||
+        key === 'backgroundColor' ||
+        key === 'overlayColor')
     ) {
-      result[key] = processColor(value);
+      result[key] = processColor(value)
     } else if (
-      typeof value === "object" &&
+      typeof value === 'object' &&
       value !== null &&
       !Array.isArray(value)
     ) {
-      result[key] = normalizeColorValues(value as Record<string, unknown>);
+      result[key] = normalizeColorValues(value as Record<string, unknown>)
     } else {
-      result[key] = value;
+      result[key] = value
     }
   }
-  return result;
+  return result
 }
 
 function mergeStyles(
   defaults: Record<string, unknown>,
-  overrides: Record<string, unknown>
+  overrides: Record<string, unknown>,
 ): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...defaults };
+  const result: Record<string, unknown> = { ...defaults }
   for (const [key, value] of Object.entries(overrides)) {
     if (
-      typeof value === "object" &&
+      typeof value === 'object' &&
       value !== null &&
       !Array.isArray(value) &&
-      typeof result[key] === "object" &&
+      typeof result[key] === 'object' &&
       result[key] !== null
     ) {
       result[key] = mergeStyles(
         result[key] as Record<string, unknown>,
-        value as Record<string, unknown>
-      );
+        value as Record<string, unknown>,
+      )
     } else {
-      result[key] = value;
+      result[key] = value
     }
   }
-  return result;
+  return result
 }
 
 export function normalizeMarkdownStyle(userStyle?: MarkdownStyle): string {
   if (!userStyle) {
-    const cached = styleCache.get(defaultStyle);
+    const cached = styleCache.get(defaultStyle)
     if (cached) {
-      return cached;
+      return cached
     }
 
     const serialized = JSON.stringify(
-      normalizeColorValues(defaultStyle as unknown as Record<string, unknown>)
-    );
-    styleCache.set(defaultStyle, serialized);
-    return serialized;
+      normalizeColorValues(defaultStyle as unknown as Record<string, unknown>),
+    )
+    styleCache.set(defaultStyle, serialized)
+    return serialized
   }
 
-  const cached = styleCache.get(userStyle);
+  const cached = styleCache.get(userStyle)
   if (cached) {
-    return cached;
+    return cached
   }
 
   const merged = mergeStyles(
     defaultStyle as unknown as Record<string, unknown>,
-    userStyle as unknown as Record<string, unknown>
-  );
-  const normalized = normalizeColorValues(merged);
-  const serialized = JSON.stringify(normalized);
-  styleCache.set(userStyle, serialized);
-  return serialized;
+    userStyle as unknown as Record<string, unknown>,
+  )
+  const normalized = normalizeColorValues(merged)
+  const serialized = JSON.stringify(normalized)
+  styleCache.set(userStyle, serialized)
+  return serialized
 }
