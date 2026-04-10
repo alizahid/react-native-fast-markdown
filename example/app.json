@@ -16,7 +16,7 @@
       }
     },
     "plugins": [
-      "react-native-markdown"
+      "../app.plugin.js"
     ]
   }
 }

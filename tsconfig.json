@@ -13,15 +13,13 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noFallthroughCasesInSwitch": true,
-    "noForceEject": false,
     "noImplicitReturns": true,
-    "noImplicitUseStrict": false,
     "noUncheckedIndexedAccess": true,
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
-    "target": "ESNext",
-    "verbatimModuleSyntax": true
+    "target": "ESNext"
   },
+  "include": ["src"],
   "exclude": ["node_modules", "lib", "example"]
 }

@@ -26,7 +26,7 @@
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "clean": "del-cli lib",
     "prepare": "bob build",
-    "example": "yarn --cwd example"
+    "example": "bun --cwd example"
   },
   "keywords": [
     "react-native",
@@ -51,13 +51,13 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
-    "@types/react": "*",
+    "@types/react": "~19.0.0",
     "del-cli": "^6.0.0",
     "eslint": "^9.0.0",
-    "react": "*",
-    "react-native": "*",
-    "react-native-builder-bob": "^0.35.0",
-    "typescript": "^5.5.0"
+    "react": "19.1.0",
+    "react-native": "0.79.2",
+    "react-native-builder-bob": "^0.41.0",
+    "typescript": "^5.8.0"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

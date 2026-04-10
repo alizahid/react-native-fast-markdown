@@ -1,9 +1,18 @@
 {
-  "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "lib": ["ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "target": "ESNext",
     "paths": {
-      "react-native-markdown": ["../../src/index"]
+      "react-native-markdown": ["../src/index"]
     }
-  }
+  },
+  "include": ["src", "index.ts"],
+  "exclude": ["node_modules", "ios", "android"]
 }
