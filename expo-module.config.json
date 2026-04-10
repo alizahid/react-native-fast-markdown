@@ -1,0 +1,9 @@
+{
+  "platforms": ["ios", "android"],
+  "ios": {
+    "podspecPath": "./react-native-markdown.podspec"
+  },
+  "android": {
+    "gradlePath": "./android/build.gradle"
+  }
+}
