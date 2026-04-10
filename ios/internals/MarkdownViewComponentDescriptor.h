@@ -10,8 +10,8 @@ class MarkdownViewComponentDescriptor
 public:
   using ConcreteComponentDescriptor::ConcreteComponentDescriptor;
 
-  void adopt(const ShadowNode::Unshared &shadowNode) const override {
-    auto &node = static_cast<MarkdownViewShadowNode &>(*shadowNode);
+  void adopt(ShadowNode &shadowNode) const override {
+    auto &node = static_cast<MarkdownViewShadowNode &>(shadowNode);
     node.dirtyLayoutIfNeeded();
     ConcreteComponentDescriptor::adopt(shadowNode);
   }
