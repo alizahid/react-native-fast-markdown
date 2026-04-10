@@ -8,7 +8,8 @@ import { PerformanceScreen } from './examples/Performance'
 import { StylingScreen } from './examples/Styling'
 import { HomeScreen } from './HomeScreen'
 
-export interface RootStackParamList {
+// biome-ignore lint/style/useConsistentTypeDefinitions: go away
+export type RootStackParamList = {
   BasicRenderer: undefined
   CustomComponents: undefined
   Editor: undefined
