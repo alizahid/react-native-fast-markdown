@@ -5,6 +5,7 @@
   "scripts": {
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "postinstall": "rm -rf node_modules/react-native-markdown && ln -s ../.. node_modules/react-native-markdown",
     "prebuild": "expo prebuild",
     "start": "expo start"
   },
