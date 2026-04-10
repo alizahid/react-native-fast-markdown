@@ -63,6 +63,23 @@ static const NSUInteger kMaxCacheSize = 128;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _textView.frame = self.bounds;
+
+  // Notify Fabric that our size may have changed
+  if (_textView.attributedText.length > 0) {
+    CGSize fittingSize = [_textView sizeThatFits:CGSizeMake(self.bounds.size.width, CGFLOAT_MAX)];
+    if (fittingSize.height != self.bounds.size.height) {
+      [self invalidateIntrinsicContentSize];
+    }
+  }
+}
+
+- (CGSize)intrinsicContentSize {
+  if (!_textView.attributedText || _textView.attributedText.length == 0) {
+    return CGSizeMake(UIViewNoIntrinsicMetric, 0);
+  }
+  CGFloat width = self.bounds.size.width > 0 ? self.bounds.size.width : UIScreen.mainScreen.bounds.size.width;
+  CGSize size = [_textView sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+  return size;
 }
 
 - (void)updateProps:(const Props::Shared &)props
@@ -136,6 +153,7 @@ static const NSUInteger kMaxCacheSize = 128;
                          customTags:customTags];
     [self cacheResult:result forKey:cacheKey];
     _textView.attributedText = result;
+    [self invalidateIntrinsicContentSize];
     return;
   }
 
@@ -153,6 +171,7 @@ static const NSUInteger kMaxCacheSize = 128;
 
       [strongSelf cacheResult:result forKey:cacheKey];
       strongSelf->_textView.attributedText = result;
+      [strongSelf invalidateIntrinsicContentSize];
     });
   });
 }

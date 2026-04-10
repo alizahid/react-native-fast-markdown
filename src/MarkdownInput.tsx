@@ -256,8 +256,8 @@ export const MarkdownInput = forwardRef<
           ? (e) => onMentionQuery(e.nativeEvent.query)
           : undefined
       }
-      onFocus={onFocus ? () => onFocus() : undefined}
-      onBlur={onBlur ? () => onBlur() : undefined}
+      onEditorFocus={onFocus ? () => onFocus() : undefined}
+      onEditorBlur={onBlur ? () => onBlur() : undefined}
     />
   )
 })
