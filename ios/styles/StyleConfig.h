@@ -4,41 +4,56 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface MarkdownElementStyle : NSObject
 
+// Text properties
 @property (nonatomic, strong, nullable) UIFont *font;
 @property (nonatomic, strong, nullable) UIColor *color;
-@property (nonatomic, strong, nullable) UIColor *backgroundColor;
 @property (nonatomic, assign) CGFloat fontSize;
 @property (nonatomic, copy, nullable) NSString *fontWeight;
 @property (nonatomic, copy, nullable) NSString *fontStyle;
 @property (nonatomic, copy, nullable) NSString *fontFamily;
 @property (nonatomic, assign) CGFloat lineHeight;
 @property (nonatomic, copy, nullable) NSString *textDecorationLine;
+@property (nonatomic, copy, nullable) NSString *textAlign;
+
+// View (container) properties
+@property (nonatomic, strong, nullable) UIColor *backgroundColor;
+
+// Padding
 @property (nonatomic, assign) CGFloat padding;
-@property (nonatomic, assign) CGFloat borderRadius;
+@property (nonatomic, assign) CGFloat paddingHorizontal;
+@property (nonatomic, assign) CGFloat paddingVertical;
+@property (nonatomic, assign) CGFloat paddingTop;
+@property (nonatomic, assign) CGFloat paddingBottom;
+@property (nonatomic, assign) CGFloat paddingLeft;
+@property (nonatomic, assign) CGFloat paddingRight;
+
+// Margin
 @property (nonatomic, assign) CGFloat marginVertical;
 
-// Blockquote specific
-@property (nonatomic, strong, nullable) UIColor *borderLeftColor;
-@property (nonatomic, assign) CGFloat borderLeftWidth;
-
-// List specific
-@property (nonatomic, strong, nullable) UIColor *bulletColor;
-
-// Table specific
+// Border
 @property (nonatomic, strong, nullable) UIColor *borderColor;
 @property (nonatomic, assign) CGFloat borderWidth;
-@property (nonatomic, strong, nullable) UIColor *headerBackgroundColor;
-@property (nonatomic, assign) CGFloat cellPadding;
+@property (nonatomic, assign) CGFloat borderRadius;
+@property (nonatomic, strong, nullable) UIColor *borderLeftColor;
+@property (nonatomic, assign) CGFloat borderLeftWidth;
+@property (nonatomic, strong, nullable) UIColor *borderRightColor;
+@property (nonatomic, assign) CGFloat borderRightWidth;
+@property (nonatomic, strong, nullable) UIColor *borderTopColor;
+@property (nonatomic, assign) CGFloat borderTopWidth;
+@property (nonatomic, strong, nullable) UIColor *borderBottomColor;
+@property (nonatomic, assign) CGFloat borderBottomWidth;
 
-// Thematic break
+// Size
 @property (nonatomic, assign) CGFloat height;
+@property (nonatomic, assign) CGFloat width;
 
-// Mention
-@property (nonatomic, copy, nullable) NSString *prefix;
+// Computed padding insets
+- (UIEdgeInsets)resolvedPaddingInsets;
 
-// Spoiler
-@property (nonatomic, strong, nullable) UIColor *overlayColor;
-@property (nonatomic, copy, nullable) NSString *mode;
+// Applies ViewStyle properties to a UIView's layer and backgroundColor.
+// Use this for containers that need backgroundColor, borderRadius,
+// borderWidth, and borderColor support.
+- (void)applyViewStyleToView:(UIView *)view;
 
 - (UIFont *)resolvedFont;
 
@@ -62,7 +77,15 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) MarkdownElementStyle *link;
 @property (nonatomic, strong) MarkdownElementStyle *blockquote;
 @property (nonatomic, strong) MarkdownElementStyle *listItem;
+@property (nonatomic, strong) MarkdownElementStyle *listBullet;
+
+// Tables
 @property (nonatomic, strong) MarkdownElementStyle *table;
+@property (nonatomic, strong) MarkdownElementStyle *tableRow;
+@property (nonatomic, strong) MarkdownElementStyle *tableHeaderRow;
+@property (nonatomic, strong) MarkdownElementStyle *tableCell;
+@property (nonatomic, strong) MarkdownElementStyle *tableHeaderCell;
+
 @property (nonatomic, strong) MarkdownElementStyle *thematicBreak;
 @property (nonatomic, strong) MarkdownElementStyle *image;
 @property (nonatomic, strong) MarkdownElementStyle *mention;

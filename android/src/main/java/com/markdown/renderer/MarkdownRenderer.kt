@@ -250,9 +250,8 @@ class MarkdownRenderer(private val context: Context) {
             "Mention" -> {
                 val style = ctx.styleConfig.mention
                 val user = node.props["user"] ?: ""
-                val prefix = style.prefix ?: "@"
                 val start = builder.length
-                builder.append("$prefix$user")
+                builder.append("@$user")
                 if (style.color != null) {
                     builder.setSpan(ForegroundColorSpan(style.color), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
@@ -265,7 +264,7 @@ class MarkdownRenderer(private val context: Context) {
                 val style = ctx.styleConfig.spoiler
                 val start = builder.length
                 renderChildren(node, builder, ctx)
-                val color = style.overlayColor ?: Color.BLACK
+                val color = style.backgroundColor ?: Color.BLACK
                 builder.setSpan(ForegroundColorSpan(color), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 builder.setSpan(BackgroundColorSpan(color), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }

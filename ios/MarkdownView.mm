@@ -266,8 +266,8 @@ static const NSUInteger kMaxCacheSize = 128;
       [[MarkdownSpoilerOverlay alloc] initWithTextView:textView];
 
   MarkdownElementStyle *spoilerStyle = styleConfig.spoiler;
-  if (spoilerStyle.overlayColor) {
-    spoilerOverlay.overlayColor = spoilerStyle.overlayColor;
+  if (spoilerStyle.backgroundColor) {
+    spoilerOverlay.overlayColor = spoilerStyle.backgroundColor;
   }
 
   [spoilerOverlay updateOverlays];

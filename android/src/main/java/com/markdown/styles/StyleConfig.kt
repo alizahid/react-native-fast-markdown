@@ -2,32 +2,50 @@ package com.markdown.styles
 
 import android.graphics.Color
 import android.graphics.Typeface
-import android.text.TextPaint
 import org.json.JSONObject
 
 data class ElementStyle(
+    // Text
     val fontSize: Float = 0f,
     val fontWeight: String? = null,
     val fontStyle: String? = null,
     val fontFamily: String? = null,
     val lineHeight: Float = 0f,
     val textDecorationLine: String? = null,
+    val textAlign: String? = null,
     val color: Int? = null,
+
+    // View (container)
     val backgroundColor: Int? = null,
+
+    // Padding
     val padding: Float = 0f,
-    val borderRadius: Float = 0f,
+    val paddingHorizontal: Float = 0f,
+    val paddingVertical: Float = 0f,
+    val paddingTop: Float = 0f,
+    val paddingBottom: Float = 0f,
+    val paddingLeft: Float = 0f,
+    val paddingRight: Float = 0f,
+
+    // Margin
     val marginVertical: Float = 0f,
-    val borderLeftColor: Int? = null,
-    val borderLeftWidth: Float = 0f,
-    val bulletColor: Int? = null,
+
+    // Border
     val borderColor: Int? = null,
     val borderWidth: Float = 0f,
-    val headerBackgroundColor: Int? = null,
-    val cellPadding: Float = 0f,
+    val borderRadius: Float = 0f,
+    val borderLeftColor: Int? = null,
+    val borderLeftWidth: Float = 0f,
+    val borderRightColor: Int? = null,
+    val borderRightWidth: Float = 0f,
+    val borderTopColor: Int? = null,
+    val borderTopWidth: Float = 0f,
+    val borderBottomColor: Int? = null,
+    val borderBottomWidth: Float = 0f,
+
+    // Size
     val height: Float = 0f,
-    val prefix: String? = null,
-    val overlayColor: Int? = null,
-    val mode: String? = null
+    val width: Float = 0f,
 ) {
     fun resolveTypeface(): Typeface {
         val base = when (fontFamily) {
@@ -58,22 +76,30 @@ data class ElementStyle(
                 fontFamily = json.optString("fontFamily", null),
                 lineHeight = json.optDouble("lineHeight", 0.0).toFloat(),
                 textDecorationLine = json.optString("textDecorationLine", null),
+                textAlign = json.optString("textAlign", null),
                 color = parseColor(json.opt("color")),
                 backgroundColor = parseColor(json.opt("backgroundColor")),
                 padding = json.optDouble("padding", 0.0).toFloat(),
-                borderRadius = json.optDouble("borderRadius", 0.0).toFloat(),
+                paddingHorizontal = json.optDouble("paddingHorizontal", 0.0).toFloat(),
+                paddingVertical = json.optDouble("paddingVertical", 0.0).toFloat(),
+                paddingTop = json.optDouble("paddingTop", 0.0).toFloat(),
+                paddingBottom = json.optDouble("paddingBottom", 0.0).toFloat(),
+                paddingLeft = json.optDouble("paddingLeft", 0.0).toFloat(),
+                paddingRight = json.optDouble("paddingRight", 0.0).toFloat(),
                 marginVertical = json.optDouble("marginVertical", 0.0).toFloat(),
-                borderLeftColor = parseColor(json.opt("borderLeftColor")),
-                borderLeftWidth = json.optDouble("borderLeftWidth", 0.0).toFloat(),
-                bulletColor = parseColor(json.opt("bulletColor")),
                 borderColor = parseColor(json.opt("borderColor")),
                 borderWidth = json.optDouble("borderWidth", 0.0).toFloat(),
-                headerBackgroundColor = parseColor(json.opt("headerBackgroundColor")),
-                cellPadding = json.optDouble("cellPadding", 0.0).toFloat(),
+                borderRadius = json.optDouble("borderRadius", 0.0).toFloat(),
+                borderLeftColor = parseColor(json.opt("borderLeftColor")),
+                borderLeftWidth = json.optDouble("borderLeftWidth", 0.0).toFloat(),
+                borderRightColor = parseColor(json.opt("borderRightColor")),
+                borderRightWidth = json.optDouble("borderRightWidth", 0.0).toFloat(),
+                borderTopColor = parseColor(json.opt("borderTopColor")),
+                borderTopWidth = json.optDouble("borderTopWidth", 0.0).toFloat(),
+                borderBottomColor = parseColor(json.opt("borderBottomColor")),
+                borderBottomWidth = json.optDouble("borderBottomWidth", 0.0).toFloat(),
                 height = json.optDouble("height", 0.0).toFloat(),
-                prefix = json.optString("prefix", null),
-                overlayColor = parseColor(json.opt("overlayColor")),
-                mode = json.optString("mode", null)
+                width = json.optDouble("width", 0.0).toFloat(),
             )
         }
 
@@ -104,11 +130,16 @@ data class StyleConfig(
     val link: ElementStyle = ElementStyle(),
     val blockquote: ElementStyle = ElementStyle(),
     val listItem: ElementStyle = ElementStyle(),
+    val listBullet: ElementStyle = ElementStyle(),
     val table: ElementStyle = ElementStyle(),
+    val tableRow: ElementStyle = ElementStyle(),
+    val tableHeaderRow: ElementStyle = ElementStyle(),
+    val tableCell: ElementStyle = ElementStyle(),
+    val tableHeaderCell: ElementStyle = ElementStyle(),
     val thematicBreak: ElementStyle = ElementStyle(),
     val image: ElementStyle = ElementStyle(),
     val mention: ElementStyle = ElementStyle(),
-    val spoiler: ElementStyle = ElementStyle()
+    val spoiler: ElementStyle = ElementStyle(),
 ) {
     fun styleForHeadingLevel(level: Int): ElementStyle = when (level) {
         1 -> heading1
@@ -142,11 +173,16 @@ data class StyleConfig(
                     link = ElementStyle.fromJSON(obj.optJSONObject("link")),
                     blockquote = ElementStyle.fromJSON(obj.optJSONObject("blockquote")),
                     listItem = ElementStyle.fromJSON(obj.optJSONObject("listItem")),
+                    listBullet = ElementStyle.fromJSON(obj.optJSONObject("listBullet")),
                     table = ElementStyle.fromJSON(obj.optJSONObject("table")),
+                    tableRow = ElementStyle.fromJSON(obj.optJSONObject("tableRow")),
+                    tableHeaderRow = ElementStyle.fromJSON(obj.optJSONObject("tableHeaderRow")),
+                    tableCell = ElementStyle.fromJSON(obj.optJSONObject("tableCell")),
+                    tableHeaderCell = ElementStyle.fromJSON(obj.optJSONObject("tableHeaderCell")),
                     thematicBreak = ElementStyle.fromJSON(obj.optJSONObject("thematicBreak")),
                     image = ElementStyle.fromJSON(obj.optJSONObject("image")),
                     mention = ElementStyle.fromJSON(obj.optJSONObject("mention")),
-                    spoiler = ElementStyle.fromJSON(obj.optJSONObject("spoiler"))
+                    spoiler = ElementStyle.fromJSON(obj.optJSONObject("spoiler")),
                 )
             } catch (_: Exception) {
                 StyleConfig()

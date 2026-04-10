@@ -39,16 +39,8 @@
     }
 
     case MDNodeTypeTableCell: {
-      MarkdownElementStyle *style = context.styleConfig.table;
-      NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
-
-      if (style && style.headerBackgroundColor && node.nodeType == MDNodeTypeTableCell) {
-        // Header cells could be styled differently
-      }
-
-      [context pushAttributes:attrs];
+      // Text fallback only — MarkdownTableView handles proper table rendering
       [context renderChildren:node into:output];
-      [context popAttributes];
       break;
     }
 

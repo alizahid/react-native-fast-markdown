@@ -49,6 +49,39 @@
   return font;
 }
 
+- (UIEdgeInsets)resolvedPaddingInsets {
+  // Specific edges override paddingHorizontal/paddingVertical which override padding
+  CGFloat top = _paddingTop > 0
+      ? _paddingTop
+      : (_paddingVertical > 0 ? _paddingVertical : _padding);
+  CGFloat bottom = _paddingBottom > 0
+      ? _paddingBottom
+      : (_paddingVertical > 0 ? _paddingVertical : _padding);
+  CGFloat left = _paddingLeft > 0
+      ? _paddingLeft
+      : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding);
+  CGFloat right = _paddingRight > 0
+      ? _paddingRight
+      : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding);
+  return UIEdgeInsetsMake(top, left, bottom, right);
+}
+
+- (void)applyViewStyleToView:(UIView *)view {
+  if (_backgroundColor) {
+    view.backgroundColor = _backgroundColor;
+  }
+  if (_borderRadius > 0) {
+    view.layer.cornerRadius = _borderRadius;
+    view.layer.masksToBounds = YES;
+  }
+  if (_borderWidth > 0) {
+    view.layer.borderWidth = _borderWidth;
+    if (_borderColor) {
+      view.layer.borderColor = _borderColor.CGColor;
+    }
+  }
+}
+
 @end
 
 #pragma mark - StyleConfig
@@ -62,8 +95,8 @@
   NSData *data = [json dataUsingEncoding:NSUTF8StringEncoding];
   NSError *error;
   NSDictionary *dict = [NSJSONSerialization JSONObjectWithData:data
-                                                      options:0
-                                                        error:&error];
+                                                       options:0
+                                                         error:&error];
   if (error || ![dict isKindOfClass:[NSDictionary class]]) return config;
 
   config.heading1 = [self elementStyleFromDict:dict[@"heading1"]];
@@ -82,7 +115,15 @@
   config.link = [self elementStyleFromDict:dict[@"link"]];
   config.blockquote = [self elementStyleFromDict:dict[@"blockquote"]];
   config.listItem = [self elementStyleFromDict:dict[@"listItem"]];
+  config.listBullet = [self elementStyleFromDict:dict[@"listBullet"]];
+
+  // Tables
   config.table = [self elementStyleFromDict:dict[@"table"]];
+  config.tableRow = [self elementStyleFromDict:dict[@"tableRow"]];
+  config.tableHeaderRow = [self elementStyleFromDict:dict[@"tableHeaderRow"]];
+  config.tableCell = [self elementStyleFromDict:dict[@"tableCell"]];
+  config.tableHeaderCell = [self elementStyleFromDict:dict[@"tableHeaderCell"]];
+
   config.thematicBreak = [self elementStyleFromDict:dict[@"thematicBreak"]];
   config.image = [self elementStyleFromDict:dict[@"image"]];
   config.mention = [self elementStyleFromDict:dict[@"mention"]];
@@ -95,30 +136,47 @@
   MarkdownElementStyle *style = [[MarkdownElementStyle alloc] init];
   if (![dict isKindOfClass:[NSDictionary class]]) return style;
 
+  // Text properties
   if (dict[@"fontSize"]) style.fontSize = [dict[@"fontSize"] doubleValue];
   if (dict[@"fontWeight"]) style.fontWeight = dict[@"fontWeight"];
   if (dict[@"fontStyle"]) style.fontStyle = dict[@"fontStyle"];
   if (dict[@"fontFamily"]) style.fontFamily = dict[@"fontFamily"];
   if (dict[@"lineHeight"]) style.lineHeight = [dict[@"lineHeight"] doubleValue];
   if (dict[@"textDecorationLine"]) style.textDecorationLine = dict[@"textDecorationLine"];
-  if (dict[@"padding"]) style.padding = [dict[@"padding"] doubleValue];
-  if (dict[@"borderRadius"]) style.borderRadius = [dict[@"borderRadius"] doubleValue];
-  if (dict[@"marginVertical"]) style.marginVertical = [dict[@"marginVertical"] doubleValue];
-  if (dict[@"height"]) style.height = [dict[@"height"] doubleValue];
-  if (dict[@"prefix"]) style.prefix = dict[@"prefix"];
-  if (dict[@"mode"]) style.mode = dict[@"mode"];
-  if (dict[@"borderLeftWidth"]) style.borderLeftWidth = [dict[@"borderLeftWidth"] doubleValue];
-  if (dict[@"borderWidth"]) style.borderWidth = [dict[@"borderWidth"] doubleValue];
-  if (dict[@"cellPadding"]) style.cellPadding = [dict[@"cellPadding"] doubleValue];
+  if (dict[@"textAlign"]) style.textAlign = dict[@"textAlign"];
 
-  // Colors (come as processed integer values from React Native)
+  // Padding
+  if (dict[@"padding"]) style.padding = [dict[@"padding"] doubleValue];
+  if (dict[@"paddingHorizontal"]) style.paddingHorizontal = [dict[@"paddingHorizontal"] doubleValue];
+  if (dict[@"paddingVertical"]) style.paddingVertical = [dict[@"paddingVertical"] doubleValue];
+  if (dict[@"paddingTop"]) style.paddingTop = [dict[@"paddingTop"] doubleValue];
+  if (dict[@"paddingBottom"]) style.paddingBottom = [dict[@"paddingBottom"] doubleValue];
+  if (dict[@"paddingLeft"]) style.paddingLeft = [dict[@"paddingLeft"] doubleValue];
+  if (dict[@"paddingRight"]) style.paddingRight = [dict[@"paddingRight"] doubleValue];
+
+  // Margin
+  if (dict[@"marginVertical"]) style.marginVertical = [dict[@"marginVertical"] doubleValue];
+
+  // Border
+  if (dict[@"borderWidth"]) style.borderWidth = [dict[@"borderWidth"] doubleValue];
+  if (dict[@"borderRadius"]) style.borderRadius = [dict[@"borderRadius"] doubleValue];
+  if (dict[@"borderLeftWidth"]) style.borderLeftWidth = [dict[@"borderLeftWidth"] doubleValue];
+  if (dict[@"borderRightWidth"]) style.borderRightWidth = [dict[@"borderRightWidth"] doubleValue];
+  if (dict[@"borderTopWidth"]) style.borderTopWidth = [dict[@"borderTopWidth"] doubleValue];
+  if (dict[@"borderBottomWidth"]) style.borderBottomWidth = [dict[@"borderBottomWidth"] doubleValue];
+
+  // Size
+  if (dict[@"height"]) style.height = [dict[@"height"] doubleValue];
+  if (dict[@"width"]) style.width = [dict[@"width"] doubleValue];
+
+  // Colors (processColor returns ARGB integer on native)
   style.color = [self colorFromValue:dict[@"color"]];
   style.backgroundColor = [self colorFromValue:dict[@"backgroundColor"]];
-  style.borderLeftColor = [self colorFromValue:dict[@"borderLeftColor"]];
-  style.bulletColor = [self colorFromValue:dict[@"bulletColor"]];
   style.borderColor = [self colorFromValue:dict[@"borderColor"]];
-  style.headerBackgroundColor = [self colorFromValue:dict[@"headerBackgroundColor"]];
-  style.overlayColor = [self colorFromValue:dict[@"overlayColor"]];
+  style.borderLeftColor = [self colorFromValue:dict[@"borderLeftColor"]];
+  style.borderRightColor = [self colorFromValue:dict[@"borderRightColor"]];
+  style.borderTopColor = [self colorFromValue:dict[@"borderTopColor"]];
+  style.borderBottomColor = [self colorFromValue:dict[@"borderBottomColor"]];
 
   return style;
 }
@@ -127,7 +185,6 @@
   if (!value || [value isKindOfClass:[NSNull class]]) return nil;
 
   if ([value isKindOfClass:[NSNumber class]]) {
-    // processColor returns ARGB integer
     uint32_t argb = [value unsignedIntValue];
     CGFloat a = ((argb >> 24) & 0xFF) / 255.0;
     CGFloat r = ((argb >> 16) & 0xFF) / 255.0;
@@ -137,7 +194,6 @@
   }
 
   if ([value isKindOfClass:[NSString class]]) {
-    // Try hex string parsing
     NSString *hex = value;
     if ([hex hasPrefix:@"#"]) {
       hex = [hex substringFromIndex:1];

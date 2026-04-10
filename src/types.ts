@@ -1,95 +1,50 @@
-import {
-  type ColorValue,
-  type DimensionValue,
-  type TextStyle,
-  type ViewStyle,
-} from 'react-native'
+import { type TextStyle, type ViewStyle } from 'react-native'
 
 // --- Markdown Style ---
-
-export interface MarkdownBlockquoteStyle extends TextStyle {
-  borderLeftColor?: ColorValue
-  borderLeftWidth?: number
-}
-
-export interface MarkdownCodeBlockStyle extends TextStyle {
-  backgroundColor?: ColorValue
-  borderRadius?: number
-  padding?: number
-}
-
-export interface MarkdownCodeStyle extends TextStyle {
-  backgroundColor?: ColorValue
-  borderRadius?: number
-  padding?: number
-}
-
-export interface MarkdownListItemStyle extends TextStyle {
-  bulletColor?: ColorValue
-  bulletSize?: number
-}
-
-export interface MarkdownTableStyle {
-  alternateRowBackgroundColor?: ColorValue
-  borderColor?: ColorValue
-  borderRadius?: number
-  borderWidth?: number
-  cellBackgroundColor?: ColorValue
-  cellPadding?: number
-  cellTextStyle?: TextStyle
-  headerBackgroundColor?: ColorValue
-  headerTextStyle?: TextStyle
-}
-
-export interface MarkdownThematicBreakStyle {
-  backgroundColor?: ColorValue
-  height?: number
-  marginVertical?: number
-}
-
-export interface MarkdownImageStyle {
-  borderRadius?: number
-  maxWidth?: DimensionValue
-}
-
-export interface MarkdownSpoilerStyle extends ViewStyle {
-  mode?: 'solid' | 'particles'
-  overlayColor?: ColorValue
-  revealedTextStyle?: TextStyle
-}
-
-export interface MarkdownMentionStyle extends TextStyle {
-  /** Text to prepend before the user name, e.g. "@" */
-  prefix?: string
-}
+//
+// All style keys use standard React Native TextStyle or ViewStyle.
+// No custom props (like cellPadding, bulletColor, etc.) — use the
+// standard equivalents (padding on tableCell, color on listBullet).
 
 export interface MarkdownStyle {
-  blockquote?: MarkdownBlockquoteStyle
-  code?: MarkdownCodeStyle
-  codeBlock?: MarkdownCodeBlockStyle
-  emphasis?: TextStyle
   // Block elements
+  blockquote?: TextStyle
+  code?: TextStyle
+  codeBlock?: TextStyle
+  emphasis?: TextStyle
   heading1?: TextStyle
   heading2?: TextStyle
   heading3?: TextStyle
   heading4?: TextStyle
   heading5?: TextStyle
   heading6?: TextStyle
-  image?: MarkdownImageStyle
+  image?: ViewStyle
   link?: TextStyle
-  listItem?: MarkdownListItemStyle
+  listItem?: TextStyle
+  /** Bullet/number character style for list items */
+  listBullet?: TextStyle
+  paragraph?: TextStyle
+  strikethrough?: TextStyle
+  strong?: TextStyle
+
+  // Tables
+  /** Outer table container (scroll view) */
+  table?: ViewStyle
+  /** Body row style */
+  tableRow?: ViewStyle
+  /** Header row style (overrides tableRow for the header row) */
+  tableHeaderRow?: ViewStyle
+  /** Body cell style — view and text props both apply */
+  tableCell?: TextStyle
+  /** Header cell style (overrides tableCell for header cells) */
+  tableHeaderCell?: TextStyle
+
+  thematicBreak?: ViewStyle
+  underline?: TextStyle
 
   // Custom components
-  mention?: MarkdownMentionStyle
-  paragraph?: TextStyle
-  spoiler?: MarkdownSpoilerStyle
-  strikethrough?: TextStyle
-
-  // Inline elements
-  strong?: TextStyle
-  table?: MarkdownTableStyle
-  thematicBreak?: MarkdownThematicBreakStyle
-  underline?: TextStyle
+  mention?: TextStyle
+  spoiler?: ViewStyle
 
   // Extensible: any custom tag
   [key: string]: unknown

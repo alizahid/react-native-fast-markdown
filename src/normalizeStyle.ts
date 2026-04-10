@@ -91,11 +91,23 @@ const defaultStyle: MarkdownStyle = {
   listItem: {
     fontSize: 16,
   },
+  listBullet: {
+    color: '#666',
+  },
   table: {
     borderColor: '#ddd',
     borderWidth: 1,
     borderRadius: 6,
-    cellPadding: 8,
+  },
+  tableHeaderRow: {
+    backgroundColor: '#f5f5f5',
+  },
+  tableCell: {
+    padding: 10,
+    fontSize: 14,
+  },
+  tableHeaderCell: {
+    fontWeight: '600',
   },
   thematicBreak: {
     backgroundColor: '#ddd',
@@ -105,11 +117,9 @@ const defaultStyle: MarkdownStyle = {
   mention: {
     color: '#0066cc',
     fontWeight: '600',
-    prefix: '@',
   },
   spoiler: {
-    overlayColor: '#000',
-    mode: 'solid',
+    backgroundColor: '#000',
   },
 }
 

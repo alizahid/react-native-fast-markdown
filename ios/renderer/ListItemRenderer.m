@@ -39,10 +39,20 @@
 
   NSString *prefix = [indent stringByAppendingString:bullet];
 
-  // Add bullet with appropriate color
+  // Build bullet attributes from listBullet style (color, font, etc.)
   NSMutableDictionary *bulletAttrs = [attrs mutableCopy];
-  if (style && style.bulletColor) {
-    bulletAttrs[NSForegroundColorAttributeName] = style.bulletColor;
+  MarkdownElementStyle *bulletStyle = context.styleConfig.listBullet;
+  if (bulletStyle) {
+    if (bulletStyle.color) {
+      bulletAttrs[NSForegroundColorAttributeName] = bulletStyle.color;
+    }
+    if (bulletStyle.fontSize > 0 || bulletStyle.fontFamily ||
+        bulletStyle.fontWeight) {
+      UIFont *bulletFont = [bulletStyle resolvedFont];
+      if (bulletFont) {
+        bulletAttrs[NSFontAttributeName] = bulletFont;
+      }
+    }
   }
 
   [output appendAttributedString:

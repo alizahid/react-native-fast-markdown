@@ -33,8 +33,7 @@ static NSString *const kSpoilerTag = @"Spoiler";
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
 
   NSString *user = node.tagProps[@"user"] ?: @"";
-  NSString *prefix = style.prefix ?: @"@";
-  NSString *displayText = [prefix stringByAppendingString:user];
+  NSString *displayText = [@"@" stringByAppendingString:user];
 
   if (style) {
     UIFont *font = [style resolvedFont];
