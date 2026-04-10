@@ -4,7 +4,7 @@
   "description": "High-performance native Markdown renderer and editor for React Native",
   "main": "lib/commonjs/index",
   "module": "lib/module/index",
-  "types": "lib/typescript/src/index.d.ts",
+  "types": "lib/typescript/commonjs/index.d.ts",
   "react-native": "src/index",
   "source": "src/index",
   "files": [
