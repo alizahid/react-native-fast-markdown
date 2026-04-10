@@ -41,8 +41,8 @@ export interface MarkdownInputViewNativeProps extends ViewProps {
   >
   onLinkDetected?: DirectEventHandler<Readonly<{ url: string }>>
   onMentionQuery?: DirectEventHandler<Readonly<{ query: string }>>
-  onFocus?: DirectEventHandler<Readonly<object>>
-  onBlur?: DirectEventHandler<Readonly<object>>
+  onFocus?: DirectEventHandler<Readonly<{ target: Int32 }>>
+  onBlur?: DirectEventHandler<Readonly<{ target: Int32 }>>
 }
 
 type MarkdownInputViewComponent =
