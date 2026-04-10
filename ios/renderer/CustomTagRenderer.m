@@ -3,10 +3,12 @@
 #import "RenderContext.h"
 #import "StyleConfig.h"
 
+NSString *const MarkdownCustomTagKey = @"MarkdownCustomTag";
+NSString *const MarkdownCustomTagPropsKey = @"MarkdownCustomTagProps";
+NSString *const MarkdownSpoilerRangeKey = @"MarkdownSpoilerRange";
+
 static NSString *const kMentionTag = @"Mention";
 static NSString *const kSpoilerTag = @"Spoiler";
-static NSString *const kCustomTagAttributeKey = @"MarkdownCustomTag";
-static NSString *const kCustomTagPropsKey = @"MarkdownCustomTagProps";
 
 @implementation CustomTagRenderer
 
@@ -42,9 +44,8 @@ static NSString *const kCustomTagPropsKey = @"MarkdownCustomTagProps";
     attrs[NSForegroundColorAttributeName] = [UIColor systemBlueColor];
   }
 
-  // Store tag info for tap handling
-  attrs[kCustomTagAttributeKey] = kMentionTag;
-  attrs[kCustomTagPropsKey] = node.tagProps;
+  attrs[MarkdownCustomTagKey] = kMentionTag;
+  attrs[MarkdownCustomTagPropsKey] = node.tagProps;
 
   [output appendAttributedString:
       [[NSAttributedString alloc] initWithString:displayText attributes:attrs]];
@@ -53,16 +54,13 @@ static NSString *const kCustomTagPropsKey = @"MarkdownCustomTagProps";
 - (void)renderSpoiler:(ASTNodeWrapper *)node
                  into:(NSMutableAttributedString *)output
               context:(RenderContext *)context {
-  MarkdownElementStyle *style = context.styleConfig.spoiler;
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
 
-  UIColor *overlayColor = style.overlayColor ?: [UIColor labelColor];
-
-  // Render spoiler as hidden text (background = foreground color)
-  attrs[NSForegroundColorAttributeName] = overlayColor;
-  attrs[NSBackgroundColorAttributeName] = overlayColor;
-  attrs[kCustomTagAttributeKey] = kSpoilerTag;
-  attrs[kCustomTagPropsKey] = node.tagProps;
+  // Mark the range as a spoiler — the overlay system will cover it.
+  // We use a unique ID so multiple spoilers can be toggled independently.
+  NSString *spoilerId = [[NSUUID UUID] UUIDString];
+  attrs[MarkdownSpoilerRangeKey] = spoilerId;
+  attrs[MarkdownCustomTagKey] = kSpoilerTag;
 
   [context pushAttributes:attrs];
   [context renderChildren:node into:output];
@@ -73,8 +71,8 @@ static NSString *const kCustomTagPropsKey = @"MarkdownCustomTagProps";
                     into:(NSMutableAttributedString *)output
                  context:(RenderContext *)context {
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
-  attrs[kCustomTagAttributeKey] = node.tagName;
-  attrs[kCustomTagPropsKey] = node.tagProps;
+  attrs[MarkdownCustomTagKey] = node.tagName;
+  attrs[MarkdownCustomTagPropsKey] = node.tagProps;
 
   [context pushAttributes:attrs];
   [context renderChildren:node into:output];

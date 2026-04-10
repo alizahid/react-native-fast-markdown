@@ -8,6 +8,7 @@
 
 #import "ASTNodeWrapper.h"
 #import "MarkdownParser.hpp"
+#import "MarkdownSpoilerOverlay.h"
 #import "MarkdownTableView.h"
 #import "RenderContext.h"
 #import "RendererFactory.h"
@@ -32,6 +33,7 @@ static const NSUInteger kMaxCacheSize = 128;
 
   dispatch_queue_t _parseQueue;
   BOOL _pendingSizeEmit;
+  NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -51,6 +53,7 @@ static const NSUInteger kMaxCacheSize = 128;
     _cacheOrder = [NSMutableArray new];
     _parseQueue =
         dispatch_queue_create("com.markdown.parse", DISPATCH_QUEUE_SERIAL);
+    _spoilerOverlays = [NSMutableArray new];
   }
   return self;
 }
@@ -170,6 +173,11 @@ static const NSUInteger kMaxCacheSize = 128;
 }
 
 - (void)clearSegments {
+  for (MarkdownSpoilerOverlay *overlay in _spoilerOverlays) {
+    [overlay removeAllOverlays];
+  }
+  [_spoilerOverlays removeAllObjects];
+
   for (UIView *view in _stackView.arrangedSubviews) {
     [_stackView removeArrangedSubview:view];
     [view removeFromSuperview];
@@ -249,6 +257,21 @@ static const NSUInteger kMaxCacheSize = 128;
   [textView.heightAnchor constraintEqualToConstant:size.height].active = YES;
 
   [_stackView addArrangedSubview:textView];
+
+  // Add spoiler overlays after the text view is laid out
+  // Force layout so layoutManager has valid glyph positions
+  [textView layoutIfNeeded];
+
+  MarkdownSpoilerOverlay *spoilerOverlay =
+      [[MarkdownSpoilerOverlay alloc] initWithTextView:textView];
+
+  MarkdownElementStyle *spoilerStyle = styleConfig.spoiler;
+  if (spoilerStyle.overlayColor) {
+    spoilerOverlay.overlayColor = spoilerStyle.overlayColor;
+  }
+
+  [spoilerOverlay updateOverlays];
+  [_spoilerOverlays addObject:spoilerOverlay];
 }
 
 - (void)addTableSegment:(ASTNodeWrapper *)tableNode
