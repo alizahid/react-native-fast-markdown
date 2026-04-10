@@ -2,14 +2,14 @@ module.exports = {
   dependency: {
     platforms: {
       android: {
-        packageImportPath: 'import com.markdown.MarkdownPackage;',
-        packageInstance: 'new MarkdownPackage()',
+        packageImportPath: "import com.markdown.MarkdownPackage;",
+        packageInstance: "new MarkdownPackage()",
         componentDescriptors: [
-          'MarkdownViewComponentDescriptor',
-          'MarkdownInputViewComponentDescriptor',
+          "MarkdownViewComponentDescriptor",
+          "MarkdownInputViewComponentDescriptor",
         ],
-        cmakeListsPath: 'src/main/jni/CMakeLists.txt',
+        cmakeListsPath: "src/main/jni/CMakeLists.txt",
       },
     },
   },
-}
+};

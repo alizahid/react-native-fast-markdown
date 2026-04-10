@@ -21,8 +21,9 @@
     "!**/.*"
   ],
   "scripts": {
+    "lint": "ultracite",
+    "format": "biome format --write .",
     "typescript": "tsc --noEmit",
-    "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "clean": "del-cli lib",
     "prepare": "bob build",
     "example": "bun --cwd example"
@@ -50,13 +51,15 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.11",
     "@types/react": "~19.0.0",
     "del-cli": "^6.0.0",
-    "eslint": "^9.0.0",
+    "oxlint": "^1.59.0",
     "react": "19.2.0",
     "react-native": "0.83.4",
     "react-native-builder-bob": "^0.41.0",
-    "typescript": "^5.8.0"
+    "typescript": "^5.8.0",
+    "ultracite": "^7.4.4"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

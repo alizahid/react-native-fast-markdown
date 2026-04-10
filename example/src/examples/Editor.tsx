@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -6,44 +6,41 @@ import {
   StyleSheet,
   Text,
   View,
-} from 'react-native'
-import { MarkdownInput, useMarkdownInput } from 'react-native-markdown'
-import type { EditorStyleState } from 'react-native-markdown'
+} from "react-native";
+import type { EditorStyleState } from "react-native-markdown";
+import { MarkdownInput, useMarkdownInput } from "react-native-markdown";
 
 const initialMarkdown = `\
 **Hello** *world*! This is a ~~demo~~ of the markdown editor.
 
 Try selecting text and using the toolbar below.
-`
+`;
 
 function ToolbarButton({
   label,
   active,
   onPress,
 }: {
-  label: string
-  active?: boolean
-  onPress: () => void
+  label: string;
+  active?: boolean;
+  onPress: () => void;
 }) {
   return (
     <Pressable
-      style={[styles.toolbarBtn, active && styles.toolbarBtnActive]}
       onPress={onPress}
+      style={[styles.toolbarBtn, active && styles.toolbarBtnActive]}
     >
       <Text
-        style={[
-          styles.toolbarBtnText,
-          active && styles.toolbarBtnTextActive,
-        ]}
+        style={[styles.toolbarBtnText, active && styles.toolbarBtnTextActive]}
       >
         {label}
       </Text>
     </Pressable>
-  )
+  );
 }
 
 export function EditorScreen() {
-  const editor = useMarkdownInput()
+  const editor = useMarkdownInput();
   const [styleState, setStyleState] = useState<EditorStyleState>({
     bold: false,
     italic: false,
@@ -53,46 +50,43 @@ export function EditorScreen() {
     link: null,
     heading: null,
     list: null,
-  })
-  const [markdown, setMarkdown] = useState(initialMarkdown)
+  });
+  const [markdown, setMarkdown] = useState(initialMarkdown);
 
-  const handleChangeState = useCallback(
-    (state: EditorStyleState) => {
-      setStyleState(state)
-    },
-    []
-  )
+  const handleChangeState = useCallback((state: EditorStyleState) => {
+    setStyleState(state);
+  }, []);
 
   const handleInsertLink = useCallback(() => {
     if (styleState.link) {
-      editor.removeLink()
+      editor.removeLink();
     } else {
-      editor.insertLink('https://example.com', 'Example Link')
+      editor.insertLink("https://example.com", "Example Link");
     }
-  }, [editor, styleState.link])
+  }, [editor, styleState.link]);
 
   const handleShowMarkdown = useCallback(async () => {
-    const md = await editor.getMarkdown()
-    Alert.alert('Markdown Output', md || '(empty)')
-  }, [editor])
+    const md = await editor.getMarkdown();
+    Alert.alert("Markdown Output", md || "(empty)");
+  }, [editor]);
 
   return (
     <View style={styles.container}>
       <ScrollView
-        style={styles.editorContainer}
         contentContainerStyle={styles.editorContent}
         keyboardDismissMode="interactive"
+        style={styles.editorContainer}
       >
         <Text style={styles.label}>EDITOR</Text>
         <View style={styles.editorCard}>
           <MarkdownInput
-            ref={editor.ref}
-            defaultValue={initialMarkdown}
-            placeholder="Type some markdown..."
-            style={styles.input}
-            onChangeState={handleChangeState}
-            onChangeMarkdown={setMarkdown}
             autoFocus
+            defaultValue={initialMarkdown}
+            onChangeMarkdown={setMarkdown}
+            onChangeState={handleChangeState}
+            placeholder="Type some markdown..."
+            ref={editor.ref}
+            style={styles.input}
           />
         </View>
 
@@ -104,73 +98,70 @@ export function EditorScreen() {
 
       <View style={styles.toolbar}>
         <ScrollView
+          contentContainerStyle={styles.toolbarContent}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.toolbarContent}
         >
           <ToolbarButton
-            label="B"
             active={styleState.bold}
+            label="B"
             onPress={editor.toggleBold}
           />
           <ToolbarButton
-            label="I"
             active={styleState.italic}
+            label="I"
             onPress={editor.toggleItalic}
           />
           <ToolbarButton
-            label="S"
             active={styleState.strikethrough}
+            label="S"
             onPress={editor.toggleStrikethrough}
           />
           <ToolbarButton
-            label="U"
             active={styleState.underline}
+            label="U"
             onPress={editor.toggleUnderline}
           />
           <ToolbarButton
-            label="<>"
             active={styleState.code}
+            label="<>"
             onPress={editor.toggleCode}
           />
 
           <View style={styles.toolbarSep} />
 
           <ToolbarButton
-            label="H1"
             active={styleState.heading === 1}
+            label="H1"
             onPress={() => editor.toggleHeading(1)}
           />
           <ToolbarButton
-            label="H2"
             active={styleState.heading === 2}
+            label="H2"
             onPress={() => editor.toggleHeading(2)}
           />
           <ToolbarButton
-            label="H3"
             active={styleState.heading === 3}
+            label="H3"
             onPress={() => editor.toggleHeading(3)}
           />
 
           <View style={styles.toolbarSep} />
 
           <ToolbarButton
+            active={styleState.list === "unordered"}
             label="UL"
-            active={styleState.list === 'unordered'}
             onPress={editor.toggleUnorderedList}
           />
           <ToolbarButton
+            active={styleState.list === "ordered"}
             label="OL"
-            active={styleState.list === 'ordered'}
             onPress={editor.toggleOrderedList}
           />
+          <ToolbarButton label="BQ" onPress={editor.toggleBlockquote} />
           <ToolbarButton
-            label="BQ"
-            onPress={editor.toggleBlockquote}
-          />
-          <ToolbarButton
-            label="Link"
             active={styleState.link !== null}
+            label="Link"
             onPress={handleInsertLink}
           />
 
@@ -178,22 +169,19 @@ export function EditorScreen() {
 
           <ToolbarButton
             label="@"
-            onPress={() => editor.insertMention('Ali')}
+            onPress={() => editor.insertMention("Ali")}
           />
-          <ToolbarButton
-            label="Show MD"
-            onPress={handleShowMarkdown}
-          />
+          <ToolbarButton label="Show MD" onPress={handleShowMarkdown} />
         </ScrollView>
       </View>
     </View>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: "#f2f2f7",
   },
   editorContainer: {
     flex: 1,
@@ -204,17 +192,17 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: "600",
+    color: "#666",
     marginBottom: 8,
     marginTop: 16,
     marginLeft: 4,
   },
   editorCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
+    overflow: "hidden",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
@@ -227,10 +215,10 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   previewCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
@@ -238,14 +226,14 @@ const styles = StyleSheet.create({
   },
   previewText: {
     fontSize: 13,
-    fontFamily: 'Menlo',
-    color: '#555',
+    fontFamily: "Menlo",
+    color: "#555",
     lineHeight: 20,
   },
   toolbar: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderTopWidth: 1,
-    borderTopColor: '#e5e5e5',
+    borderTopColor: "#e5e5e5",
     paddingBottom: 34, // safe area
   },
   toolbarContent: {
@@ -255,24 +243,24 @@ const styles = StyleSheet.create({
   },
   toolbarSep: {
     width: 1,
-    backgroundColor: '#e5e5e5',
+    backgroundColor: "#e5e5e5",
     marginHorizontal: 4,
   },
   toolbarBtn: {
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
-    backgroundColor: '#f2f2f7',
+    backgroundColor: "#f2f2f7",
   },
   toolbarBtnActive: {
-    backgroundColor: '#007aff',
+    backgroundColor: "#007aff",
   },
   toolbarBtnText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
+    fontWeight: "600",
+    color: "#333",
   },
   toolbarBtnTextActive: {
-    color: '#fff',
+    color: "#fff",
   },
-})
+});

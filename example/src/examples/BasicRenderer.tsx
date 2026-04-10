@@ -1,5 +1,5 @@
-import { Alert, ScrollView, StyleSheet } from 'react-native'
-import { Markdown } from 'react-native-markdown'
+import { Alert, ScrollView, StyleSheet } from "react-native";
+import { Markdown } from "react-native-markdown";
 
 const basicMarkdown = `\
 # Hello, Markdown!
@@ -47,31 +47,28 @@ console.log(greet("World"))
 ---
 
 That's the basics! Check out the other examples for more features.
-`
+`;
 
 export function BasicRendererScreen() {
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-    >
+    <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <Markdown
         onLinkPress={(event) => {
-          Alert.alert('Link pressed', event.url)
+          Alert.alert("Link pressed", event.url);
         }}
       >
         {basicMarkdown}
       </Markdown>
     </ScrollView>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   content: {
     padding: 16,
   },
-})
+});

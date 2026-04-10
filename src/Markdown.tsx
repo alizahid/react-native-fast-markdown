@@ -1,35 +1,35 @@
-import React, { useMemo } from 'react'
-import type { ViewProps } from 'react-native'
-import MarkdownViewNative from './MarkdownNativeComponent'
-import { normalizeMarkdownStyle } from './normalizeStyle'
+import { useMemo } from "react";
+import type { ViewProps } from "react-native";
+import MarkdownViewNative from "./MarkdownNativeComponent";
+import { normalizeMarkdownStyle } from "./normalizeStyle";
 import type {
   LinkPressEvent,
   MarkdownStyle,
   MentionPressEvent,
   TaskListItemPressEvent,
-} from './types'
+} from "./types";
 
 export interface MarkdownProps extends ViewProps {
   /** Markdown string to render */
-  children: string
-
-  /** Custom styles for markdown elements */
-  markdownStyle?: MarkdownStyle
+  children: string;
 
   /** Registered custom HTML-like tag names */
-  customTags?: string[]
+  customTags?: string[];
 
-  /** Called when a link is pressed */
-  onLinkPress?: (event: LinkPressEvent) => void
+  /** Custom styles for markdown elements */
+  markdownStyle?: MarkdownStyle;
 
   /** Called when a link is long pressed */
-  onLinkLongPress?: (event: LinkPressEvent) => void
+  onLinkLongPress?: (event: LinkPressEvent) => void;
+
+  /** Called when a link is pressed */
+  onLinkPress?: (event: LinkPressEvent) => void;
 
   /** Called when a mention is pressed */
-  onMentionPress?: (event: MentionPressEvent) => void
+  onMentionPress?: (event: MentionPressEvent) => void;
 
   /** Called when a task list checkbox is pressed */
-  onTaskListItemPress?: (event: TaskListItemPressEvent) => void
+  onTaskListItemPress?: (event: TaskListItemPressEvent) => void;
 }
 
 export function Markdown({
@@ -45,22 +45,30 @@ export function Markdown({
   const serializedStyle = useMemo(
     () => normalizeMarkdownStyle(markdownStyle),
     [markdownStyle]
-  )
+  );
 
   return (
     <MarkdownViewNative
       {...viewProps}
+      customTags={customTags}
       markdown={children}
       markdownStyle={serializedStyle}
-      customTags={customTags}
-      onLinkPress={
-        onLinkPress
-          ? (e) => onLinkPress({ url: e.nativeEvent.url, title: e.nativeEvent.title })
-          : undefined
-      }
       onLinkLongPress={
         onLinkLongPress
-          ? (e) => onLinkLongPress({ url: e.nativeEvent.url, title: e.nativeEvent.title })
+          ? (e) =>
+              onLinkLongPress({
+                url: e.nativeEvent.url,
+                title: e.nativeEvent.title,
+              })
+          : undefined
+      }
+      onLinkPress={
+        onLinkPress
+          ? (e) =>
+              onLinkPress({
+                url: e.nativeEvent.url,
+                title: e.nativeEvent.title,
+              })
           : undefined
       }
       onMentionPress={
@@ -78,5 +86,5 @@ export function Markdown({
           : undefined
       }
     />
-  )
+  );
 }
