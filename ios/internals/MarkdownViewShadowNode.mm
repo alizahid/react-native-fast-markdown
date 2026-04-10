@@ -9,16 +9,12 @@ Size MarkdownViewShadowNode::measureContent(
   return Size{stateData.measuredWidth, stateData.measuredHeight};
 }
 
-void MarkdownViewShadowNode::layout(LayoutContext layoutContext) {
-  // Check if native view updated the state (bumped counter).
-  // If so, mark Yoga node dirty to trigger re-measurement.
+void MarkdownViewShadowNode::dirtyLayoutIfNeeded() {
   const auto &stateData = getStateData();
   if (stateData.heightUpdateCounter != localHeightCounter_) {
     localHeightCounter_ = stateData.heightUpdateCounter;
-    YogaLayoutableShadowNode::dirtyLayout();
+    dirtyLayout();
   }
-
-  ConcreteViewShadowNode::layout(layoutContext);
 }
 
 } // namespace facebook::react

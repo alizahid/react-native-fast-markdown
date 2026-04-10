@@ -5,12 +5,16 @@
 
 namespace facebook::react {
 
-// Custom descriptor that uses our MarkdownViewShadowNode (with state
-// and measureContent) instead of the codegen-generated default.
 class MarkdownViewComponentDescriptor
     : public ConcreteComponentDescriptor<MarkdownViewShadowNode> {
 public:
   using ConcreteComponentDescriptor::ConcreteComponentDescriptor;
+
+  void adopt(const ShadowNode::Unshared &shadowNode) const override {
+    auto &node = static_cast<MarkdownViewShadowNode &>(*shadowNode);
+    node.dirtyLayoutIfNeeded();
+    ConcreteComponentDescriptor::adopt(shadowNode);
+  }
 };
 
 } // namespace facebook::react
