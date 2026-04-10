@@ -5,16 +5,7 @@
 
 namespace facebook::react {
 
-class MarkdownViewComponentDescriptor
-    : public ConcreteComponentDescriptor<MarkdownViewShadowNode> {
-public:
-  using ConcreteComponentDescriptor::ConcreteComponentDescriptor;
-
-  void adopt(ShadowNode &shadowNode) const override {
-    auto &node = static_cast<MarkdownViewShadowNode &>(shadowNode);
-    node.dirtyLayoutIfNeeded();
-    ConcreteComponentDescriptor::adopt(shadowNode);
-  }
-};
+using MarkdownViewComponentDescriptor =
+    ConcreteComponentDescriptor<MarkdownViewShadowNode>;
 
 } // namespace facebook::react

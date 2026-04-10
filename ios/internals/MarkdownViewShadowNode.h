@@ -20,24 +20,18 @@ class MarkdownViewShadowNode final : public ConcreteViewShadowNode<
 public:
   using ConcreteViewShadowNode::ConcreteViewShadowNode;
 
-  // Mark as leaf so Yoga calls measureContent() instead of
-  // laying out children.
+  // Mark as leaf so Yoga calls measureContent()
   static ShadowNodeTraits BaseTraits() {
     auto traits = ConcreteViewShadowNode::BaseTraits();
     traits.set(ShadowNodeTraits::Trait::LeafYogaNode);
     return traits;
   }
 
+  // Returns measured dimensions from state. Yoga calls this because
+  // we're a LeafYogaNode.
   Size measureContent(
       const LayoutContext &layoutContext,
       const LayoutConstraints &layoutConstraints) const override;
-
-  // Called when the shadow node is cloned (e.g. due to state update).
-  // Checks if state counter changed and marks Yoga dirty for re-measurement.
-  void dirtyLayoutIfNeeded();
-
-private:
-  mutable int64_t localHeightCounter_{0};
 };
 
 } // namespace facebook::react
