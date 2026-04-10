@@ -30,6 +30,7 @@ static const NSUInteger kMaxCacheSize = 128;
   NSMutableArray<NSString *> *_cacheOrder;
 
   dispatch_queue_t _parseQueue;
+  BOOL _pendingSizeEmit;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -67,10 +68,24 @@ static const NSUInteger kMaxCacheSize = 128;
   }
 }
 
+- (void)updateEventEmitter:(const EventEmitter::Shared &)eventEmitter {
+  [super updateEventEmitter:eventEmitter];
+
+  // Event emitter just became available — emit pending size if we have content
+  if (_pendingSizeEmit && _textView.attributedText.length > 0) {
+    _pendingSizeEmit = NO;
+    [self emitContentSizeIfNeeded];
+  }
+}
+
 - (void)emitContentSizeIfNeeded {
-  if (!_eventEmitter || !_textView.attributedText ||
-      _textView.attributedText.length == 0)
+  if (!_textView.attributedText || _textView.attributedText.length == 0)
     return;
+
+  if (!_eventEmitter) {
+    _pendingSizeEmit = YES;
+    return;
+  }
 
   CGFloat width =
       self.bounds.size.width > 0
