@@ -68,7 +68,13 @@
   "codegenConfig": {
     "name": "MarkdownViewSpec",
     "type": "components",
-    "jsSrcsDir": "src"
+    "jsSrcsDir": "src",
+    "ios": {
+      "componentProvider": {
+        "MarkdownView": "MarkdownView",
+        "MarkdownInputView": "MarkdownInputView"
+      }
+    }
   },
   "react-native-builder-bob": {
     "source": "src",
