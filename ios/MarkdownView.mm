@@ -91,7 +91,7 @@ static const NSUInteger kMaxCacheSize = 128;
           : UIScreen.mainScreen.bounds.size.width;
 
   CGSize size = [_stackView systemLayoutSizeFittingSize:
-      CGSizeMake(width, UIView.layoutFittingCompressedSize.height)];
+      CGSizeMake(width, UILayoutFittingCompressedSize.height)];
 
   const auto &eventEmitter =
       static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
