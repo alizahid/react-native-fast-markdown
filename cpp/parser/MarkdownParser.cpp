@@ -102,6 +102,12 @@ int MarkdownParser::onEnterBlock(int blockType, void *detail,
                                  void *userdata) {
   auto *ctx = static_cast<ParseContext *>(userdata);
 
+  // Skip the top-level MD_BLOCK_DOC — we already have a Document root
+  // on the stack. Adding another would create an unnecessary nesting.
+  if (static_cast<MD_BLOCKTYPE>(blockType) == MD_BLOCK_DOC) {
+    return 0;
+  }
+
   NodeType type;
   switch (static_cast<MD_BLOCKTYPE>(blockType)) {
   case MD_BLOCK_DOC:
@@ -164,9 +170,16 @@ int MarkdownParser::onEnterBlock(int blockType, void *detail,
   return 0;
 }
 
-int MarkdownParser::onLeaveBlock(int /*blockType*/, void * /*detail*/,
+int MarkdownParser::onLeaveBlock(int blockType, void * /*detail*/,
                                  void *userdata) {
   auto *ctx = static_cast<ParseContext *>(userdata);
+
+  // Matches the enter_block skip for MD_BLOCK_DOC
+  if (static_cast<MD_BLOCKTYPE>(blockType) == MD_BLOCK_DOC) {
+    flushPendingHtml(*ctx);
+    return 0;
+  }
+
   flushPendingHtml(*ctx);
   if (ctx->stack.size() > 1) {
     ctx->stack.pop_back();

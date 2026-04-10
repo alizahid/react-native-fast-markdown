@@ -192,7 +192,6 @@ static const NSUInteger kMaxCacheSize = 128;
   NSMutableArray<ASTNodeWrapper *> *textNodes = [NSMutableArray new];
 
   for (ASTNodeWrapper *child in root.children) {
-    NSLog(@"[Markdown] segment child type=%ld", (long)child.nodeType);
     if (child.nodeType == MDNodeTypeTable) {
       // Flush accumulated text nodes
       if (textNodes.count > 0) {
