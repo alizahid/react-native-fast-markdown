@@ -9,10 +9,10 @@ const config = getDefaultConfig(projectRoot)
 // Watch the library source alongside the example
 config.watchFolders = [libraryRoot]
 
-// Resolve modules from both the example and the library root
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(libraryRoot, 'node_modules'),
-]
+// Ensure react and react-native resolve from the example only (no duplicates)
+config.resolver.extraNodeModules = {
+  react: path.resolve(projectRoot, 'node_modules/react'),
+  'react-native': path.resolve(projectRoot, 'node_modules/react-native'),
+}
 
 module.exports = config

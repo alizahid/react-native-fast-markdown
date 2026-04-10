@@ -4,8 +4,10 @@ import type {
   Double,
   Int32,
 } from 'react-native/Libraries/Types/CodegenTypes'
-import codegenNativeComponent from 'react-native/Libraries/Utilities/codegenNativeComponent'
-import codegenNativeCommands from 'react-native/Libraries/Utilities/codegenNativeCommands'
+import {
+  codegenNativeComponent,
+  codegenNativeCommands,
+} from 'react-native'
 
 export interface MarkdownInputViewNativeProps extends ViewProps {
   defaultValue?: string
