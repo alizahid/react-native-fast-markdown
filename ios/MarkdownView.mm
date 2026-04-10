@@ -3,7 +3,7 @@
 #import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
 
-// Use our custom ComponentDescriptor instead of the codegen one
+// Custom descriptor with our shadow node (state + measureContent)
 #import "MarkdownViewComponentDescriptor.h"
 #import "MarkdownViewState.h"
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
@@ -17,7 +17,6 @@
 
 using namespace facebook::react;
 
-// LRU cache for parsed + rendered attributed strings
 static const NSUInteger kMaxCacheSize = 128;
 
 @interface MarkdownView () <UITextViewDelegate>
@@ -30,14 +29,10 @@ static const NSUInteger kMaxCacheSize = 128;
   NSArray<NSString *> *_customTags;
   StyleConfig *_styleConfig;
 
-  // Cache: markdown hash → attributed string
   NSMutableDictionary<NSString *, NSAttributedString *> *_renderCache;
   NSMutableArray<NSString *> *_cacheOrder;
 
-  // Serial queue for background parsing
   dispatch_queue_t _parseQueue;
-
-  // State-driven measurement
   int64_t _heightUpdateCounter;
 }
 
@@ -72,7 +67,7 @@ static const NSUInteger kMaxCacheSize = 128;
   _textView.frame = self.bounds;
 }
 
-- (void)updateContentSize {
+- (void)updateContentMeasurement {
   CGFloat width = self.bounds.size.width > 0
       ? self.bounds.size.width
       : UIScreen.mainScreen.bounds.size.width;
@@ -80,20 +75,16 @@ static const NSUInteger kMaxCacheSize = 128;
 
   _heightUpdateCounter++;
 
-  // Update Fabric state — this triggers a re-layout via the shadow node
-  auto stateData = MarkdownViewState{};
-  stateData.heightUpdateCounter = _heightUpdateCounter;
-  stateData.measuredHeight = static_cast<float>(size.height);
-  stateData.measuredWidth = static_cast<float>(size.width);
+  // Update Fabric state — triggers shadow node re-measurement via Yoga
+  auto state = std::static_pointer_cast<
+      const MarkdownViewShadowNode::ConcreteState>(self->_state);
+  if (!state) return;
 
-  [self updateState:stateData];
-}
-
-// Helper to update Fabric state from the view
-- (void)updateState:(const MarkdownViewState &)state {
-  auto stateUpdate =
-      std::make_shared<const MarkdownViewState>(state);
-  _state->updateState(std::move(stateUpdate));
+  auto newData = state->getData();
+  newData.heightUpdateCounter = _heightUpdateCounter;
+  newData.measuredHeight = static_cast<float>(size.height);
+  newData.measuredWidth = static_cast<float>(size.width);
+  state->updateState(std::move(newData));
 }
 
 - (void)updateProps:(const Props::Shared &)props
@@ -101,7 +92,6 @@ static const NSUInteger kMaxCacheSize = 128;
   const auto &newViewProps =
       *std::static_pointer_cast<const MarkdownViewProps>(props);
 
-  // Extract props
   NSString *markdown =
       [NSString stringWithUTF8String:newViewProps.markdown.c_str()];
   NSString *styleJSON = newViewProps.markdownStyle.empty()
@@ -142,21 +132,18 @@ static const NSUInteger kMaxCacheSize = 128;
     return;
   }
 
-  // Check cache
   NSString *cacheKey =
       [NSString stringWithFormat:@"%@_%@", markdown, _currentStyleJSON];
   NSAttributedString *cached = _renderCache[cacheKey];
   if (cached) {
     _textView.attributedText = cached;
-    [self updateContentSize];
+    [self updateContentMeasurement];
     return;
   }
 
-  // Parse and render
   StyleConfig *styleConfig = _styleConfig ?: [StyleConfig fromJSON:@""];
   NSArray<NSString *> *customTags = [_customTags copy];
 
-  // For short markdown, render synchronously to avoid flicker
   if (markdown.length < 500) {
     NSAttributedString *result =
         [self buildAttributedString:markdown
@@ -164,11 +151,10 @@ static const NSUInteger kMaxCacheSize = 128;
                          customTags:customTags];
     [self cacheResult:result forKey:cacheKey];
     _textView.attributedText = result;
-    [self updateContentSize];
+    [self updateContentMeasurement];
     return;
   }
 
-  // For longer content, parse on background queue
   __weak typeof(self) weakSelf = self;
   dispatch_async(_parseQueue, ^{
     NSAttributedString *result =
@@ -182,7 +168,7 @@ static const NSUInteger kMaxCacheSize = 128;
 
       [strongSelf cacheResult:result forKey:cacheKey];
       strongSelf->_textView.attributedText = result;
-      [strongSelf updateContentSize];
+      [strongSelf updateContentMeasurement];
     });
   });
 }
@@ -190,7 +176,6 @@ static const NSUInteger kMaxCacheSize = 128;
 - (NSAttributedString *)buildAttributedString:(NSString *)markdown
                                   styleConfig:(StyleConfig *)styleConfig
                                    customTags:(NSArray<NSString *> *)customTags {
-  // Parse using C++ md4c parser
   markdown::ParseOptions options;
   options.enableTables = true;
   options.enableStrikethrough = true;
@@ -204,7 +189,6 @@ static const NSUInteger kMaxCacheSize = 128;
   std::string markdownStr([markdown UTF8String]);
   markdown::ASTNode ast = markdown::MarkdownParser::parse(markdownStr, options);
 
-  // Build attributed string from AST
   ASTNodeWrapper *rootWrapper =
       [[ASTNodeWrapper alloc] initWithOpaqueNode:&ast];
 
@@ -215,7 +199,6 @@ static const NSUInteger kMaxCacheSize = 128;
   NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
   [context renderChildren:rootWrapper into:output];
 
-  // Trim trailing newline
   if (output.length > 0) {
     unichar lastChar = [output.string characterAtIndex:output.length - 1];
     if (lastChar == '\n') {
@@ -230,7 +213,6 @@ static const NSUInteger kMaxCacheSize = 128;
   _renderCache[key] = result;
   [_cacheOrder addObject:key];
 
-  // Evict old entries
   while (_cacheOrder.count > kMaxCacheSize) {
     NSString *oldKey = _cacheOrder.firstObject;
     [_cacheOrder removeObjectAtIndex:0];

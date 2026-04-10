@@ -4,16 +4,15 @@
 
 namespace facebook::react {
 
+// Carries measured content height from the native view to the shadow node.
+// When the view renders new content, it bumps the counter and updates
+// the measured dimensions. The shadow node sees the counter change,
+// marks the Yoga node dirty, and returns the measured height from
+// measureContent(). No JS roundtrip needed.
 class MarkdownViewState {
 public:
-  // Counter bumped each time the view renders new content.
-  // The shadow node uses this to know it needs to re-measure.
   int64_t heightUpdateCounter{0};
-
-  // The measured content height from the last native render.
   float measuredHeight{0};
-
-  // The measured content width.
   float measuredWidth{0};
 };
 
