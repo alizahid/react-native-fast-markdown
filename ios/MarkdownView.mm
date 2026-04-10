@@ -2,7 +2,10 @@
 
 #import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
-#import <react/renderer/components/MarkdownViewSpec/ComponentDescriptors.h>
+
+// Use our custom ComponentDescriptor instead of the codegen one
+#import "MarkdownViewComponentDescriptor.h"
+#import "MarkdownViewState.h"
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
@@ -33,6 +36,9 @@ static const NSUInteger kMaxCacheSize = 128;
 
   // Serial queue for background parsing
   dispatch_queue_t _parseQueue;
+
+  // State-driven measurement
+  int64_t _heightUpdateCounter;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -56,6 +62,7 @@ static const NSUInteger kMaxCacheSize = 128;
     _cacheOrder = [NSMutableArray new];
     _parseQueue =
         dispatch_queue_create("com.markdown.parse", DISPATCH_QUEUE_SERIAL);
+    _heightUpdateCounter = 0;
   }
   return self;
 }
@@ -65,27 +72,34 @@ static const NSUInteger kMaxCacheSize = 128;
   _textView.frame = self.bounds;
 }
 
-- (void)emitContentSizeChange {
-  if (!_eventEmitter || !_textView.attributedText) return;
-
-  CGFloat width = self.bounds.size.width > 0 ? self.bounds.size.width : UIScreen.mainScreen.bounds.size.width;
+- (void)updateContentSize {
+  CGFloat width = self.bounds.size.width > 0
+      ? self.bounds.size.width
+      : UIScreen.mainScreen.bounds.size.width;
   CGSize size = [_textView sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
 
-  const auto &eventEmitter =
-      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
-  eventEmitter.onContentSizeChange({
-      .width = static_cast<double>(size.width),
-      .height = static_cast<double>(size.height),
-  });
+  _heightUpdateCounter++;
+
+  // Update Fabric state — this triggers a re-layout via the shadow node
+  auto stateData = MarkdownViewState{};
+  stateData.heightUpdateCounter = _heightUpdateCounter;
+  stateData.measuredHeight = static_cast<float>(size.height);
+  stateData.measuredWidth = static_cast<float>(size.width);
+
+  [self updateState:stateData];
+}
+
+// Helper to update Fabric state from the view
+- (void)updateState:(const MarkdownViewState &)state {
+  auto stateUpdate =
+      std::make_shared<const MarkdownViewState>(state);
+  _state->updateState(std::move(stateUpdate));
 }
 
 - (void)updateProps:(const Props::Shared &)props
            oldProps:(const Props::Shared &)oldProps {
   const auto &newViewProps =
       *std::static_pointer_cast<const MarkdownViewProps>(props);
-  const auto &oldViewProps =
-      oldProps ? *std::static_pointer_cast<const MarkdownViewProps>(oldProps)
-              : newViewProps;
 
   // Extract props
   NSString *markdown =
@@ -110,7 +124,6 @@ static const NSUInteger kMaxCacheSize = 128;
 
   if (styleChanged) {
     _styleConfig = [StyleConfig fromJSON:styleJSON];
-    // Clear cache when style changes
     [_renderCache removeAllObjects];
     [_cacheOrder removeAllObjects];
   }
@@ -135,7 +148,7 @@ static const NSUInteger kMaxCacheSize = 128;
   NSAttributedString *cached = _renderCache[cacheKey];
   if (cached) {
     _textView.attributedText = cached;
-    [self emitContentSizeChange];
+    [self updateContentSize];
     return;
   }
 
@@ -151,7 +164,7 @@ static const NSUInteger kMaxCacheSize = 128;
                          customTags:customTags];
     [self cacheResult:result forKey:cacheKey];
     _textView.attributedText = result;
-    [self emitContentSizeChange];
+    [self updateContentSize];
     return;
   }
 
@@ -169,7 +182,7 @@ static const NSUInteger kMaxCacheSize = 128;
 
       [strongSelf cacheResult:result forKey:cacheKey];
       strongSelf->_textView.attributedText = result;
-      [strongSelf invalidateIntrinsicContentSize];
+      [strongSelf updateContentSize];
     });
   });
 }
@@ -231,7 +244,6 @@ static const NSUInteger kMaxCacheSize = 128;
     shouldInteractWithURL:(NSURL *)URL
                   inRange:(NSRange)characterRange
               interaction:(UITextItemInteraction)interaction {
-  // Emit link press event
   const auto &eventEmitter =
       static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
 
@@ -247,7 +259,7 @@ static const NSUInteger kMaxCacheSize = 128;
     });
   }
 
-  return NO; // We handle it ourselves
+  return NO;
 }
 
 @end
