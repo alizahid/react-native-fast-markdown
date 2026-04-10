@@ -40,8 +40,10 @@ buck-out/
 *.keystore
 !debug.keystore
 
-# Turborepo
-.turbo/
-
 # Generated
 *.tsbuildinfo
+
+# Example app
+example/ios/
+example/android/
+example/.expo/

@@ -15,6 +15,7 @@
     "android",
     "react-native-markdown.podspec",
     "react-native.config.js",
+    "app.plugin.js",
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
@@ -24,7 +25,8 @@
     "typescript": "tsc --noEmit",
     "lint": "eslint \"**/*.{js,ts,tsx}\"",
     "clean": "del-cli lib",
-    "prepare": "bob build"
+    "prepare": "bob build",
+    "example": "yarn --cwd example"
   },
   "keywords": [
     "react-native",

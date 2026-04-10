@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Markdown Example",
+    "slug": "markdown-example",
+    "version": "1.0.0",
+    "scheme": "markdown-example",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.alizahid.markdown.example",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.alizahid.markdown.example",
+      "adaptiveIcon": {
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "plugins": [
+      "react-native-markdown"
+    ]
+  }
+}
