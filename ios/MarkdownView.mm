@@ -161,14 +161,14 @@ static const NSUInteger kMaxCacheSize = 128;
     return;
   }
 
-  __weak typeof(self) weakSelf = self;
+  __weak MarkdownView *weakSelf = self;
   dispatch_async(_parseQueue, ^{
     NSAttributedString *result =
         [weakSelf buildAttributedString:markdown
                             styleConfig:styleConfig
                              customTags:customTags];
     dispatch_async(dispatch_get_main_queue(), ^{
-      __strong typeof(weakSelf) strongSelf = weakSelf;
+      __strong MarkdownView *strongSelf = weakSelf;
       if (!strongSelf) return;
       if (![markdown isEqualToString:strongSelf->_currentMarkdown]) return;
 
