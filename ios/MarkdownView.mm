@@ -34,6 +34,9 @@ static const NSUInteger kMaxCacheSize = 128;
 
   dispatch_queue_t _parseQueue;
   int64_t _heightUpdateCounter;
+
+  // Fabric state handle for native-driven measurement
+  MarkdownViewShadowNode::ConcreteState::Shared _fabricState;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -67,7 +70,15 @@ static const NSUInteger kMaxCacheSize = 128;
   _textView.frame = self.bounds;
 }
 
+- (void)updateState:(const facebook::react::State::Shared &)state
+           oldState:(const facebook::react::State::Shared &)oldState {
+  _fabricState = std::static_pointer_cast<
+      const MarkdownViewShadowNode::ConcreteState>(state);
+}
+
 - (void)updateContentMeasurement {
+  if (!_fabricState) return;
+
   CGFloat width = self.bounds.size.width > 0
       ? self.bounds.size.width
       : UIScreen.mainScreen.bounds.size.width;
@@ -75,16 +86,11 @@ static const NSUInteger kMaxCacheSize = 128;
 
   _heightUpdateCounter++;
 
-  // Update Fabric state — triggers shadow node re-measurement via Yoga
-  auto state = std::static_pointer_cast<
-      const MarkdownViewShadowNode::ConcreteState>(self->_state);
-  if (!state) return;
-
-  auto newData = state->getData();
+  auto newData = _fabricState->getData();
   newData.heightUpdateCounter = _heightUpdateCounter;
   newData.measuredHeight = static_cast<float>(size.height);
   newData.measuredWidth = static_cast<float>(size.width);
-  state->updateState(std::move(newData));
+  _fabricState->updateState(std::move(newData));
 }
 
 - (void)updateProps:(const Props::Shared &)props
