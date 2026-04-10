@@ -8,6 +8,7 @@
 
 #import "ASTNodeWrapper.h"
 #import "MarkdownParser.hpp"
+#import "MarkdownTableView.h"
 #import "RenderContext.h"
 #import "RendererFactory.h"
 #import "StyleConfig.h"
@@ -20,13 +21,13 @@ static const NSUInteger kMaxCacheSize = 128;
 @end
 
 @implementation MarkdownView {
-  UITextView *_textView;
+  UIStackView *_stackView;
   NSString *_currentMarkdown;
   NSString *_currentStyleJSON;
   NSArray<NSString *> *_customTags;
   StyleConfig *_styleConfig;
 
-  NSMutableDictionary<NSString *, NSAttributedString *> *_renderCache;
+  NSMutableDictionary<NSString *, NSNumber *> *_heightCache;
   NSMutableArray<NSString *> *_cacheOrder;
 
   dispatch_queue_t _parseQueue;
@@ -40,17 +41,13 @@ static const NSUInteger kMaxCacheSize = 128;
 - (instancetype)initWithFrame:(CGRect)frame {
   self = [super initWithFrame:frame];
   if (self) {
-    _textView = [[UITextView alloc] initWithFrame:self.bounds];
-    _textView.editable = NO;
-    _textView.scrollEnabled = NO;
-    _textView.textContainerInset = UIEdgeInsetsZero;
-    _textView.textContainer.lineFragmentPadding = 0;
-    _textView.backgroundColor = [UIColor clearColor];
-    _textView.delegate = self;
-    _textView.dataDetectorTypes = UIDataDetectorTypeNone;
-    [self addSubview:_textView];
+    _stackView = [[UIStackView alloc] initWithFrame:self.bounds];
+    _stackView.axis = UILayoutConstraintAxisVertical;
+    _stackView.alignment = UIStackViewAlignmentFill;
+    _stackView.spacing = 0;
+    [self addSubview:_stackView];
 
-    _renderCache = [NSMutableDictionary new];
+    _heightCache = [NSMutableDictionary new];
     _cacheOrder = [NSMutableArray new];
     _parseQueue =
         dispatch_queue_create("com.markdown.parse", DISPATCH_QUEUE_SERIAL);
@@ -60,10 +57,9 @@ static const NSUInteger kMaxCacheSize = 128;
 
 - (void)layoutSubviews {
   [super layoutSubviews];
-  _textView.frame = self.bounds;
+  _stackView.frame = self.bounds;
 
-  // Emit size after we have a valid width (may not have had one during first render)
-  if (self.bounds.size.width > 0 && _textView.attributedText.length > 0) {
+  if (self.bounds.size.width > 0 && _stackView.arrangedSubviews.count > 0) {
     [self emitContentSizeIfNeeded];
   }
 }
@@ -71,15 +67,14 @@ static const NSUInteger kMaxCacheSize = 128;
 - (void)updateEventEmitter:(const EventEmitter::Shared &)eventEmitter {
   [super updateEventEmitter:eventEmitter];
 
-  // Event emitter just became available — emit pending size if we have content
-  if (_pendingSizeEmit && _textView.attributedText.length > 0) {
+  if (_pendingSizeEmit && _stackView.arrangedSubviews.count > 0) {
     _pendingSizeEmit = NO;
     [self emitContentSizeIfNeeded];
   }
 }
 
 - (void)emitContentSizeIfNeeded {
-  if (!_textView.attributedText || _textView.attributedText.length == 0)
+  if (_stackView.arrangedSubviews.count == 0)
     return;
 
   if (!_eventEmitter) {
@@ -91,7 +86,9 @@ static const NSUInteger kMaxCacheSize = 128;
       self.bounds.size.width > 0
           ? self.bounds.size.width
           : UIScreen.mainScreen.bounds.size.width;
-  CGSize size = [_textView sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+
+  CGSize size = [_stackView systemLayoutSizeFittingSize:
+      CGSizeMake(width, UIView.layoutFittingCompressedSize.height)];
 
   const auto &eventEmitter =
       static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
@@ -128,7 +125,7 @@ static const NSUInteger kMaxCacheSize = 128;
 
   if (styleChanged) {
     _styleConfig = [StyleConfig fromJSON:styleJSON];
-    [_renderCache removeAllObjects];
+    [_heightCache removeAllObjects];
     [_cacheOrder removeAllObjects];
   }
 
@@ -142,56 +139,14 @@ static const NSUInteger kMaxCacheSize = 128;
 - (void)renderMarkdown {
   NSString *markdown = _currentMarkdown;
   if (!markdown || markdown.length == 0) {
-    _textView.attributedText = [[NSAttributedString alloc] initWithString:@""];
-    return;
-  }
-
-  NSString *cacheKey =
-      [NSString stringWithFormat:@"%@_%@", markdown, _currentStyleJSON];
-  NSAttributedString *cached = _renderCache[cacheKey];
-  if (cached) {
-    _textView.attributedText = cached;
-    [self emitContentSizeIfNeeded];
+    [self clearSegments];
     return;
   }
 
   StyleConfig *styleConfig = _styleConfig ?: [StyleConfig fromJSON:@""];
   NSArray<NSString *> *customTags = [_customTags copy];
 
-  // Short content: render synchronously to avoid flicker
-  if (markdown.length < 500) {
-    NSAttributedString *result =
-        [self buildAttributedString:markdown
-                        styleConfig:styleConfig
-                         customTags:customTags];
-    [self cacheResult:result forKey:cacheKey];
-    _textView.attributedText = result;
-    [self emitContentSizeIfNeeded];
-    return;
-  }
-
-  // Longer content: render on background queue
-  __weak MarkdownView *weakSelf = self;
-  dispatch_async(_parseQueue, ^{
-    NSAttributedString *result =
-        [weakSelf buildAttributedString:markdown
-                            styleConfig:styleConfig
-                             customTags:customTags];
-    dispatch_async(dispatch_get_main_queue(), ^{
-      __strong MarkdownView *strongSelf = weakSelf;
-      if (!strongSelf) return;
-      if (![markdown isEqualToString:strongSelf->_currentMarkdown]) return;
-
-      [strongSelf cacheResult:result forKey:cacheKey];
-      strongSelf->_textView.attributedText = result;
-      [strongSelf emitContentSizeIfNeeded];
-    });
-  });
-}
-
-- (NSAttributedString *)buildAttributedString:(NSString *)markdown
-                                  styleConfig:(StyleConfig *)styleConfig
-                                   customTags:(NSArray<NSString *> *)customTags {
+  // Parse
   markdown::ParseOptions options;
   options.enableTables = true;
   options.enableStrikethrough = true;
@@ -208,12 +163,60 @@ static const NSUInteger kMaxCacheSize = 128;
   ASTNodeWrapper *rootWrapper =
       [[ASTNodeWrapper alloc] initWithOpaqueNode:&ast];
 
+  // Split AST children into segments: text runs and tables
+  [self clearSegments];
+  [self buildSegmentsFromNode:rootWrapper styleConfig:styleConfig customTags:customTags];
+  [self emitContentSizeIfNeeded];
+}
+
+- (void)clearSegments {
+  for (UIView *view in _stackView.arrangedSubviews) {
+    [_stackView removeArrangedSubview:view];
+    [view removeFromSuperview];
+  }
+}
+
+- (void)buildSegmentsFromNode:(ASTNodeWrapper *)root
+                  styleConfig:(StyleConfig *)styleConfig
+                   customTags:(NSArray<NSString *> *)customTags {
+  // Walk top-level children of the document. Group consecutive non-table
+  // nodes into text segments; table nodes become table segments.
+  NSMutableArray<ASTNodeWrapper *> *textNodes = [NSMutableArray new];
+
+  for (ASTNodeWrapper *child in root.children) {
+    if (child.nodeType == MDNodeTypeTable) {
+      // Flush accumulated text nodes
+      if (textNodes.count > 0) {
+        [self addTextSegment:textNodes styleConfig:styleConfig customTags:customTags];
+        textNodes = [NSMutableArray new];
+      }
+      // Add table segment
+      [self addTableSegment:child styleConfig:styleConfig];
+    } else {
+      [textNodes addObject:child];
+    }
+  }
+
+  // Flush remaining text nodes
+  if (textNodes.count > 0) {
+    [self addTextSegment:textNodes styleConfig:styleConfig customTags:customTags];
+  }
+}
+
+- (void)addTextSegment:(NSArray<ASTNodeWrapper *> *)nodes
+           styleConfig:(StyleConfig *)styleConfig
+            customTags:(NSArray<NSString *> *)customTags {
   RenderContext *context = [[RenderContext alloc] init];
   context.styleConfig = styleConfig;
   context.customTags = [NSSet setWithArray:customTags];
 
   NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
-  [context renderChildren:rootWrapper into:output];
+  for (ASTNodeWrapper *node in nodes) {
+    id<NodeRenderer> renderer = [RendererFactory rendererForNode:node];
+    if (renderer) {
+      [renderer renderNode:node into:output context:context];
+    }
+  }
 
   // Trim trailing newline
   if (output.length > 0) {
@@ -223,18 +226,46 @@ static const NSUInteger kMaxCacheSize = 128;
     }
   }
 
-  return [output copy];
+  if (output.length == 0) return;
+
+  UITextView *textView = [[UITextView alloc] init];
+  textView.attributedText = output;
+  textView.editable = NO;
+  textView.scrollEnabled = NO;
+  textView.textContainerInset = UIEdgeInsetsZero;
+  textView.textContainer.lineFragmentPadding = 0;
+  textView.backgroundColor = [UIColor clearColor];
+  textView.dataDetectorTypes = UIDataDetectorTypeNone;
+  textView.delegate = self;
+
+  // Size to fit content
+  CGFloat width = self.bounds.size.width > 0
+      ? self.bounds.size.width
+      : UIScreen.mainScreen.bounds.size.width;
+  CGSize size = [textView sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+  textView.frame = CGRectMake(0, 0, width, size.height);
+
+  // Set intrinsic height constraint
+  [textView.heightAnchor constraintEqualToConstant:size.height].active = YES;
+
+  [_stackView addArrangedSubview:textView];
 }
 
-- (void)cacheResult:(NSAttributedString *)result forKey:(NSString *)key {
-  _renderCache[key] = result;
-  [_cacheOrder addObject:key];
+- (void)addTableSegment:(ASTNodeWrapper *)tableNode
+            styleConfig:(StyleConfig *)styleConfig {
+  CGFloat width = self.bounds.size.width > 0
+      ? self.bounds.size.width
+      : UIScreen.mainScreen.bounds.size.width;
 
-  while (_cacheOrder.count > kMaxCacheSize) {
-    NSString *oldKey = _cacheOrder.firstObject;
-    [_cacheOrder removeObjectAtIndex:0];
-    [_renderCache removeObjectForKey:oldKey];
-  }
+  MarkdownTableView *tableView =
+      [[MarkdownTableView alloc] initWithTableNode:tableNode
+                                       styleConfig:styleConfig
+                                          maxWidth:width];
+
+  tableView.frame = CGRectMake(0, 0, width, tableView.tableHeight);
+  [tableView.heightAnchor constraintEqualToConstant:tableView.tableHeight].active = YES;
+
+  [_stackView addArrangedSubview:tableView];
 }
 
 #pragma mark - UITextViewDelegate
