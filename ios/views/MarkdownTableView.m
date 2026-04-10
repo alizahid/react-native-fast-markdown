@@ -15,9 +15,7 @@ static const CGFloat kMinColumnWidth = 60.0;
                          maxWidth:(CGFloat)maxWidth {
   self = [super initWithFrame:CGRectZero];
   if (self) {
-    self.showsHorizontalScrollIndicator = YES;
     self.showsVerticalScrollIndicator = NO;
-    self.bounces = YES;
     self.backgroundColor = [UIColor clearColor];
 
     MarkdownElementStyle *style = styleConfig.table;
@@ -170,10 +168,13 @@ static const CGFloat kMinColumnWidth = 60.0;
     }
 
     _tableHeight = y;
-    CGFloat gridWidth = MAX(totalWidth, maxWidth);
 
-    gridContainer.frame = CGRectMake(0, 0, gridWidth, _tableHeight);
-    self.contentSize = CGSizeMake(gridWidth, _tableHeight);
+    // Content size is the actual grid width — no forced expansion.
+    // Only scroll if the grid is wider than the container.
+    gridContainer.frame = CGRectMake(0, 0, totalWidth, _tableHeight);
+    self.contentSize = CGSizeMake(totalWidth, _tableHeight);
+    self.bounces = totalWidth > maxWidth;
+    self.showsHorizontalScrollIndicator = totalWidth > maxWidth;
     [self addSubview:gridContainer];
 
     // Round corners
