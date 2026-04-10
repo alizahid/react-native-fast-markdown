@@ -1,0 +1,88 @@
+{
+  "name": "react-native-markdown",
+  "version": "0.1.0",
+  "description": "High-performance native Markdown renderer and editor for React Native",
+  "main": "lib/commonjs/index",
+  "module": "lib/module/index",
+  "types": "lib/typescript/src/index.d.ts",
+  "react-native": "src/index",
+  "source": "src/index",
+  "files": [
+    "src",
+    "lib",
+    "cpp",
+    "ios",
+    "android",
+    "react-native-markdown.podspec",
+    "react-native.config.js",
+    "!**/__tests__",
+    "!**/__fixtures__",
+    "!**/__mocks__",
+    "!**/.*"
+  ],
+  "scripts": {
+    "typescript": "tsc --noEmit",
+    "lint": "eslint \"**/*.{js,ts,tsx}\"",
+    "clean": "del-cli lib",
+    "prepare": "bob build"
+  },
+  "keywords": [
+    "react-native",
+    "markdown",
+    "editor",
+    "renderer",
+    "gfm",
+    "fabric",
+    "new-architecture"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alizahid/react-native-markdown"
+  },
+  "author": "Ali Zahid <ali.zahid@live.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/alizahid/react-native-markdown/issues"
+  },
+  "homepage": "https://github.com/alizahid/react-native-markdown#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "devDependencies": {
+    "@types/react": "*",
+    "del-cli": "^6.0.0",
+    "eslint": "^9.0.0",
+    "react": "*",
+    "react-native": "*",
+    "react-native-builder-bob": "^0.35.0",
+    "typescript": "^5.5.0"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.76.0"
+  },
+  "codegenConfig": {
+    "name": "MarkdownViewSpec",
+    "type": "components",
+    "jsSrcsDir": "src"
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      [
+        "commonjs",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "module",
+        {
+          "esm": true
+        }
+      ],
+      "typescript"
+    ]
+  }
+}
