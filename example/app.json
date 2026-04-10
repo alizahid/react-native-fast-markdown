@@ -14,9 +14,6 @@
       "adaptiveIcon": {
         "backgroundColor": "#ffffff"
       }
-    },
-    "plugins": [
-      "../app.plugin.js"
-    ]
+    }
   }
 }

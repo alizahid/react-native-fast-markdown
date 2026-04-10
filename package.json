@@ -15,7 +15,6 @@
     "android",
     "react-native-markdown.podspec",
     "react-native.config.js",
-    "app.plugin.js",
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
@@ -51,7 +50,6 @@
     "registry": "https://registry.npmjs.org/"
   },
   "devDependencies": {
-    "@expo/config-plugins": "~55.0.8",
     "@types/react": "~19.0.0",
     "del-cli": "^6.0.0",
     "eslint": "^9.0.0",
@@ -63,11 +61,6 @@
   "peerDependencies": {
     "react": ">=18.0.0",
     "react-native": ">=0.76.0"
-  },
-  "peerDependenciesMeta": {
-    "@expo/config-plugins": {
-      "optional": true
-    }
   },
   "codegenConfig": {
     "name": "MarkdownViewSpec",
