@@ -2,22 +2,15 @@
 
 #import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
+#import <react/renderer/components/MarkdownViewSpec/ComponentDescriptors.h>
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
-#import <react/renderer/components/MarkdownViewSpec/ShadowNodes.h>
-#import <react/renderer/core/ConcreteComponentDescriptor.h>
 
 #import "ASTNodeWrapper.h"
 #import "MarkdownParser.hpp"
 #import "RenderContext.h"
 #import "RendererFactory.h"
 #import "StyleConfig.h"
-
-// Use codegen-generated descriptor for the input view (no custom shadow node needed)
-namespace facebook::react {
-using MarkdownInputViewComponentDescriptor =
-    ConcreteComponentDescriptor<MarkdownInputViewShadowNode>;
-} // namespace facebook::react
 
 using namespace facebook::react;
 
