@@ -110,7 +110,6 @@ using namespace facebook::react;
   } else if ([commandName isEqualToString:@"setValue"]) {
     NSString *value = args[0];
     _textView.text = value;
-    [self applyMarkdownFormatting];
   } else if ([commandName isEqualToString:@"setSelection"]) {
     NSInteger start = [args[0] integerValue];
     NSInteger end = [args[1] integerValue];
@@ -183,7 +182,6 @@ using namespace facebook::react;
     }
   }
 
-  [self applyMarkdownFormatting];
   [self emitChangeEvents];
 }
 
@@ -213,7 +211,6 @@ using namespace facebook::react;
                    withText:newLine];
   }
 
-  [self applyMarkdownFormatting];
   [self emitChangeEvents];
 }
 
@@ -234,7 +231,6 @@ using namespace facebook::react;
 }
 
 - (void)removeLink {
-  [self applyMarkdownFormatting];
   [self emitChangeEvents];
 }
 
@@ -256,14 +252,12 @@ using namespace facebook::react;
         NSMakeRange(selectedRange.location + prefix.length, 0);
   }
 
-  [self applyMarkdownFormatting];
   [self emitChangeEvents];
 }
 
 - (void)insertText:(NSString *)text {
   [_textView replaceRange:[self textRangeFromNSRange:_textView.selectedRange]
                  withText:text];
-  [self applyMarkdownFormatting];
   [self emitChangeEvents];
 }
 
@@ -292,37 +286,27 @@ using namespace facebook::react;
 #pragma mark - Markdown Formatting
 
 - (void)applyMarkdownFormatting {
-  if (!_styleConfig) return;
-
+  // The editor keeps raw markdown text as-is.
+  // Visual formatting (bold/italic rendering) would require tracking
+  // character offsets between markdown source and rendered output.
+  // For now, just ensure the base font is applied consistently.
   NSString *text = _textView.text;
   if (text.length == 0) return;
 
   NSRange savedRange = _textView.selectedRange;
 
-  markdown::ParseOptions options;
-  options.enableTables = true;
-  options.enableStrikethrough = true;
-  options.enableTaskLists = true;
-  options.enableAutolinks = true;
+  UIFont *baseFont = _styleConfig
+      ? [_styleConfig.paragraph resolvedFont]
+      : [UIFont systemFontOfSize:16];
 
-  for (NSString *tag in _customTags) {
-    options.customTags.insert(std::string([tag UTF8String]));
-  }
+  NSMutableAttributedString *styled =
+      [[NSMutableAttributedString alloc] initWithString:text
+                                            attributes:@{
+        NSFontAttributeName: baseFont,
+        NSForegroundColorAttributeName: UIColor.labelColor,
+      }];
 
-  std::string markdownStr([text UTF8String]);
-  markdown::ASTNode ast =
-      markdown::MarkdownParser::parse(markdownStr, options);
-
-  ASTNodeWrapper *rootWrapper =
-      [[ASTNodeWrapper alloc] initWithOpaqueNode:&ast];
-
-  RenderContext *context = [[RenderContext alloc] init];
-  context.styleConfig = _styleConfig;
-
-  NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
-  [context renderChildren:rootWrapper into:output];
-
-  _textView.attributedText = output;
+  _textView.attributedText = styled;
 
   if (savedRange.location + savedRange.length <= _textView.text.length) {
     _textView.selectedRange = savedRange;
@@ -404,7 +388,6 @@ using namespace facebook::react;
 #pragma mark - UITextViewDelegate
 
 - (void)textViewDidChange:(UITextView *)textView {
-  [self applyMarkdownFormatting];
   [self emitChangeEvents];
 }
 

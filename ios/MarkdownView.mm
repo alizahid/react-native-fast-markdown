@@ -60,6 +60,11 @@ static const NSUInteger kMaxCacheSize = 128;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _textView.frame = self.bounds;
+
+  // Emit size after we have a valid width (may not have had one during first render)
+  if (self.bounds.size.width > 0 && _textView.attributedText.length > 0) {
+    [self emitContentSizeIfNeeded];
+  }
 }
 
 - (void)emitContentSizeIfNeeded {

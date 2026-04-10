@@ -51,6 +51,16 @@
   [context pushAttributes:attrs];
   [context renderChildren:node into:output];
   [context popAttributes];
+
+  // Ensure each list item ends with a newline
+  if (output.length > 0) {
+    unichar lastChar = [output.string characterAtIndex:output.length - 1];
+    if (lastChar != '\n') {
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:@"\n"
+                                          attributes:attrs]];
+    }
+  }
 }
 
 @end
