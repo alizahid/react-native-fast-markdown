@@ -39,7 +39,23 @@
   if (node.isTaskItem) {
     bullet = node.taskChecked ? @"[x] " : @"[ ] ";
   } else if (context.currentListIsOrdered) {
-    bullet = [NSString stringWithFormat:@"%ld. ", (long)context.orderedListIndex];
+    // Left-pad the number with figure spaces (U+2007 — a digit-width
+    // whitespace character in most fonts) so the periods line up for
+    // mixed-width markers like 1./10./11.
+    NSInteger number = context.orderedListIndex;
+    NSInteger digits = 1;
+    NSInteger tmp = MAX(1, number);
+    while (tmp >= 10) {
+      digits++;
+      tmp /= 10;
+    }
+    NSInteger padCount =
+        MAX(0, context.currentListMaxMarkerDigits - digits);
+    NSMutableString *padding = [NSMutableString new];
+    for (NSInteger i = 0; i < padCount; i++) {
+      [padding appendString:@"\u2007"];
+    }
+    bullet = [NSString stringWithFormat:@"%@%ld. ", padding, (long)number];
     context.orderedListIndex++;
   } else {
     NSArray *bullets = @[ @"\u2022 ", @"\u25E6 ", @"\u25AA " ];

@@ -11,6 +11,7 @@
     _listDepth = 0;
     _orderedListIndex = 0;
     _currentListIsOrdered = NO;
+    _currentListMaxMarkerDigits = 0;
     _isInsideBlockquote = NO;
     _isInsideCodeBlock = NO;
     _taskListIndex = 0;
@@ -127,6 +128,7 @@
 + (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
                                     isOrdered:(BOOL)isOrdered
                                  orderedIndex:(NSInteger)orderedIndex
+                              maxMarkerDigits:(NSInteger)maxMarkerDigits
                                   styleConfig:(StyleConfig *)styleConfig
                                    customTags:(NSArray<NSString *> *)customTags
                                inheritedAttrs:
@@ -137,6 +139,7 @@
   context.customTags = [NSSet setWithArray:customTags];
   context.orderedListIndex = orderedIndex;
   context.currentListIsOrdered = isOrdered;
+  context.currentListMaxMarkerDigits = maxMarkerDigits;
   context.listDepth = 1;
 
   if (inheritedAttrs) {

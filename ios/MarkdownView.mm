@@ -224,6 +224,23 @@ using namespace facebook::react;
 
   BOOL isOrdered = node.isOrderedList;
   NSInteger orderedIndex = isOrdered && node.listStart > 0 ? node.listStart : 1;
+
+  // Digit count of the largest marker in this list — used to left-pad
+  // shorter markers so the periods line up.
+  NSInteger maxMarkerDigits = 0;
+  if (isOrdered) {
+    NSInteger itemCount = 0;
+    for (ASTNodeWrapper *child in node.children) {
+      if (child.nodeType == MDNodeTypeListItem) itemCount++;
+    }
+    NSInteger lastNumber = MAX(1, orderedIndex + itemCount - 1);
+    maxMarkerDigits = 1;
+    while (lastNumber >= 10) {
+      maxMarkerDigits++;
+      lastNumber /= 10;
+    }
+  }
+
   for (ASTNodeWrapper *child in node.children) {
     if (child.nodeType != MDNodeTypeListItem) continue;
 
@@ -234,6 +251,7 @@ using namespace facebook::react;
         [RenderContext renderListItemContent:child
                                    isOrdered:isOrdered
                                 orderedIndex:orderedIndex
+                             maxMarkerDigits:maxMarkerDigits
                                  styleConfig:styleConfig
                                   customTags:customTags
                               inheritedAttrs:inheritedAttrs];

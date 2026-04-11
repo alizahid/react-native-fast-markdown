@@ -28,6 +28,10 @@ typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
 /// so ListItemRenderer needs this on the context instead of reading
 /// it off its own node.
 @property (nonatomic, assign) BOOL currentListIsOrdered;
+/// Digit count of the largest marker in the innermost enclosing
+/// ordered list, used to left-pad shorter markers so the periods
+/// align (e.g. " 1. … 10." instead of "1. … 10.").
+@property (nonatomic, assign) NSInteger currentListMaxMarkerDigits;
 @property (nonatomic, assign) BOOL isInsideBlockquote;
 @property (nonatomic, assign) BOOL isInsideCodeBlock;
 @property (nonatomic, assign) NSInteger taskListIndex;
@@ -66,10 +70,13 @@ typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
 /// Renders a single list item, preserving the ordered index / depth
 /// so bullets render correctly. isOrdered reflects the parent list's
 /// type — md4c only sets listType on the List node, so the caller
-/// (who has the List node in hand) must pass it in. Thread-safe.
+/// (who has the List node in hand) must pass it in. maxMarkerDigits
+/// is the digit count of the largest marker in the parent list, used
+/// to left-pad shorter markers so the periods align. Thread-safe.
 + (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
                                     isOrdered:(BOOL)isOrdered
                                  orderedIndex:(NSInteger)orderedIndex
+                              maxMarkerDigits:(NSInteger)maxMarkerDigits
                                   styleConfig:(StyleConfig *)styleConfig
                                    customTags:(NSArray<NSString *> *)customTags
                                inheritedAttrs:
