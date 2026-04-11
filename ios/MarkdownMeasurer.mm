@@ -4,6 +4,7 @@
 #import "MarkdownParser.hpp"
 #import "MarkdownTableView.h"
 #import "RenderContext.h"
+#import "StyleAttributes.h"
 #import "StyleConfig.h"
 
 static NSCache<NSString *, NSValue *> *sMeasureCache(void) {
@@ -77,16 +78,55 @@ static CGSize MeasureAttributedString(NSAttributedString *text,
 }
 
 /// Height of a single top-level block for an available inner width.
+/// inheritedAttrs carries text styling cascaded down from parent
+/// blocks (e.g. a blockquote's fontStyle applied to its child
+/// paragraphs). Pass nil at the root.
 static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
                                     StyleConfig *styleConfig,
                                     NSArray<NSString *> *customTags,
-                                    CGFloat innerWidth) {
+                                    CGFloat innerWidth,
+                                    NSDictionary *inheritedAttrs) {
   MDNodeType type = node.nodeType;
 
   if (type == MDNodeTypeThematicBreak) {
     MarkdownElementStyle *style = styleConfig.thematicBreak;
     CGSize framed = SizeForBlockStyle(style, CGSizeZero);
     return framed.height;
+  }
+
+  if (type == MDNodeTypeBlockquote) {
+    MarkdownElementStyle *blockquoteStyle = styleConfig.blockquote;
+
+    UIEdgeInsets padding = [blockquoteStyle resolvedPaddingInsets];
+    UIEdgeInsets borders = [blockquoteStyle resolvedBorderWidths];
+    CGFloat childInnerWidth = innerWidth - padding.left - padding.right -
+                              borders.left - borders.right;
+
+    NSMutableDictionary *childAttrs =
+        [(inheritedAttrs
+              ?: [RenderContext baseAttributesFromStyleConfig:styleConfig])
+            mutableCopy];
+    [StyleAttributes applyStyle:blockquoteStyle toAttrs:childAttrs];
+    NSDictionary *childAttrsFrozen = [childAttrs copy];
+
+    CGFloat totalChildren = 0;
+    NSInteger visibleChildren = 0;
+    for (ASTNodeWrapper *child in node.children) {
+      CGFloat h = MeasureSegmentHeight(child, styleConfig, customTags,
+                                       childInnerWidth, childAttrsFrozen);
+      if (h > 0) {
+        totalChildren += h;
+        visibleChildren++;
+      }
+    }
+    if (visibleChildren > 1) {
+      totalChildren += blockquoteStyle.gap * (visibleChildren - 1);
+    }
+
+    CGFloat h = totalChildren + padding.top + padding.bottom + borders.top +
+                borders.bottom;
+    if (blockquoteStyle.height > 0) h = blockquoteStyle.height;
+    return h;
   }
 
   if (type == MDNodeTypeList) {
@@ -115,7 +155,8 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
           [RenderContext renderListItemContent:child
                                   orderedIndex:orderedIndex
                                    styleConfig:styleConfig
-                                    customTags:customTags];
+                                    customTags:customTags
+                                inheritedAttrs:inheritedAttrs];
       if (child.isOrderedList) orderedIndex++;
 
       CGSize textSize = MeasureAttributedString(content, itemContentWidth);
@@ -152,7 +193,7 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
     return framed.height;
   }
 
-  // Text block (paragraph, heading, codeBlock, blockquote, etc.)
+  // Text block (paragraph, heading, codeBlock, etc.)
   MarkdownElementStyle *blockStyle =
       BlockStyleForNodeType(type, node.headingLevel, styleConfig);
 
@@ -164,7 +205,8 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   NSAttributedString *content =
       [RenderContext renderNodeToAttributedString:node
                                       styleConfig:styleConfig
-                                       customTags:customTags];
+                                       customTags:customTags
+                                   inheritedAttrs:inheritedAttrs];
   CGSize textSize = MeasureAttributedString(content, textWidth);
   CGSize framed = SizeForBlockStyle(blockStyle, textSize);
   return framed.height;
@@ -210,7 +252,8 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   CGFloat totalHeight = 0;
   NSInteger segmentCount = 0;
   for (ASTNodeWrapper *child in rootWrapper.children) {
-    CGFloat h = MeasureSegmentHeight(child, styleConfig, customTags, innerWidth);
+    CGFloat h = MeasureSegmentHeight(child, styleConfig, customTags,
+                                     innerWidth, nil);
     if (h > 0) {
       totalHeight += h;
       segmentCount++;

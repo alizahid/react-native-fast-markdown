@@ -14,6 +14,7 @@
 #import "MarkdownViewComponentDescriptor.h"
 #import "RenderContext.h"
 #import "RendererFactory.h"
+#import "StyleAttributes.h"
 #import "StyleConfig.h"
 
 using namespace facebook::react;
@@ -126,7 +127,11 @@ using namespace facebook::react;
 
   // Build a segment for each top-level child
   for (ASTNodeWrapper *child in rootWrapper.children) {
-    [self addSegmentForNode:child styleConfig:styleConfig customTags:customTags];
+    [self addSegmentForNode:child
+                    toStack:_stackView
+                styleConfig:styleConfig
+                 customTags:customTags
+             inheritedAttrs:nil];
   }
 }
 
@@ -140,26 +145,42 @@ using namespace facebook::react;
 }
 
 - (void)addSegmentForNode:(ASTNodeWrapper *)node
+                  toStack:(MarkdownSegmentStackView *)stack
               styleConfig:(StyleConfig *)styleConfig
-               customTags:(NSArray<NSString *> *)customTags {
+               customTags:(NSArray<NSString *> *)customTags
+           inheritedAttrs:(NSDictionary *)inheritedAttrs {
   MDNodeType type = node.nodeType;
 
   if (type == MDNodeTypeTable) {
-    [self addTableSegment:node styleConfig:styleConfig];
+    [self addTableSegment:node toStack:stack styleConfig:styleConfig];
   } else if (type == MDNodeTypeThematicBreak) {
-    [self addThematicBreakSegment:styleConfig];
+    [self addThematicBreakSegment:styleConfig toStack:stack];
   } else if (type == MDNodeTypeList) {
-    [self addListSegment:node styleConfig:styleConfig customTags:customTags];
+    [self addListSegment:node
+                 toStack:stack
+             styleConfig:styleConfig
+              customTags:customTags
+          inheritedAttrs:inheritedAttrs];
+  } else if (type == MDNodeTypeBlockquote) {
+    [self addBlockquoteSegment:node
+                       toStack:stack
+                   styleConfig:styleConfig
+                    customTags:customTags
+                inheritedAttrs:inheritedAttrs];
   } else {
     [self addTextBlockSegment:node
+                      toStack:stack
                   styleConfig:styleConfig
-                   customTags:customTags];
+                   customTags:customTags
+               inheritedAttrs:inheritedAttrs];
   }
 }
 
 - (void)addTextBlockSegment:(ASTNodeWrapper *)node
+                    toStack:(MarkdownSegmentStackView *)stack
                 styleConfig:(StyleConfig *)styleConfig
-                 customTags:(NSArray<NSString *> *)customTags {
+                 customTags:(NSArray<NSString *> *)customTags
+             inheritedAttrs:(NSDictionary *)inheritedAttrs {
   // Find the style key for this block node
   MarkdownElementStyle *blockStyle = [self blockStyleForNode:node styleConfig:styleConfig];
 
@@ -167,7 +188,8 @@ using namespace facebook::react;
   NSAttributedString *content =
       [RenderContext renderNodeToAttributedString:node
                                       styleConfig:styleConfig
-                                       customTags:customTags];
+                                       customTags:customTags
+                                   inheritedAttrs:inheritedAttrs];
 
   if (content.length == 0) return;
 
@@ -177,15 +199,17 @@ using namespace facebook::react;
   UITextView *textView = [self makeTextViewWithAttributedText:content];
   blockView.contentView = textView;
 
-  [_stackView addArrangedSubview:blockView];
+  [stack addArrangedSubview:blockView];
 
   // Spoiler overlays for this text view
   [self attachSpoilerOverlayToTextView:textView styleConfig:styleConfig];
 }
 
 - (void)addListSegment:(ASTNodeWrapper *)node
+               toStack:(MarkdownSegmentStackView *)stack
            styleConfig:(StyleConfig *)styleConfig
-            customTags:(NSArray<NSString *> *)customTags {
+            customTags:(NSArray<NSString *> *)customTags
+        inheritedAttrs:(NSDictionary *)inheritedAttrs {
   MarkdownElementStyle *listStyle = styleConfig.list;
   MarkdownBlockView *listContainer =
       [[MarkdownBlockView alloc] initWithStyle:listStyle];
@@ -208,7 +232,8 @@ using namespace facebook::react;
         [RenderContext renderListItemContent:child
                                 orderedIndex:orderedIndex
                                  styleConfig:styleConfig
-                                  customTags:customTags];
+                                  customTags:customTags
+                              inheritedAttrs:inheritedAttrs];
 
     if (child.isOrderedList) orderedIndex++;
 
@@ -219,10 +244,49 @@ using namespace facebook::react;
     [self attachSpoilerOverlayToTextView:textView styleConfig:styleConfig];
   }
 
-  [_stackView addArrangedSubview:listContainer];
+  [stack addArrangedSubview:listContainer];
+}
+
+- (void)addBlockquoteSegment:(ASTNodeWrapper *)node
+                     toStack:(MarkdownSegmentStackView *)stack
+                 styleConfig:(StyleConfig *)styleConfig
+                  customTags:(NSArray<NSString *> *)customTags
+              inheritedAttrs:(NSDictionary *)inheritedAttrs {
+  MarkdownElementStyle *blockquoteStyle = styleConfig.blockquote;
+
+  MarkdownBlockView *container =
+      [[MarkdownBlockView alloc] initWithStyle:blockquoteStyle];
+
+  MarkdownSegmentStackView *inner =
+      [[MarkdownSegmentStackView alloc] initWithFrame:CGRectZero];
+  inner.spacing = blockquoteStyle.gap;
+  container.contentView = inner;
+
+  // Compose the attrs children inherit: start from our own inherited
+  // attrs (or the root base if we're top-level), then overlay the
+  // blockquote's text style so things like fontStyle / color /
+  // fontFamily cascade through into paragraphs inside — and into any
+  // nested blockquotes' children, since they'll layer on top of this.
+  NSMutableDictionary *childAttrs =
+      [(inheritedAttrs
+            ?: [RenderContext baseAttributesFromStyleConfig:styleConfig])
+          mutableCopy];
+  [StyleAttributes applyStyle:blockquoteStyle toAttrs:childAttrs];
+  NSDictionary *childAttrsFrozen = [childAttrs copy];
+
+  for (ASTNodeWrapper *child in node.children) {
+    [self addSegmentForNode:child
+                    toStack:inner
+                styleConfig:styleConfig
+                 customTags:customTags
+             inheritedAttrs:childAttrsFrozen];
+  }
+
+  [stack addArrangedSubview:container];
 }
 
 - (void)addTableSegment:(ASTNodeWrapper *)tableNode
+                toStack:(MarkdownSegmentStackView *)stack
             styleConfig:(StyleConfig *)styleConfig {
   CGFloat width = self.bounds.size.width > 0
       ? self.bounds.size.width
@@ -253,13 +317,14 @@ using namespace facebook::react;
       [[MarkdownBlockView alloc] initWithStyle:tableStyle];
   wrapper.contentView = tableView;
 
-  [_stackView addArrangedSubview:wrapper];
+  [stack addArrangedSubview:wrapper];
 }
 
-- (void)addThematicBreakSegment:(StyleConfig *)styleConfig {
+- (void)addThematicBreakSegment:(StyleConfig *)styleConfig
+                        toStack:(MarkdownSegmentStackView *)stack {
   MarkdownBlockView *hrView =
       [[MarkdownBlockView alloc] initWithStyle:styleConfig.thematicBreak];
-  [_stackView addArrangedSubview:hrView];
+  [stack addArrangedSubview:hrView];
 }
 
 #pragma mark - Helpers

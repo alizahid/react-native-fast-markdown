@@ -44,12 +44,36 @@ typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
                                           customTags:
                                               (NSArray<NSString *> *)customTags;
 
+/// Like renderNodeToAttributedString: but starts the attribute stack
+/// with the given inheritedAttrs instead of the style config's base
+/// attrs. Used when rendering a child of a parent block (e.g. a
+/// paragraph inside a blockquote) so the parent's text styling
+/// cascades down.
++ (NSAttributedString *)renderNodeToAttributedString:(ASTNodeWrapper *)node
+                                         styleConfig:(StyleConfig *)styleConfig
+                                          customTags:
+                                              (NSArray<NSString *> *)customTags
+                                      inheritedAttrs:
+                                          (nullable NSDictionary<
+                                              NSAttributedStringKey, id> *)
+                                              inheritedAttrs;
+
 /// Renders a single list item, preserving the ordered index / depth
 /// so bullets render correctly. Thread-safe.
 + (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
                                  orderedIndex:(NSInteger)orderedIndex
                                   styleConfig:(StyleConfig *)styleConfig
-                                   customTags:(NSArray<NSString *> *)customTags;
+                                   customTags:(NSArray<NSString *> *)customTags
+                               inheritedAttrs:
+                                   (nullable NSDictionary<NSAttributedStringKey,
+                                                          id> *)inheritedAttrs;
+
+/// Computes the root attribute dict for a given style config (font,
+/// color from the base style). Exposed so parent block builders can
+/// derive an inheritedAttrs dict and add their own text properties
+/// before passing it to a child renderer.
++ (NSDictionary<NSAttributedStringKey, id> *)baseAttributesFromStyleConfig:
+    (StyleConfig *)styleConfig;
 
 @end
 

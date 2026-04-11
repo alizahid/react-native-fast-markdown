@@ -26,10 +26,11 @@
   // Reset the stack and push the `text` base style as the root attributes.
   // All subsequent renderers inherit these unless they override explicitly.
   [_attributeStack removeAllObjects];
-  [_attributeStack addObject:[self baseAttributesFromStyleConfig:styleConfig]];
+  [_attributeStack
+      addObject:[[self class] baseAttributesFromStyleConfig:styleConfig]];
 }
 
-- (NSDictionary<NSAttributedStringKey, id> *)baseAttributesFromStyleConfig:
++ (NSDictionary<NSAttributedStringKey, id> *)baseAttributesFromStyleConfig:
     (StyleConfig *)styleConfig {
   NSMutableDictionary *baseAttrs = [NSMutableDictionary new];
 
@@ -82,9 +83,27 @@
                                          styleConfig:(StyleConfig *)styleConfig
                                           customTags:
                                               (NSArray<NSString *> *)customTags {
+  return [self renderNodeToAttributedString:node
+                                styleConfig:styleConfig
+                                 customTags:customTags
+                             inheritedAttrs:nil];
+}
+
++ (NSAttributedString *)renderNodeToAttributedString:(ASTNodeWrapper *)node
+                                         styleConfig:(StyleConfig *)styleConfig
+                                          customTags:
+                                              (NSArray<NSString *> *)customTags
+                                      inheritedAttrs:
+                                          (NSDictionary<NSAttributedStringKey,
+                                                        id> *)inheritedAttrs {
   RenderContext *context = [[RenderContext alloc] init];
   context.styleConfig = styleConfig;
   context.customTags = [NSSet setWithArray:customTags];
+
+  if (inheritedAttrs) {
+    [context.attributeStack removeAllObjects];
+    [context.attributeStack addObject:[inheritedAttrs copy]];
+  }
 
   NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
   id<NodeRenderer> renderer = [RendererFactory rendererForNode:node];
@@ -107,12 +126,20 @@
 + (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
                                  orderedIndex:(NSInteger)orderedIndex
                                   styleConfig:(StyleConfig *)styleConfig
-                                   customTags:(NSArray<NSString *> *)customTags {
+                                   customTags:(NSArray<NSString *> *)customTags
+                               inheritedAttrs:
+                                   (NSDictionary<NSAttributedStringKey, id> *)
+                                       inheritedAttrs {
   RenderContext *context = [[RenderContext alloc] init];
   context.styleConfig = styleConfig;
   context.customTags = [NSSet setWithArray:customTags];
   context.orderedListIndex = orderedIndex;
   context.listDepth = 1;
+
+  if (inheritedAttrs) {
+    [context.attributeStack removeAllObjects];
+    [context.attributeStack addObject:[inheritedAttrs copy]];
+  }
 
   NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
   id<NodeRenderer> renderer = [RendererFactory rendererForNode:item];
