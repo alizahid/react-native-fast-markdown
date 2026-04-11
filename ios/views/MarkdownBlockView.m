@@ -2,13 +2,20 @@
 #import "StyleConfig.h"
 
 @implementation MarkdownBlockView {
-  // Per-side border subviews (used when borders are non-uniform)
+  // The "border box" — a nested view inset by the style's margin.
+  // All visual styling (background, border, corner radius) lives on
+  // _boxView instead of self, so MarkdownBlockView's own bounds can
+  // include the margin area while the visible box sits inside it.
+  UIView *_boxView;
+
+  // Per-side border subviews (used when borders are non-uniform),
+  // added as subviews of _boxView.
   UIView *_topBorderView;
   UIView *_bottomBorderView;
   UIView *_leftBorderView;
   UIView *_rightBorderView;
 
-  // Shape layer mask for per-corner radii
+  // Shape layer mask for per-corner radii (applied to _boxView.layer).
   CAShapeLayer *_cornerMaskLayer;
 }
 
@@ -16,6 +23,12 @@
   self = [super initWithFrame:CGRectZero];
   if (self) {
     _style = style;
+    self.backgroundColor = [UIColor clearColor];
+
+    _boxView = [[UIView alloc] initWithFrame:CGRectZero];
+    _boxView.backgroundColor = [UIColor clearColor];
+    [self addSubview:_boxView];
+
     [self applyStyle];
   }
   return self;
@@ -33,23 +46,25 @@
   }
   _contentView = contentView;
   if (contentView) {
-    [self addSubview:contentView];
-    // Border subviews should stay on top of content
-    [self bringSubviewsToFront];
+    [_boxView addSubview:contentView];
+    // Border subviews should stay on top of the content view inside
+    // the box.
+    [self bringBorderSubviewsToFront];
   }
   [self setNeedsLayout];
 }
 
-- (void)bringSubviewsToFront {
-  if (_topBorderView) [self bringSubviewToFront:_topBorderView];
-  if (_bottomBorderView) [self bringSubviewToFront:_bottomBorderView];
-  if (_leftBorderView) [self bringSubviewToFront:_leftBorderView];
-  if (_rightBorderView) [self bringSubviewToFront:_rightBorderView];
+- (void)bringBorderSubviewsToFront {
+  if (_topBorderView) [_boxView bringSubviewToFront:_topBorderView];
+  if (_bottomBorderView) [_boxView bringSubviewToFront:_bottomBorderView];
+  if (_leftBorderView) [_boxView bringSubviewToFront:_leftBorderView];
+  if (_rightBorderView) [_boxView bringSubviewToFront:_rightBorderView];
 }
 
 - (void)applyStyle {
-  // Background color
-  self.backgroundColor = _style.backgroundColor ?: [UIColor clearColor];
+  // Background color lives on the box, not on the outer wrapper,
+  // so the margin area stays transparent.
+  _boxView.backgroundColor = _style.backgroundColor ?: [UIColor clearColor];
 
   BOOL nonUniform = [_style hasNonUniformBorders];
   BOOL hasBorder = [_style hasAnyBorder];
@@ -63,47 +78,46 @@
   _topBorderView = _bottomBorderView = _leftBorderView = _rightBorderView = nil;
 
   if (hasBorder && nonUniform) {
-    // Use subview edges for per-side borders
+    // Use subview edges for per-side borders, parented to _boxView.
     UIEdgeInsets widths = [_style resolvedBorderWidths];
 
     if (widths.top > 0) {
       _topBorderView = [[UIView alloc] init];
       _topBorderView.backgroundColor = [_style resolvedBorderColorForEdge:UIRectEdgeTop];
-      [self addSubview:_topBorderView];
+      [_boxView addSubview:_topBorderView];
     }
     if (widths.bottom > 0) {
       _bottomBorderView = [[UIView alloc] init];
       _bottomBorderView.backgroundColor = [_style resolvedBorderColorForEdge:UIRectEdgeBottom];
-      [self addSubview:_bottomBorderView];
+      [_boxView addSubview:_bottomBorderView];
     }
     if (widths.left > 0) {
       _leftBorderView = [[UIView alloc] init];
       _leftBorderView.backgroundColor = [_style resolvedBorderColorForEdge:UIRectEdgeLeft];
-      [self addSubview:_leftBorderView];
+      [_boxView addSubview:_leftBorderView];
     }
     if (widths.right > 0) {
       _rightBorderView = [[UIView alloc] init];
       _rightBorderView.backgroundColor = [_style resolvedBorderColorForEdge:UIRectEdgeRight];
-      [self addSubview:_rightBorderView];
+      [_boxView addSubview:_rightBorderView];
     }
 
-    // Clear layer border
-    self.layer.borderWidth = 0;
+    _boxView.layer.borderWidth = 0;
   } else if (hasBorder) {
-    // Uniform border via layer
+    // Uniform border via the box's layer.
     UIColor *color = [_style resolvedBorderColorForEdge:UIRectEdgeTop];
     UIEdgeInsets widths = [_style resolvedBorderWidths];
     if (color && widths.top > 0) {
-      self.layer.borderColor = color.CGColor;
-      self.layer.borderWidth = widths.top;
+      _boxView.layer.borderColor = color.CGColor;
+      _boxView.layer.borderWidth = widths.top;
     } else {
-      self.layer.borderWidth = 0;
+      _boxView.layer.borderWidth = 0;
     }
   } else {
-    self.layer.borderWidth = 0;
+    _boxView.layer.borderWidth = 0;
   }
 
-  // Border radius
+  // Border radius — applied to _boxView, not self.
   if (hasRadius) {
     CGFloat topLeft = [_style resolvedRadiusForCorner:UIRectCornerTopLeft];
     CGFloat topRight = [_style resolvedRadiusForCorner:UIRectCornerTopRight];
@@ -114,71 +128,78 @@
                    (bottomLeft == bottomRight);
 
     if (uniform) {
-      self.layer.cornerRadius = topLeft;
-      self.layer.masksToBounds = YES;
-      self.layer.mask = nil;
+      _boxView.layer.cornerRadius = topLeft;
+      _boxView.layer.masksToBounds = YES;
+      _boxView.layer.mask = nil;
       _cornerMaskLayer = nil;
     } else {
-      // Use CAShapeLayer mask for per-corner radii
-      self.layer.cornerRadius = 0;
+      _boxView.layer.cornerRadius = 0;
       _cornerMaskLayer = [CAShapeLayer layer];
-      self.layer.mask = _cornerMaskLayer;
+      _boxView.layer.mask = _cornerMaskLayer;
     }
   } else {
-    self.layer.cornerRadius = 0;
-    self.layer.masksToBounds = NO;
-    self.layer.mask = nil;
+    _boxView.layer.cornerRadius = 0;
+    _boxView.layer.masksToBounds = NO;
+    _boxView.layer.mask = nil;
     _cornerMaskLayer = nil;
   }
 
   // Border curve (continuous / circular)
   if ([_style.borderCurve isEqualToString:@"continuous"]) {
-    self.layer.cornerCurve = kCACornerCurveContinuous;
+    _boxView.layer.cornerCurve = kCACornerCurveContinuous;
   } else {
-    self.layer.cornerCurve = kCACornerCurveCircular;
+    _boxView.layer.cornerCurve = kCACornerCurveCircular;
   }
 
-  [self bringSubviewsToFront];
+  [self bringBorderSubviewsToFront];
 }
 
 - (void)layoutSubviews {
   [super layoutSubviews];
 
+  UIEdgeInsets margin = [_style resolvedMarginInsets];
   UIEdgeInsets padding = [_style resolvedPaddingInsets];
   UIEdgeInsets borders = [_style resolvedBorderWidths];
 
-  CGFloat x = padding.left + borders.left;
-  CGFloat y = padding.top + borders.top;
-  CGFloat w = self.bounds.size.width - padding.left - padding.right - borders.left - borders.right;
-  CGFloat h = self.bounds.size.height - padding.top - padding.bottom - borders.top - borders.bottom;
+  // The visible box is inset by the margin. Everything drawn
+  // (background, borders, corners, content) lives inside it.
+  CGFloat boxX = margin.left;
+  CGFloat boxY = margin.top;
+  CGFloat boxW = MAX(0, self.bounds.size.width - margin.left - margin.right);
+  CGFloat boxH = MAX(0, self.bounds.size.height - margin.top - margin.bottom);
+  _boxView.frame = CGRectMake(boxX, boxY, boxW, boxH);
 
-  _contentView.frame = CGRectMake(x, y, MAX(0, w), MAX(0, h));
+  // Content view inside the box, inset by padding + borders.
+  CGFloat contentX = padding.left + borders.left;
+  CGFloat contentY = padding.top + borders.top;
+  CGFloat contentW =
+      MAX(0, boxW - padding.left - padding.right - borders.left - borders.right);
+  CGFloat contentH =
+      MAX(0, boxH - padding.top - padding.bottom - borders.top - borders.bottom);
+  _contentView.frame = CGRectMake(contentX, contentY, contentW, contentH);
 
-  // Position per-side border subviews
-  CGFloat fullW = self.bounds.size.width;
-  CGFloat fullH = self.bounds.size.height;
-
+  // Per-side border subviews are positioned within the box.
   if (_topBorderView) {
-    _topBorderView.frame = CGRectMake(0, 0, fullW, borders.top);
+    _topBorderView.frame = CGRectMake(0, 0, boxW, borders.top);
   }
   if (_bottomBorderView) {
-    _bottomBorderView.frame = CGRectMake(0, fullH - borders.bottom, fullW, borders.bottom);
+    _bottomBorderView.frame = CGRectMake(0, boxH - borders.bottom, boxW, borders.bottom);
   }
   if (_leftBorderView) {
-    _leftBorderView.frame = CGRectMake(0, 0, borders.left, fullH);
+    _leftBorderView.frame = CGRectMake(0, 0, borders.left, boxH);
   }
   if (_rightBorderView) {
-    _rightBorderView.frame = CGRectMake(fullW - borders.right, 0, borders.right, fullH);
+    _rightBorderView.frame = CGRectMake(boxW - borders.right, 0, borders.right, boxH);
   }
 
-  // Update per-corner mask path
+  // Per-corner mask path, computed in _boxView's coordinate space.
   if (_cornerMaskLayer) {
     CGFloat tl = [_style resolvedRadiusForCorner:UIRectCornerTopLeft];
     CGFloat tr = [_style resolvedRadiusForCorner:UIRectCornerTopRight];
     CGFloat bl = [_style resolvedRadiusForCorner:UIRectCornerBottomLeft];
     CGFloat br = [_style resolvedRadiusForCorner:UIRectCornerBottomRight];
 
-    CGRect rect = self.bounds;
+    CGRect rect = _boxView.bounds;
     CGMutablePathRef path = CGPathCreateMutable();
     CGPathMoveToPoint(path, NULL, CGRectGetMinX(rect) + tl, CGRectGetMinY(rect));
     CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(rect) - tr, CGRectGetMinY(rect));
@@ -205,27 +226,32 @@
 }
 
 - (CGSize)sizeThatFits:(CGSize)size {
+  UIEdgeInsets margin = [_style resolvedMarginInsets];
   UIEdgeInsets padding = [_style resolvedPaddingInsets];
   UIEdgeInsets borders = [_style resolvedBorderWidths];
+
+  CGFloat marginW = margin.left + margin.right;
+  CGFloat marginH = margin.top + margin.bottom;
   CGFloat extraW = padding.left + padding.right + borders.left + borders.right;
   CGFloat extraH = padding.top + padding.bottom + borders.top + borders.bottom;
 
+  // Content has to fit inside (size minus margins minus padding/borders).
   CGSize availableSize = CGSizeMake(
-      MAX(0, size.width - extraW),
-      MAX(0, size.height - extraH));
+      MAX(0, size.width - marginW - extraW),
+      MAX(0, size.height - marginH - extraH));
 
   CGSize contentSize = _contentView
       ? [_contentView sizeThatFits:availableSize]
       : CGSizeZero;
 
-  CGFloat w = contentSize.width + extraW;
-  CGFloat h = contentSize.height + extraH;
+  // Explicit width/height from the style override the calculated
+  // border-box size; margins are always additive.
+  CGFloat borderBoxW =
+      _style.width > 0 ? _style.width : contentSize.width + extraW;
+  CGFloat borderBoxH =
+      _style.height > 0 ? _style.height : contentSize.height + extraH;
 
-  // Explicit width/height from the style override any calculation.
-  if (_style.width > 0) w = _style.width;
-  if (_style.height > 0) h = _style.height;
-
-  return CGSizeMake(w, h);
+  return CGSizeMake(borderBoxW + marginW, borderBoxH + marginH);
 }
 
 @end

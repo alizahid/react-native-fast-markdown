@@ -47,21 +47,26 @@ static MarkdownElementStyle *BlockStyleForNodeType(
   }
 }
 
-/// Returns the size contribution of an element's padding + border (inline
-/// width/height override when set).
+/// Returns the total box size (content + padding + borders + margins)
+/// for a styled block. Mirrors MarkdownBlockView.sizeThatFits so the
+/// shadow-thread measurement matches the rendered view exactly.
 static CGSize SizeForBlockStyle(MarkdownElementStyle *style,
                                 CGSize contentSize) {
+  UIEdgeInsets margin = [style resolvedMarginInsets];
   UIEdgeInsets padding = [style resolvedPaddingInsets];
   UIEdgeInsets borders = [style resolvedBorderWidths];
-  CGFloat w = contentSize.width + padding.left + padding.right +
-              borders.left + borders.right;
-  CGFloat h = contentSize.height + padding.top + padding.bottom +
-              borders.top + borders.bottom;
 
-  if (style.width > 0) w = style.width;
-  if (style.height > 0) h = style.height;
+  CGFloat marginW = margin.left + margin.right;
+  CGFloat marginH = margin.top + margin.bottom;
+  CGFloat extraW = padding.left + padding.right + borders.left + borders.right;
+  CGFloat extraH = padding.top + padding.bottom + borders.top + borders.bottom;
 
-  return CGSizeMake(w, h);
+  CGFloat borderBoxW =
+      style.width > 0 ? style.width : contentSize.width + extraW;
+  CGFloat borderBoxH =
+      style.height > 0 ? style.height : contentSize.height + extraH;
+
+  return CGSizeMake(borderBoxW + marginW, borderBoxH + marginH);
 }
 
 /// Measures an NSAttributedString for a given max width.
@@ -97,10 +102,12 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   if (type == MDNodeTypeBlockquote) {
     MarkdownElementStyle *blockquoteStyle = styleConfig.blockquote;
 
+    UIEdgeInsets margin = [blockquoteStyle resolvedMarginInsets];
     UIEdgeInsets padding = [blockquoteStyle resolvedPaddingInsets];
     UIEdgeInsets borders = [blockquoteStyle resolvedBorderWidths];
-    CGFloat childInnerWidth = innerWidth - padding.left - padding.right -
-                              borders.left - borders.right;
+    CGFloat childInnerWidth = innerWidth - margin.left - margin.right -
+                              padding.left - padding.right - borders.left -
+                              borders.right;
 
     NSMutableDictionary *childAttrs =
         [(inheritedAttrs
@@ -123,26 +130,28 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
       totalChildren += blockquoteStyle.gap * (visibleChildren - 1);
     }
 
-    CGFloat h = totalChildren + padding.top + padding.bottom + borders.top +
-                borders.bottom;
-    if (blockquoteStyle.height > 0) h = blockquoteStyle.height;
-    return h;
+    CGSize bqSize = SizeForBlockStyle(blockquoteStyle,
+                                      CGSizeMake(0, totalChildren));
+    return bqSize.height;
   }
 
   if (type == MDNodeTypeList) {
     MarkdownElementStyle *listStyle = styleConfig.list;
     MarkdownElementStyle *itemStyle = styleConfig.listItem;
 
+    UIEdgeInsets listMargin = [listStyle resolvedMarginInsets];
     UIEdgeInsets listPadding = [listStyle resolvedPaddingInsets];
     UIEdgeInsets listBorders = [listStyle resolvedBorderWidths];
-    CGFloat itemWidth = innerWidth - listPadding.left - listPadding.right -
-                        listBorders.left - listBorders.right;
+    CGFloat itemWidth = innerWidth - listMargin.left - listMargin.right -
+                        listPadding.left - listPadding.right - listBorders.left -
+                        listBorders.right;
 
+    UIEdgeInsets itemMargin = [itemStyle resolvedMarginInsets];
     UIEdgeInsets itemPadding = [itemStyle resolvedPaddingInsets];
     UIEdgeInsets itemBorders = [itemStyle resolvedBorderWidths];
-    CGFloat itemContentWidth = itemWidth - itemPadding.left -
-                               itemPadding.right - itemBorders.left -
-                               itemBorders.right;
+    CGFloat itemContentWidth = itemWidth - itemMargin.left - itemMargin.right -
+                               itemPadding.left - itemPadding.right -
+                               itemBorders.left - itemBorders.right;
 
     BOOL isOrdered = node.isOrderedList;
     CGFloat totalItemsHeight = 0;
@@ -187,22 +196,22 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
       totalItemsHeight += listStyle.gap * (visibleItems - 1);
     }
 
-    CGFloat listHeight = totalItemsHeight + listPadding.top +
-                         listPadding.bottom + listBorders.top +
-                         listBorders.bottom;
-    if (listStyle.height > 0) listHeight = listStyle.height;
-    return listHeight;
+    CGSize listSize =
+        SizeForBlockStyle(listStyle, CGSizeMake(0, totalItemsHeight));
+    return listSize.height;
   }
 
   if (type == MDNodeTypeTable) {
     // Tables share the full layout pipeline with the view build path,
     // so the measurement here matches the final rendered size exactly.
     MarkdownElementStyle *tableStyle = styleConfig.table;
+    UIEdgeInsets wrapperMargin = [tableStyle resolvedMarginInsets];
     UIEdgeInsets wrapperPadding = [tableStyle resolvedPaddingInsets];
     UIEdgeInsets wrapperBorders = [tableStyle resolvedBorderWidths];
-    CGFloat tableInnerWidth = innerWidth - wrapperPadding.left -
-                              wrapperPadding.right - wrapperBorders.left -
-                              wrapperBorders.right;
+    CGFloat tableInnerWidth =
+        innerWidth - wrapperMargin.left - wrapperMargin.right -
+        wrapperPadding.left - wrapperPadding.right - wrapperBorders.left -
+        wrapperBorders.right;
 
     CGSize tableSize = [MarkdownTableView sizeForTableNode:node
                                                styleConfig:styleConfig
@@ -215,10 +224,11 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   MarkdownElementStyle *blockStyle =
       BlockStyleForNodeType(type, node.headingLevel, styleConfig);
 
+  UIEdgeInsets margin = [blockStyle resolvedMarginInsets];
   UIEdgeInsets padding = [blockStyle resolvedPaddingInsets];
   UIEdgeInsets borders = [blockStyle resolvedBorderWidths];
-  CGFloat textWidth = innerWidth - padding.left - padding.right -
-                      borders.left - borders.right;
+  CGFloat textWidth = innerWidth - margin.left - margin.right - padding.left -
+                      padding.right - borders.left - borders.right;
 
   NSAttributedString *content =
       [RenderContext renderNodeToAttributedString:node
@@ -248,10 +258,12 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
 
   StyleConfig *styleConfig = [StyleConfig fromJSON:stylesJSON ?: @""];
 
+  UIEdgeInsets baseMargin = [styleConfig.base resolvedMarginInsets];
   UIEdgeInsets basePadding = [styleConfig.base resolvedPaddingInsets];
   UIEdgeInsets baseBorders = [styleConfig.base resolvedBorderWidths];
-  CGFloat innerWidth = width - basePadding.left - basePadding.right -
-                       baseBorders.left - baseBorders.right;
+  CGFloat innerWidth = width - baseMargin.left - baseMargin.right -
+                       basePadding.left - basePadding.right - baseBorders.left -
+                       baseBorders.right;
 
   // Parse
   markdown::ParseOptions options;
@@ -282,8 +294,8 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
     totalHeight += styleConfig.base.gap * (segmentCount - 1);
   }
 
-  totalHeight += basePadding.top + basePadding.bottom + baseBorders.top +
-                 baseBorders.bottom;
+  totalHeight += baseMargin.top + baseMargin.bottom + basePadding.top +
+                 basePadding.bottom + baseBorders.top + baseBorders.bottom;
 
   CGSize size = CGSizeMake(width, ceil(totalHeight));
   [sMeasureCache() setObject:[NSValue valueWithCGSize:size] forKey:key];

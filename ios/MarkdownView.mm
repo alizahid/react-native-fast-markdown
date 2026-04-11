@@ -313,20 +313,24 @@ using namespace facebook::react;
       ? self.bounds.size.width
       : UIScreen.mainScreen.bounds.size.width;
 
-  // Account for both the base container's padding and the table wrapper's
-  // padding/borders so this path computes the same inner width the
-  // MarkdownMeasurer used during shadow-thread measurement. If they drift
-  // the view-built table will be a different size than Yoga reserved,
-  // and content will overflow or leave empty space.
+  // Account for the base container's margin/padding/borders AND the
+  // table wrapper's margin/padding/borders so this path computes the
+  // same inner width MarkdownMeasurer used during shadow-thread
+  // measurement. If they drift the view-built table will be a
+  // different size than Yoga reserved and content will overflow or
+  // leave empty space.
+  UIEdgeInsets baseMargin = [_styleConfig.base resolvedMarginInsets];
   UIEdgeInsets basePadding = [_styleConfig.base resolvedPaddingInsets];
   UIEdgeInsets baseBorders = [_styleConfig.base resolvedBorderWidths];
-  width -= basePadding.left + basePadding.right + baseBorders.left +
-           baseBorders.right;
+  width -= baseMargin.left + baseMargin.right + basePadding.left +
+           basePadding.right + baseBorders.left + baseBorders.right;
 
   MarkdownElementStyle *tableStyle = styleConfig.table;
+  UIEdgeInsets wrapperMargin = [tableStyle resolvedMarginInsets];
   UIEdgeInsets wrapperPadding = [tableStyle resolvedPaddingInsets];
   UIEdgeInsets wrapperBorders = [tableStyle resolvedBorderWidths];
-  CGFloat tableInnerWidth = width - wrapperPadding.left - wrapperPadding.right -
+  CGFloat tableInnerWidth = width - wrapperMargin.left - wrapperMargin.right -
+                            wrapperPadding.left - wrapperPadding.right -
                             wrapperBorders.left - wrapperBorders.right;
 
   MarkdownTableView *tableView =
