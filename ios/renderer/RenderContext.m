@@ -13,12 +13,9 @@
     _isInsideCodeBlock = NO;
     _taskListIndex = 0;
 
-    // Push base attributes
-    UIFont *baseFont = [UIFont systemFontOfSize:16];
-    [_attributeStack addObject:@{
-      NSFontAttributeName : baseFont,
-      NSForegroundColorAttributeName : UIColor.labelColor,
-    }];
+    // Start with an empty base. Renderers push their own attributes
+    // (font, color) from the style config before rendering children.
+    [_attributeStack addObject:@{}];
   }
   return self;
 }

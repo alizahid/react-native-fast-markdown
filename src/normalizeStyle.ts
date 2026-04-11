@@ -97,7 +97,6 @@ const defaultStyle: MarkdownStyle = {
   table: {
     borderColor: '#ddd',
     borderWidth: 1,
-    borderRadius: 6,
   },
   tableHeaderRow: {
     backgroundColor: '#f5f5f5',

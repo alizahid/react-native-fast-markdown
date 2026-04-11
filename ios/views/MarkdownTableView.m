@@ -30,12 +30,9 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
     MarkdownElementStyle *cellStyle = styleConfig.tableCell;
     MarkdownElementStyle *headerCellStyle = styleConfig.tableHeaderCell;
 
-    // Grid line color/width come from `table.borderColor/borderWidth`
-    UIColor *borderColor =
-        (tableStyle && tableStyle.borderColor) ? tableStyle.borderColor
-                                               : [UIColor separatorColor];
-    CGFloat borderWidth =
-        (tableStyle && tableStyle.borderWidth > 0) ? tableStyle.borderWidth : 1;
+    // All styling comes from JS. If not set, we don't draw.
+    UIColor *borderColor = tableStyle.borderColor;
+    CGFloat borderWidth = tableStyle.borderWidth;
 
     // Header/body row background colors (body cells fall through to tableRow, then cell)
     UIColor *headerRowBg = headerRowStyle.backgroundColor;
@@ -96,7 +93,7 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
       UIFont *baseFont = [self effectiveFontForHeader:isHeader
                                             cellStyle:cellStyle
                                       headerCellStyle:headerCellStyle];
-      UIColor *textColor = textStyle.color ?: [UIColor labelColor];
+      UIColor *textColor = textStyle.color;
 
       NSMutableArray<NSAttributedString *> *rowContents = [NSMutableArray new];
       for (NSUInteger c = 0; c < colCount; c++) {
@@ -192,29 +189,31 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
         // Row background takes priority when set, otherwise use cell bg
         cellView.backgroundColor = effectiveRowBg ?: cellBg;
 
-        // Borders
-        UIView *bottomBorder = [[UIView alloc] initWithFrame:
-            CGRectMake(0, rowHeight, colW + borderWidth, borderWidth)];
-        bottomBorder.backgroundColor = borderColor;
-        [cellView addSubview:bottomBorder];
+        // Borders — only drawn when both width and color are set in JS
+        if (borderWidth > 0 && borderColor) {
+          UIView *bottomBorder = [[UIView alloc] initWithFrame:
+              CGRectMake(0, rowHeight, colW + borderWidth, borderWidth)];
+          bottomBorder.backgroundColor = borderColor;
+          [cellView addSubview:bottomBorder];
 
-        UIView *rightBorder = [[UIView alloc] initWithFrame:
-            CGRectMake(colW, 0, borderWidth, rowHeight + borderWidth)];
-        rightBorder.backgroundColor = borderColor;
-        [cellView addSubview:rightBorder];
+          UIView *rightBorder = [[UIView alloc] initWithFrame:
+              CGRectMake(colW, 0, borderWidth, rowHeight + borderWidth)];
+          rightBorder.backgroundColor = borderColor;
+          [cellView addSubview:rightBorder];
 
-        if (r == 0) {
-          UIView *topBorder = [[UIView alloc] initWithFrame:
-              CGRectMake(0, 0, colW + borderWidth, borderWidth)];
-          topBorder.backgroundColor = borderColor;
-          [cellView addSubview:topBorder];
-        }
+          if (r == 0) {
+            UIView *topBorder = [[UIView alloc] initWithFrame:
+                CGRectMake(0, 0, colW + borderWidth, borderWidth)];
+            topBorder.backgroundColor = borderColor;
+            [cellView addSubview:topBorder];
+          }
 
-        if (c == 0) {
-          UIView *leftBorder = [[UIView alloc] initWithFrame:
-              CGRectMake(0, 0, borderWidth, rowHeight + borderWidth)];
-          leftBorder.backgroundColor = borderColor;
-          [cellView addSubview:leftBorder];
+          if (c == 0) {
+            UIView *leftBorder = [[UIView alloc] initWithFrame:
+                CGRectMake(0, 0, borderWidth, rowHeight + borderWidth)];
+            leftBorder.backgroundColor = borderColor;
+            [cellView addSubview:leftBorder];
+          }
         }
 
         // Cell label
@@ -273,9 +272,9 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
 - (UIFont *)effectiveFontForHeader:(BOOL)isHeader
                          cellStyle:(MarkdownElementStyle *)cellStyle
                    headerCellStyle:(MarkdownElementStyle *)headerCellStyle {
-  // Build an effective style by layering header over cell
+  // Cascade: header values override cell values. All come from JS.
   MarkdownElementStyle *effective = [[MarkdownElementStyle alloc] init];
-  effective.fontSize = cellStyle.fontSize > 0 ? cellStyle.fontSize : 14;
+  effective.fontSize = cellStyle.fontSize;
   effective.fontFamily = cellStyle.fontFamily;
   effective.fontWeight = cellStyle.fontWeight;
   effective.fontStyle = cellStyle.fontStyle;
@@ -291,15 +290,18 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
 }
 
 - (NSAttributedString *)renderCellContent:(ASTNodeWrapper *)cellNode
-                                 baseFont:(UIFont *)baseFont
-                                textColor:(UIColor *)textColor
+                                 baseFont:(nullable UIFont *)baseFont
+                                textColor:(nullable UIColor *)textColor
                               styleConfig:(StyleConfig *)styleConfig {
   RenderContext *context = [[RenderContext alloc] init];
   context.styleConfig = styleConfig;
-  [context pushAttributes:@{
-    NSFontAttributeName : baseFont,
-    NSForegroundColorAttributeName : textColor,
-  }];
+
+  NSMutableDictionary *baseAttrs = [NSMutableDictionary new];
+  if (baseFont) baseAttrs[NSFontAttributeName] = baseFont;
+  if (textColor) baseAttrs[NSForegroundColorAttributeName] = textColor;
+  if (baseAttrs.count > 0) {
+    [context pushAttributes:baseAttrs];
+  }
 
   NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
   for (ASTNodeWrapper *child in cellNode.children) {

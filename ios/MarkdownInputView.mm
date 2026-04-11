@@ -41,7 +41,6 @@ using namespace facebook::react;
   if (self) {
     _textView = [[UITextView alloc] initWithFrame:self.bounds];
     _textView.delegate = self;
-    _textView.font = [UIFont systemFontOfSize:16];
     _textView.autocorrectionType = UITextAutocorrectionTypeDefault;
     _textView.scrollEnabled = YES;
     _textView.backgroundColor = [UIColor clearColor];
@@ -295,16 +294,16 @@ using namespace facebook::react;
 
   NSRange savedRange = _textView.selectedRange;
 
-  UIFont *baseFont = _styleConfig
-      ? [_styleConfig.paragraph resolvedFont]
-      : [UIFont systemFontOfSize:16];
+  UIFont *baseFont = [_styleConfig.paragraph resolvedFont];
+  UIColor *textColor = _styleConfig.paragraph.color;
+
+  NSMutableDictionary *attrs = [NSMutableDictionary new];
+  if (baseFont) attrs[NSFontAttributeName] = baseFont;
+  if (textColor) attrs[NSForegroundColorAttributeName] = textColor;
 
   NSMutableAttributedString *styled =
       [[NSMutableAttributedString alloc] initWithString:text
-                                            attributes:@{
-        NSFontAttributeName: baseFont,
-        NSForegroundColorAttributeName: UIColor.labelColor,
-      }];
+                                             attributes:attrs];
 
   _textView.attributedText = styled;
 

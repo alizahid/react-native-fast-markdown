@@ -10,12 +10,15 @@
            context:(RenderContext *)context {
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
 
-  UIFont *currentFont = attrs[NSFontAttributeName] ?: [UIFont systemFontOfSize:16];
-  UIFontDescriptor *descriptor = [currentFont.fontDescriptor
-      fontDescriptorWithSymbolicTraits:currentFont.fontDescriptor.symbolicTraits |
-                                       UIFontDescriptorTraitItalic];
-  if (descriptor) {
-    attrs[NSFontAttributeName] = [UIFont fontWithDescriptor:descriptor size:currentFont.pointSize];
+  UIFont *currentFont = attrs[NSFontAttributeName];
+  if (currentFont) {
+    UIFontDescriptor *descriptor = [currentFont.fontDescriptor
+        fontDescriptorWithSymbolicTraits:currentFont.fontDescriptor.symbolicTraits |
+                                         UIFontDescriptorTraitItalic];
+    if (descriptor) {
+      attrs[NSFontAttributeName] =
+          [UIFont fontWithDescriptor:descriptor size:currentFont.pointSize];
+    }
   }
 
   MarkdownElementStyle *style = context.styleConfig.emphasis;

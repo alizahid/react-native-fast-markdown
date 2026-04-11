@@ -5,7 +5,10 @@
 - (UIFont *)resolvedFont {
   if (_font) return _font;
 
-  CGFloat size = _fontSize > 0 ? _fontSize : 16.0;
+  // fontSize comes from JS — if it's 0, caller didn't configure it
+  CGFloat size = _fontSize;
+  if (size <= 0) return nil;
+
   UIFontWeight weight = UIFontWeightRegular;
 
   if (_fontWeight) {
