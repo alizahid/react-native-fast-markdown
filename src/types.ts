@@ -1,54 +1,129 @@
 import { type TextStyle, type ViewStyle } from 'react-native'
 
+// --- Style type building blocks ---
+
+/** Standard React Native ViewStyle properties supported on block-level
+ *  markdown elements. Applied to a container view that wraps the block. */
+export type MarkdownViewStyle = Pick<
+  ViewStyle,
+  | 'backgroundColor'
+  | 'borderBlockColor'
+  | 'borderBlockEndColor'
+  | 'borderBlockStartColor'
+  | 'borderBottomColor'
+  | 'borderBottomEndRadius'
+  | 'borderBottomLeftRadius'
+  | 'borderBottomRightRadius'
+  | 'borderBottomStartRadius'
+  | 'borderBottomWidth'
+  | 'borderColor'
+  | 'borderCurve'
+  | 'borderEndColor'
+  | 'borderEndEndRadius'
+  | 'borderEndStartRadius'
+  | 'borderLeftColor'
+  | 'borderLeftWidth'
+  | 'borderRadius'
+  | 'borderRightColor'
+  | 'borderRightWidth'
+  | 'borderStartColor'
+  | 'borderStartEndRadius'
+  | 'borderStartStartRadius'
+  | 'borderStyle'
+  | 'borderTopColor'
+  | 'borderTopEndRadius'
+  | 'borderTopLeftRadius'
+  | 'borderTopRightRadius'
+  | 'borderTopStartRadius'
+  | 'borderTopWidth'
+  | 'borderWidth'
+  | 'gap'
+  | 'margin'
+  | 'marginBottom'
+  | 'marginEnd'
+  | 'marginHorizontal'
+  | 'marginLeft'
+  | 'marginRight'
+  | 'marginStart'
+  | 'marginTop'
+  | 'marginVertical'
+  | 'padding'
+  | 'paddingBottom'
+  | 'paddingEnd'
+  | 'paddingHorizontal'
+  | 'paddingLeft'
+  | 'paddingRight'
+  | 'paddingStart'
+  | 'paddingTop'
+  | 'paddingVertical'
+>
+
+/** Standard React Native TextStyle properties supported on text and
+ *  block-level elements. Applied via attributed string attributes. */
+export type MarkdownTextStyle = Pick<
+  TextStyle,
+  | 'color'
+  | 'fontFamily'
+  | 'fontSize'
+  | 'fontStyle'
+  | 'fontWeight'
+  | 'letterSpacing'
+  | 'lineHeight'
+  | 'textAlign'
+  | 'textDecorationColor'
+  | 'textDecorationLine'
+  | 'textDecorationStyle'
+>
+
+/** Block-level style: accepts both ViewStyle (for the container)
+ *  and TextStyle (for the text inside). */
+export type MarkdownBlockStyle = MarkdownViewStyle & MarkdownTextStyle
+
 // --- Markdown Style ---
-//
-// All style keys use standard React Native TextStyle or ViewStyle.
-// No custom props (like cellPadding, bulletColor, etc.) — use the
-// standard equivalents (padding on tableCell, color on listBullet).
 
 export interface MarkdownStyle {
-  /** Base text style — applies to all text unless overridden.
-   *  Use this for global font, color, line height, etc. */
-  text?: TextStyle
+  /** Base style applied as:
+   *  - ViewStyle: outer markdown container (gap between blocks,
+   *    background, padding, borders)
+   *  - TextStyle: default text style inherited by all text */
+  base?: MarkdownBlockStyle
 
-  // Block elements
-  blockquote?: TextStyle
-  code?: TextStyle
-  codeBlock?: TextStyle
-  emphasis?: TextStyle
-  heading1?: TextStyle
-  heading2?: TextStyle
-  heading3?: TextStyle
-  heading4?: TextStyle
-  heading5?: TextStyle
-  heading6?: TextStyle
-  image?: ViewStyle
-  link?: TextStyle
-  listItem?: TextStyle
-  /** Bullet/number character style for list items */
-  listBullet?: TextStyle
-  paragraph?: TextStyle
-  strikethrough?: TextStyle
-  strong?: TextStyle
+  // Block elements (accept both view + text)
+  paragraph?: MarkdownBlockStyle
+  heading1?: MarkdownBlockStyle
+  heading2?: MarkdownBlockStyle
+  heading3?: MarkdownBlockStyle
+  heading4?: MarkdownBlockStyle
+  heading5?: MarkdownBlockStyle
+  heading6?: MarkdownBlockStyle
+  blockquote?: MarkdownBlockStyle
+  codeBlock?: MarkdownBlockStyle
+  list?: MarkdownBlockStyle
+  listItem?: MarkdownBlockStyle
+
+  // Block elements with no text content
+  thematicBreak?: MarkdownViewStyle
+  image?: MarkdownViewStyle
 
   // Tables
-  /** Outer table container (scroll view) */
-  table?: ViewStyle
-  /** Body row style */
-  tableRow?: ViewStyle
-  /** Header row style (overrides tableRow for the header row) */
-  tableHeaderRow?: ViewStyle
-  /** Body cell style — view and text props both apply */
-  tableCell?: TextStyle
-  /** Header cell style (overrides tableCell for header cells) */
-  tableHeaderCell?: TextStyle
+  table?: MarkdownViewStyle
+  tableRow?: MarkdownViewStyle
+  tableHeaderRow?: MarkdownViewStyle
+  tableCell?: MarkdownBlockStyle
+  tableHeaderCell?: MarkdownBlockStyle
 
-  thematicBreak?: ViewStyle
-  underline?: TextStyle
+  // Inline / text-only elements
+  strong?: MarkdownTextStyle
+  emphasis?: MarkdownTextStyle
+  strikethrough?: MarkdownTextStyle
+  underline?: MarkdownTextStyle
+  code?: MarkdownTextStyle
+  link?: MarkdownTextStyle
+  mention?: MarkdownTextStyle
+  listBullet?: MarkdownTextStyle
 
-  // Custom components
-  mention?: TextStyle
-  spoiler?: ViewStyle
+  // Special
+  spoiler?: MarkdownViewStyle
 
   // Extensible: any custom tag
   [key: string]: unknown

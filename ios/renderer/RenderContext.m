@@ -33,20 +33,20 @@
     (StyleConfig *)styleConfig {
   NSMutableDictionary *baseAttrs = [NSMutableDictionary new];
 
-  MarkdownElementStyle *textStyle = styleConfig.text;
-  if (!textStyle) return baseAttrs;
+  MarkdownElementStyle *base = styleConfig.base;
+  if (!base) return baseAttrs;
 
-  UIFont *font = [textStyle resolvedFont];
+  UIFont *font = [base resolvedFont];
   if (font) {
     baseAttrs[NSFontAttributeName] = font;
   }
 
-  if (textStyle.color) {
-    baseAttrs[NSForegroundColorAttributeName] = textStyle.color;
+  if (base.color) {
+    baseAttrs[NSForegroundColorAttributeName] = base.color;
   }
 
-  // lineHeight is applied per-block by ParagraphRenderer etc.
-  // If we set it here, it would clip elements with larger fonts (headings).
+  // Note: lineHeight is applied per-block by ParagraphRenderer etc.
+  // to avoid clipping elements with larger fonts (like headings).
 
   return [baseAttrs copy];
 }

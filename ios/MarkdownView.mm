@@ -7,6 +7,7 @@
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
 #import "ASTNodeWrapper.h"
+#import "MarkdownBlockView.h"
 #import "MarkdownParser.hpp"
 #import "MarkdownSpoilerOverlay.h"
 #import "MarkdownTableView.h"
@@ -16,22 +17,17 @@
 
 using namespace facebook::react;
 
-static const NSUInteger kMaxCacheSize = 128;
-
 @interface MarkdownView () <UITextViewDelegate>
 @end
 
 @implementation MarkdownView {
+  MarkdownBlockView *_baseContainer;
   UIStackView *_stackView;
   NSString *_currentMarkdown;
   NSString *_currentStyleJSON;
   NSArray<NSString *> *_customTags;
   StyleConfig *_styleConfig;
 
-  NSMutableDictionary<NSString *, NSNumber *> *_heightCache;
-  NSMutableArray<NSString *> *_cacheOrder;
-
-  dispatch_queue_t _parseQueue;
   BOOL _pendingSizeEmit;
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
 }
@@ -43,16 +39,15 @@ static const NSUInteger kMaxCacheSize = 128;
 - (instancetype)initWithFrame:(CGRect)frame {
   self = [super initWithFrame:frame];
   if (self) {
-    _stackView = [[UIStackView alloc] initWithFrame:self.bounds];
+    _baseContainer = [[MarkdownBlockView alloc] initWithStyle:nil];
+    [self addSubview:_baseContainer];
+
+    _stackView = [[UIStackView alloc] initWithFrame:CGRectZero];
     _stackView.axis = UILayoutConstraintAxisVertical;
     _stackView.alignment = UIStackViewAlignmentFill;
     _stackView.spacing = 0;
-    [self addSubview:_stackView];
+    _baseContainer.contentView = _stackView;
 
-    _heightCache = [NSMutableDictionary new];
-    _cacheOrder = [NSMutableArray new];
-    _parseQueue =
-        dispatch_queue_create("com.markdown.parse", DISPATCH_QUEUE_SERIAL);
     _spoilerOverlays = [NSMutableArray new];
   }
   return self;
@@ -60,7 +55,7 @@ static const NSUInteger kMaxCacheSize = 128;
 
 - (void)layoutSubviews {
   [super layoutSubviews];
-  _stackView.frame = self.bounds;
+  _baseContainer.frame = self.bounds;
 
   if (self.bounds.size.width > 0 && _stackView.arrangedSubviews.count > 0) {
     [self emitContentSizeIfNeeded];
@@ -77,21 +72,17 @@ static const NSUInteger kMaxCacheSize = 128;
 }
 
 - (void)emitContentSizeIfNeeded {
-  if (_stackView.arrangedSubviews.count == 0)
-    return;
-
+  if (_stackView.arrangedSubviews.count == 0) return;
   if (!_eventEmitter) {
     _pendingSizeEmit = YES;
     return;
   }
 
-  CGFloat width =
-      self.bounds.size.width > 0
-          ? self.bounds.size.width
-          : UIScreen.mainScreen.bounds.size.width;
+  CGFloat width = self.bounds.size.width > 0
+      ? self.bounds.size.width
+      : UIScreen.mainScreen.bounds.size.width;
 
-  CGSize size = [_stackView systemLayoutSizeFittingSize:
-      CGSizeMake(width, UILayoutFittingCompressedSize.height)];
+  CGSize size = [_baseContainer sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
 
   const auto &eventEmitter =
       static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
@@ -117,10 +108,8 @@ static const NSUInteger kMaxCacheSize = 128;
     [customTags addObject:[NSString stringWithUTF8String:tag.c_str()]];
   }
 
-  BOOL markdownChanged =
-      ![markdown isEqualToString:_currentMarkdown ?: @""];
-  BOOL styleChanged =
-      ![styleJSON isEqualToString:_currentStyleJSON ?: @""];
+  BOOL markdownChanged = ![markdown isEqualToString:_currentMarkdown ?: @""];
+  BOOL styleChanged = ![styleJSON isEqualToString:_currentStyleJSON ?: @""];
 
   _currentMarkdown = markdown;
   _currentStyleJSON = styleJSON;
@@ -128,8 +117,12 @@ static const NSUInteger kMaxCacheSize = 128;
 
   if (styleChanged) {
     _styleConfig = [StyleConfig fromJSON:styleJSON];
-    [_heightCache removeAllObjects];
-    [_cacheOrder removeAllObjects];
+
+    // Apply base style to the outer container
+    _baseContainer.style = _styleConfig.base;
+
+    // Stack spacing = base.gap
+    _stackView.spacing = _styleConfig.base.gap;
   }
 
   if (markdownChanged || styleChanged) {
@@ -139,12 +132,13 @@ static const NSUInteger kMaxCacheSize = 128;
   [super updateProps:props oldProps:oldProps];
 }
 
+#pragma mark - Rendering
+
 - (void)renderMarkdown {
   NSString *markdown = _currentMarkdown;
-  if (!markdown || markdown.length == 0) {
-    [self clearSegments];
-    return;
-  }
+  [self clearSegments];
+
+  if (!markdown || markdown.length == 0) return;
 
   StyleConfig *styleConfig = _styleConfig ?: [StyleConfig fromJSON:@""];
   NSArray<NSString *> *customTags = [_customTags copy];
@@ -166,9 +160,11 @@ static const NSUInteger kMaxCacheSize = 128;
   ASTNodeWrapper *rootWrapper =
       [[ASTNodeWrapper alloc] initWithOpaqueNode:&ast];
 
-  // Split AST children into segments: text runs and tables
-  [self clearSegments];
-  [self buildSegmentsFromNode:rootWrapper styleConfig:styleConfig customTags:customTags];
+  // Build a segment for each top-level child
+  for (ASTNodeWrapper *child in rootWrapper.children) {
+    [self addSegmentForNode:child styleConfig:styleConfig customTags:customTags];
+  }
+
   [self emitContentSizeIfNeeded];
 }
 
@@ -178,66 +174,203 @@ static const NSUInteger kMaxCacheSize = 128;
   }
   [_spoilerOverlays removeAllObjects];
 
-  for (UIView *view in _stackView.arrangedSubviews) {
+  for (UIView *view in [_stackView.arrangedSubviews copy]) {
     [_stackView removeArrangedSubview:view];
     [view removeFromSuperview];
   }
 }
 
-- (void)buildSegmentsFromNode:(ASTNodeWrapper *)root
-                  styleConfig:(StyleConfig *)styleConfig
-                   customTags:(NSArray<NSString *> *)customTags {
-  // Walk top-level children of the document. Group consecutive non-table
-  // nodes into text segments; table nodes become table segments.
-  NSMutableArray<ASTNodeWrapper *> *textNodes = [NSMutableArray new];
+- (void)addSegmentForNode:(ASTNodeWrapper *)node
+              styleConfig:(StyleConfig *)styleConfig
+               customTags:(NSArray<NSString *> *)customTags {
+  MDNodeType type = node.nodeType;
 
-  for (ASTNodeWrapper *child in root.children) {
-    if (child.nodeType == MDNodeTypeTable) {
-      // Flush accumulated text nodes
-      if (textNodes.count > 0) {
-        [self addTextSegment:textNodes styleConfig:styleConfig customTags:customTags];
-        textNodes = [NSMutableArray new];
-      }
-      // Add table segment
-      [self addTableSegment:child styleConfig:styleConfig];
-    } else {
-      [textNodes addObject:child];
-    }
-  }
-
-  // Flush remaining text nodes
-  if (textNodes.count > 0) {
-    [self addTextSegment:textNodes styleConfig:styleConfig customTags:customTags];
+  if (type == MDNodeTypeTable) {
+    [self addTableSegment:node styleConfig:styleConfig];
+  } else if (type == MDNodeTypeThematicBreak) {
+    [self addThematicBreakSegment:styleConfig];
+  } else if (type == MDNodeTypeList) {
+    [self addListSegment:node styleConfig:styleConfig customTags:customTags];
+  } else {
+    [self addTextBlockSegment:node
+                  styleConfig:styleConfig
+                   customTags:customTags];
   }
 }
 
-- (void)addTextSegment:(NSArray<ASTNodeWrapper *> *)nodes
+- (void)addTextBlockSegment:(ASTNodeWrapper *)node
+                styleConfig:(StyleConfig *)styleConfig
+                 customTags:(NSArray<NSString *> *)customTags {
+  // Find the style key for this block node
+  MarkdownElementStyle *blockStyle = [self blockStyleForNode:node styleConfig:styleConfig];
+
+  // Render the node's content to an attributed string
+  NSAttributedString *content = [self renderNodeToAttributedString:node
+                                                       styleConfig:styleConfig
+                                                        customTags:customTags];
+
+  if (content.length == 0) return;
+
+  // Wrap in a block view + text view
+  MarkdownBlockView *blockView = [[MarkdownBlockView alloc] initWithStyle:blockStyle];
+
+  UITextView *textView = [self makeTextViewWithAttributedText:content];
+  blockView.contentView = textView;
+
+  [_stackView addArrangedSubview:blockView];
+
+  // Spoiler overlays for this text view
+  [self attachSpoilerOverlayToTextView:textView styleConfig:styleConfig];
+}
+
+- (void)addListSegment:(ASTNodeWrapper *)node
            styleConfig:(StyleConfig *)styleConfig
             customTags:(NSArray<NSString *> *)customTags {
+  MarkdownElementStyle *listStyle = styleConfig.list;
+  MarkdownBlockView *listContainer =
+      [[MarkdownBlockView alloc] initWithStyle:listStyle];
+
+  UIStackView *itemStack = [[UIStackView alloc] initWithFrame:CGRectZero];
+  itemStack.axis = UILayoutConstraintAxisVertical;
+  itemStack.alignment = UIStackViewAlignmentFill;
+  itemStack.spacing = listStyle.gap;
+  listContainer.contentView = itemStack;
+
+  MarkdownElementStyle *itemStyle = styleConfig.listItem;
+
+  NSInteger orderedIndex = node.listStart > 0 ? node.listStart : 1;
+  for (ASTNodeWrapper *child in node.children) {
+    if (child.nodeType != MDNodeTypeListItem) continue;
+
+    MarkdownBlockView *itemView =
+        [[MarkdownBlockView alloc] initWithStyle:itemStyle];
+
+    NSAttributedString *content =
+        [self renderListItemContent:child
+                      orderedIndex:orderedIndex
+                       styleConfig:styleConfig
+                        customTags:customTags];
+
+    if (child.isOrderedList) orderedIndex++;
+
+    UITextView *textView = [self makeTextViewWithAttributedText:content];
+    itemView.contentView = textView;
+
+    [itemStack addArrangedSubview:itemView];
+    [self attachSpoilerOverlayToTextView:textView styleConfig:styleConfig];
+  }
+
+  [_stackView addArrangedSubview:listContainer];
+}
+
+- (void)addTableSegment:(ASTNodeWrapper *)tableNode
+            styleConfig:(StyleConfig *)styleConfig {
+  CGFloat width = self.bounds.size.width > 0
+      ? self.bounds.size.width
+      : UIScreen.mainScreen.bounds.size.width;
+
+  // Account for base container's padding
+  UIEdgeInsets basePadding = [_styleConfig.base resolvedPaddingInsets];
+  width -= basePadding.left + basePadding.right;
+
+  MarkdownTableView *tableView =
+      [[MarkdownTableView alloc] initWithTableNode:tableNode
+                                       styleConfig:styleConfig
+                                          maxWidth:width];
+
+  MarkdownBlockView *wrapper =
+      [[MarkdownBlockView alloc] initWithStyle:styleConfig.table];
+  wrapper.contentView = tableView;
+
+  [_stackView addArrangedSubview:wrapper];
+}
+
+- (void)addThematicBreakSegment:(StyleConfig *)styleConfig {
+  MarkdownBlockView *hrView =
+      [[MarkdownBlockView alloc] initWithStyle:styleConfig.thematicBreak];
+  [_stackView addArrangedSubview:hrView];
+}
+
+#pragma mark - Content rendering
+
+- (NSAttributedString *)renderNodeToAttributedString:(ASTNodeWrapper *)node
+                                         styleConfig:(StyleConfig *)styleConfig
+                                          customTags:(NSArray<NSString *> *)customTags {
   RenderContext *context = [[RenderContext alloc] init];
   context.styleConfig = styleConfig;
   context.customTags = [NSSet setWithArray:customTags];
 
   NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
-  for (ASTNodeWrapper *node in nodes) {
-    id<NodeRenderer> renderer = [RendererFactory rendererForNode:node];
-    if (renderer) {
-      [renderer renderNode:node into:output context:context];
-    }
+
+  id<NodeRenderer> renderer = [RendererFactory rendererForNode:node];
+  if (renderer) {
+    [renderer renderNode:node into:output context:context];
   }
 
-  // Trim trailing newline
-  if (output.length > 0) {
-    unichar lastChar = [output.string characterAtIndex:output.length - 1];
-    if (lastChar == '\n') {
+  // Trim trailing newlines — block separators are handled by stack spacing
+  while (output.length > 0) {
+    unichar last = [output.string characterAtIndex:output.length - 1];
+    if (last == '\n') {
       [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
+    } else {
+      break;
     }
   }
 
-  if (output.length == 0) return;
+  return [output copy];
+}
 
+- (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
+                                 orderedIndex:(NSInteger)orderedIndex
+                                  styleConfig:(StyleConfig *)styleConfig
+                                   customTags:(NSArray<NSString *> *)customTags {
+  RenderContext *context = [[RenderContext alloc] init];
+  context.styleConfig = styleConfig;
+  context.customTags = [NSSet setWithArray:customTags];
+  context.orderedListIndex = orderedIndex;
+  context.listDepth = 1;
+
+  NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
+
+  id<NodeRenderer> renderer = [RendererFactory rendererForNode:item];
+  if (renderer) {
+    [renderer renderNode:item into:output context:context];
+  }
+
+  // Trim trailing newlines
+  while (output.length > 0) {
+    unichar last = [output.string characterAtIndex:output.length - 1];
+    if (last == '\n') {
+      [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
+    } else {
+      break;
+    }
+  }
+
+  return [output copy];
+}
+
+#pragma mark - Helpers
+
+- (MarkdownElementStyle *)blockStyleForNode:(ASTNodeWrapper *)node
+                                styleConfig:(StyleConfig *)styleConfig {
+  switch (node.nodeType) {
+    case MDNodeTypeParagraph:
+      return styleConfig.paragraph;
+    case MDNodeTypeHeading:
+      return [styleConfig styleForHeadingLevel:node.headingLevel];
+    case MDNodeTypeCodeBlock:
+      return styleConfig.codeBlock;
+    case MDNodeTypeBlockquote:
+      return styleConfig.blockquote;
+    default:
+      return nil;
+  }
+}
+
+- (UITextView *)makeTextViewWithAttributedText:(NSAttributedString *)text {
   UITextView *textView = [[UITextView alloc] init];
-  textView.attributedText = output;
+  textView.attributedText = text;
   textView.editable = NO;
   textView.scrollEnabled = NO;
   textView.textContainerInset = UIEdgeInsetsZero;
@@ -245,21 +378,11 @@ static const NSUInteger kMaxCacheSize = 128;
   textView.backgroundColor = [UIColor clearColor];
   textView.dataDetectorTypes = UIDataDetectorTypeNone;
   textView.delegate = self;
+  return textView;
+}
 
-  // Size to fit content
-  CGFloat width = self.bounds.size.width > 0
-      ? self.bounds.size.width
-      : UIScreen.mainScreen.bounds.size.width;
-  CGSize size = [textView sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
-  textView.frame = CGRectMake(0, 0, width, size.height);
-
-  // Set intrinsic height constraint
-  [textView.heightAnchor constraintEqualToConstant:size.height].active = YES;
-
-  [_stackView addArrangedSubview:textView];
-
-  // Add spoiler overlays after the text view is laid out
-  // Force layout so layoutManager has valid glyph positions
+- (void)attachSpoilerOverlayToTextView:(UITextView *)textView
+                           styleConfig:(StyleConfig *)styleConfig {
   [textView layoutIfNeeded];
 
   MarkdownSpoilerOverlay *spoilerOverlay =
@@ -272,23 +395,6 @@ static const NSUInteger kMaxCacheSize = 128;
 
   [spoilerOverlay updateOverlays];
   [_spoilerOverlays addObject:spoilerOverlay];
-}
-
-- (void)addTableSegment:(ASTNodeWrapper *)tableNode
-            styleConfig:(StyleConfig *)styleConfig {
-  CGFloat width = self.bounds.size.width > 0
-      ? self.bounds.size.width
-      : UIScreen.mainScreen.bounds.size.width;
-
-  MarkdownTableView *tableView =
-      [[MarkdownTableView alloc] initWithTableNode:tableNode
-                                       styleConfig:styleConfig
-                                          maxWidth:width];
-
-  tableView.frame = CGRectMake(0, 0, width, tableView.tableHeight);
-  [tableView.heightAnchor constraintEqualToConstant:tableView.tableHeight].active = YES;
-
-  [_stackView addArrangedSubview:tableView];
 }
 
 #pragma mark - UITextViewDelegate

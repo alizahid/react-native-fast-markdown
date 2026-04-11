@@ -11,9 +11,7 @@
            context:(RenderContext *)context {
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
 
-  // Apply the base text style's lineHeight/alignment first, then override
-  // with paragraph-specific style.
-  [StyleAttributes applyStyle:context.styleConfig.text toAttrs:attrs];
+  // Apply paragraph-specific text style on top of base (already in context)
   [StyleAttributes applyStyle:context.styleConfig.paragraph toAttrs:attrs];
 
   [context pushAttributes:attrs];

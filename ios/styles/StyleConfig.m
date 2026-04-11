@@ -2,85 +2,41 @@
 
 @implementation MarkdownElementStyle
 
+#pragma mark - Font resolution
+
 - (UIFont *)resolvedFont {
-  if (_font) return _font;
-
-  // fontSize comes from JS — if it's 0, caller didn't configure it
-  CGFloat size = _fontSize;
-  if (size <= 0) return nil;
-
-  UIFontWeight weight = UIFontWeightRegular;
-
-  if (_fontWeight) {
-    if ([_fontWeight isEqualToString:@"bold"]) {
-      weight = UIFontWeightBold;
-    } else if ([_fontWeight isEqualToString:@"600"]) {
-      weight = UIFontWeightSemibold;
-    } else if ([_fontWeight isEqualToString:@"500"]) {
-      weight = UIFontWeightMedium;
-    } else if ([_fontWeight isEqualToString:@"300"]) {
-      weight = UIFontWeightLight;
-    }
-  }
-
-  if (_fontFamily && ![_fontFamily isEqualToString:@"System"]) {
-    UIFont *customFont = [UIFont fontWithName:_fontFamily size:size];
-    if (customFont) {
-      if (weight != UIFontWeightRegular) {
-        UIFontDescriptor *descriptor = [customFont.fontDescriptor
-            fontDescriptorWithSymbolicTraits:(weight >= UIFontWeightBold
-                                                 ? UIFontDescriptorTraitBold
-                                                 : 0)];
-        if (descriptor) {
-          return [UIFont fontWithDescriptor:descriptor size:size];
-        }
-      }
-      return customFont;
-    }
-  }
-
-  UIFont *font = [UIFont systemFontOfSize:size weight:weight];
-
-  if ([_fontStyle isEqualToString:@"italic"]) {
-    UIFontDescriptor *descriptor = [font.fontDescriptor
-        fontDescriptorWithSymbolicTraits:UIFontDescriptorTraitItalic];
-    if (descriptor) {
-      return [UIFont fontWithDescriptor:descriptor size:size];
-    }
-  }
-
-  return font;
+  return [self resolvedFontWithBase:nil];
 }
 
 - (UIFont *)resolvedFontWithBase:(UIFont *)baseFont {
-  if (!baseFont) return [self resolvedFont];
+  CGFloat size = _fontSize > 0
+      ? _fontSize
+      : (baseFont ? baseFont.pointSize : 0);
+  if (size <= 0) return baseFont;
 
-  // Start from base font size/family, override with any properties set on self
-  CGFloat size = _fontSize > 0 ? _fontSize : baseFont.pointSize;
   NSString *family = _fontFamily ?: baseFont.familyName;
 
-  // Inherit existing traits (bold/italic) from base font
+  // Start from base font's traits if available
   UIFontDescriptorSymbolicTraits traits =
-      baseFont.fontDescriptor.symbolicTraits;
+      baseFont ? baseFont.fontDescriptor.symbolicTraits : 0;
 
-  // Apply weight override
   if (_fontWeight) {
     if ([_fontWeight isEqualToString:@"bold"] ||
+        [_fontWeight isEqualToString:@"600"] ||
         [_fontWeight isEqualToString:@"700"] ||
         [_fontWeight isEqualToString:@"800"] ||
-        [_fontWeight isEqualToString:@"900"] ||
-        [_fontWeight isEqualToString:@"600"]) {
+        [_fontWeight isEqualToString:@"900"]) {
       traits |= UIFontDescriptorTraitBold;
     } else if ([_fontWeight isEqualToString:@"normal"] ||
-               [_fontWeight isEqualToString:@"400"] ||
-               [_fontWeight isEqualToString:@"300"] ||
+               [_fontWeight isEqualToString:@"100"] ||
                [_fontWeight isEqualToString:@"200"] ||
-               [_fontWeight isEqualToString:@"100"]) {
+               [_fontWeight isEqualToString:@"300"] ||
+               [_fontWeight isEqualToString:@"400"] ||
+               [_fontWeight isEqualToString:@"500"]) {
       traits &= ~UIFontDescriptorTraitBold;
     }
   }
 
-  // Apply italic override
   if (_fontStyle) {
     if ([_fontStyle isEqualToString:@"italic"]) {
       traits |= UIFontDescriptorTraitItalic;
@@ -90,8 +46,6 @@
   }
 
   UIFont *resolved = nil;
-
-  // If family is a system/generic name, use systemFontOfSize
   if (!family || [family isEqualToString:@"System"]) {
     UIFontWeight weight = (traits & UIFontDescriptorTraitBold)
         ? UIFontWeightBold
@@ -104,7 +58,6 @@
       if (d) resolved = [UIFont fontWithDescriptor:d size:size];
     }
   } else {
-    // Custom font family
     UIFont *base = [UIFont fontWithName:family size:size];
     if (base) {
       UIFontDescriptor *d =
@@ -116,37 +69,133 @@
   return resolved ?: baseFont;
 }
 
+#pragma mark - Layout insets
+
 - (UIEdgeInsets)resolvedPaddingInsets {
-  // Specific edges override paddingHorizontal/paddingVertical which override padding
+  // Specific edges override paddingHorizontal/paddingVertical which override padding.
+  // paddingLeft/paddingStart and paddingRight/paddingEnd are treated as equivalents.
   CGFloat top = _paddingTop > 0
       ? _paddingTop
       : (_paddingVertical > 0 ? _paddingVertical : _padding);
   CGFloat bottom = _paddingBottom > 0
       ? _paddingBottom
       : (_paddingVertical > 0 ? _paddingVertical : _padding);
+
   CGFloat left = _paddingLeft > 0
       ? _paddingLeft
-      : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding);
+      : (_paddingStart > 0
+             ? _paddingStart
+             : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding));
   CGFloat right = _paddingRight > 0
       ? _paddingRight
-      : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding);
+      : (_paddingEnd > 0
+             ? _paddingEnd
+             : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding));
+
   return UIEdgeInsetsMake(top, left, bottom, right);
 }
 
-- (void)applyViewStyleToView:(UIView *)view {
-  if (_backgroundColor) {
-    view.backgroundColor = _backgroundColor;
+- (UIEdgeInsets)resolvedMarginInsets {
+  CGFloat top = _marginTop > 0
+      ? _marginTop
+      : (_marginVertical > 0 ? _marginVertical : _margin);
+  CGFloat bottom = _marginBottom > 0
+      ? _marginBottom
+      : (_marginVertical > 0 ? _marginVertical : _margin);
+  CGFloat left = _marginLeft > 0
+      ? _marginLeft
+      : (_marginStart > 0
+             ? _marginStart
+             : (_marginHorizontal > 0 ? _marginHorizontal : _margin));
+  CGFloat right = _marginRight > 0
+      ? _marginRight
+      : (_marginEnd > 0
+             ? _marginEnd
+             : (_marginHorizontal > 0 ? _marginHorizontal : _margin));
+
+  return UIEdgeInsetsMake(top, left, bottom, right);
+}
+
+- (UIEdgeInsets)resolvedBorderWidths {
+  CGFloat top = _borderTopWidth > 0 ? _borderTopWidth : _borderWidth;
+  CGFloat bottom = _borderBottomWidth > 0 ? _borderBottomWidth : _borderWidth;
+  CGFloat left = _borderLeftWidth > 0 ? _borderLeftWidth : _borderWidth;
+  CGFloat right = _borderRightWidth > 0 ? _borderRightWidth : _borderWidth;
+  return UIEdgeInsetsMake(top, left, bottom, right);
+}
+
+- (UIColor *)resolvedBorderColorForEdge:(UIRectEdge)edge {
+  switch (edge) {
+    case UIRectEdgeTop:
+      return _borderTopColor ?: _borderBlockStartColor ?: _borderBlockColor ?: _borderColor;
+    case UIRectEdgeBottom:
+      return _borderBottomColor ?: _borderBlockEndColor ?: _borderBlockColor ?: _borderColor;
+    case UIRectEdgeLeft:
+      return _borderLeftColor ?: _borderStartColor ?: _borderColor;
+    case UIRectEdgeRight:
+      return _borderRightColor ?: _borderEndColor ?: _borderColor;
+    default:
+      return _borderColor;
   }
-  if (_borderRadius > 0) {
-    view.layer.cornerRadius = _borderRadius;
-    view.layer.masksToBounds = YES;
+}
+
+- (CGFloat)resolvedRadiusForCorner:(UIRectCorner)corner {
+  switch (corner) {
+    case UIRectCornerTopLeft:
+      return _borderTopLeftRadius > 0 ? _borderTopLeftRadius
+                                      : (_borderTopStartRadius > 0 ? _borderTopStartRadius
+                                                                   : (_borderStartStartRadius > 0 ? _borderStartStartRadius : _borderRadius));
+    case UIRectCornerTopRight:
+      return _borderTopRightRadius > 0 ? _borderTopRightRadius
+                                       : (_borderTopEndRadius > 0 ? _borderTopEndRadius
+                                                                  : (_borderStartEndRadius > 0 ? _borderStartEndRadius : _borderRadius));
+    case UIRectCornerBottomLeft:
+      return _borderBottomLeftRadius > 0 ? _borderBottomLeftRadius
+                                         : (_borderBottomStartRadius > 0 ? _borderBottomStartRadius
+                                                                         : (_borderEndStartRadius > 0 ? _borderEndStartRadius : _borderRadius));
+    case UIRectCornerBottomRight:
+      return _borderBottomRightRadius > 0 ? _borderBottomRightRadius
+                                          : (_borderBottomEndRadius > 0 ? _borderBottomEndRadius
+                                                                        : (_borderEndEndRadius > 0 ? _borderEndEndRadius : _borderRadius));
+    default:
+      return _borderRadius;
   }
-  if (_borderWidth > 0) {
-    view.layer.borderWidth = _borderWidth;
-    if (_borderColor) {
-      view.layer.borderColor = _borderColor.CGColor;
-    }
+}
+
+- (BOOL)hasAnyBorder {
+  UIEdgeInsets widths = [self resolvedBorderWidths];
+  return widths.top > 0 || widths.bottom > 0 || widths.left > 0 || widths.right > 0;
+}
+
+- (BOOL)hasAnyRadius {
+  return _borderRadius > 0 ||
+         _borderTopLeftRadius > 0 || _borderTopRightRadius > 0 ||
+         _borderBottomLeftRadius > 0 || _borderBottomRightRadius > 0 ||
+         _borderTopStartRadius > 0 || _borderTopEndRadius > 0 ||
+         _borderBottomStartRadius > 0 || _borderBottomEndRadius > 0 ||
+         _borderStartStartRadius > 0 || _borderStartEndRadius > 0 ||
+         _borderEndStartRadius > 0 || _borderEndEndRadius > 0;
+}
+
+- (BOOL)hasNonUniformBorders {
+  UIEdgeInsets widths = [self resolvedBorderWidths];
+  BOOL widthsDiffer = !(widths.top == widths.bottom &&
+                        widths.bottom == widths.left &&
+                        widths.left == widths.right);
+  if (widthsDiffer) return YES;
+
+  UIColor *top = [self resolvedBorderColorForEdge:UIRectEdgeTop];
+  UIColor *bottom = [self resolvedBorderColorForEdge:UIRectEdgeBottom];
+  UIColor *left = [self resolvedBorderColorForEdge:UIRectEdgeLeft];
+  UIColor *right = [self resolvedBorderColorForEdge:UIRectEdgeRight];
+
+  if ((top && bottom && ![top isEqual:bottom]) ||
+      (top && left && ![top isEqual:left]) ||
+      (top && right && ![top isEqual:right])) {
+    return YES;
   }
+
+  return NO;
 }
 
 @end
@@ -166,34 +215,35 @@
                                                          error:&error];
   if (error || ![dict isKindOfClass:[NSDictionary class]]) return config;
 
-  config.text = [self elementStyleFromDict:dict[@"text"]];
+  config.base = [self elementStyleFromDict:dict[@"base"]];
+
+  config.paragraph = [self elementStyleFromDict:dict[@"paragraph"]];
   config.heading1 = [self elementStyleFromDict:dict[@"heading1"]];
   config.heading2 = [self elementStyleFromDict:dict[@"heading2"]];
   config.heading3 = [self elementStyleFromDict:dict[@"heading3"]];
   config.heading4 = [self elementStyleFromDict:dict[@"heading4"]];
   config.heading5 = [self elementStyleFromDict:dict[@"heading5"]];
   config.heading6 = [self elementStyleFromDict:dict[@"heading6"]];
-  config.paragraph = [self elementStyleFromDict:dict[@"paragraph"]];
-  config.strong = [self elementStyleFromDict:dict[@"strong"]];
-  config.emphasis = [self elementStyleFromDict:dict[@"emphasis"]];
-  config.strikethrough = [self elementStyleFromDict:dict[@"strikethrough"]];
-  config.underline = [self elementStyleFromDict:dict[@"underline"]];
-  config.code = [self elementStyleFromDict:dict[@"code"]];
-  config.codeBlock = [self elementStyleFromDict:dict[@"codeBlock"]];
-  config.link = [self elementStyleFromDict:dict[@"link"]];
   config.blockquote = [self elementStyleFromDict:dict[@"blockquote"]];
+  config.codeBlock = [self elementStyleFromDict:dict[@"codeBlock"]];
+  config.list = [self elementStyleFromDict:dict[@"list"]];
   config.listItem = [self elementStyleFromDict:dict[@"listItem"]];
   config.listBullet = [self elementStyleFromDict:dict[@"listBullet"]];
+  config.thematicBreak = [self elementStyleFromDict:dict[@"thematicBreak"]];
+  config.image = [self elementStyleFromDict:dict[@"image"]];
 
-  // Tables
   config.table = [self elementStyleFromDict:dict[@"table"]];
   config.tableRow = [self elementStyleFromDict:dict[@"tableRow"]];
   config.tableHeaderRow = [self elementStyleFromDict:dict[@"tableHeaderRow"]];
   config.tableCell = [self elementStyleFromDict:dict[@"tableCell"]];
   config.tableHeaderCell = [self elementStyleFromDict:dict[@"tableHeaderCell"]];
 
-  config.thematicBreak = [self elementStyleFromDict:dict[@"thematicBreak"]];
-  config.image = [self elementStyleFromDict:dict[@"image"]];
+  config.strong = [self elementStyleFromDict:dict[@"strong"]];
+  config.emphasis = [self elementStyleFromDict:dict[@"emphasis"]];
+  config.strikethrough = [self elementStyleFromDict:dict[@"strikethrough"]];
+  config.underline = [self elementStyleFromDict:dict[@"underline"]];
+  config.code = [self elementStyleFromDict:dict[@"code"]];
+  config.link = [self elementStyleFromDict:dict[@"link"]];
   config.mention = [self elementStyleFromDict:dict[@"mention"]];
   config.spoiler = [self elementStyleFromDict:dict[@"spoiler"]];
 
@@ -205,46 +255,81 @@
   if (![dict isKindOfClass:[NSDictionary class]]) return style;
 
   // Text properties
-  if (dict[@"fontSize"]) style.fontSize = [dict[@"fontSize"] doubleValue];
-  if (dict[@"fontWeight"]) style.fontWeight = dict[@"fontWeight"];
-  if (dict[@"fontStyle"]) style.fontStyle = dict[@"fontStyle"];
+  style.color = [self colorFromValue:dict[@"color"]];
   if (dict[@"fontFamily"]) style.fontFamily = dict[@"fontFamily"];
+  if (dict[@"fontSize"]) style.fontSize = [dict[@"fontSize"] doubleValue];
+  if (dict[@"fontStyle"]) style.fontStyle = dict[@"fontStyle"];
+  if (dict[@"fontWeight"]) style.fontWeight = dict[@"fontWeight"];
+  if (dict[@"letterSpacing"]) style.letterSpacing = [dict[@"letterSpacing"] doubleValue];
   if (dict[@"lineHeight"]) style.lineHeight = [dict[@"lineHeight"] doubleValue];
-  if (dict[@"textDecorationLine"]) style.textDecorationLine = dict[@"textDecorationLine"];
   if (dict[@"textAlign"]) style.textAlign = dict[@"textAlign"];
+  style.textDecorationColor = [self colorFromValue:dict[@"textDecorationColor"]];
+  if (dict[@"textDecorationLine"]) style.textDecorationLine = dict[@"textDecorationLine"];
+  if (dict[@"textDecorationStyle"]) style.textDecorationStyle = dict[@"textDecorationStyle"];
+
+  // View properties
+  style.backgroundColor = [self colorFromValue:dict[@"backgroundColor"]];
+
+  if (dict[@"gap"]) style.gap = [dict[@"gap"] doubleValue];
+
+  // Margin
+  if (dict[@"margin"]) style.margin = [dict[@"margin"] doubleValue];
+  if (dict[@"marginTop"]) style.marginTop = [dict[@"marginTop"] doubleValue];
+  if (dict[@"marginBottom"]) style.marginBottom = [dict[@"marginBottom"] doubleValue];
+  if (dict[@"marginLeft"]) style.marginLeft = [dict[@"marginLeft"] doubleValue];
+  if (dict[@"marginRight"]) style.marginRight = [dict[@"marginRight"] doubleValue];
+  if (dict[@"marginStart"]) style.marginStart = [dict[@"marginStart"] doubleValue];
+  if (dict[@"marginEnd"]) style.marginEnd = [dict[@"marginEnd"] doubleValue];
+  if (dict[@"marginHorizontal"]) style.marginHorizontal = [dict[@"marginHorizontal"] doubleValue];
+  if (dict[@"marginVertical"]) style.marginVertical = [dict[@"marginVertical"] doubleValue];
 
   // Padding
   if (dict[@"padding"]) style.padding = [dict[@"padding"] doubleValue];
-  if (dict[@"paddingHorizontal"]) style.paddingHorizontal = [dict[@"paddingHorizontal"] doubleValue];
-  if (dict[@"paddingVertical"]) style.paddingVertical = [dict[@"paddingVertical"] doubleValue];
   if (dict[@"paddingTop"]) style.paddingTop = [dict[@"paddingTop"] doubleValue];
   if (dict[@"paddingBottom"]) style.paddingBottom = [dict[@"paddingBottom"] doubleValue];
   if (dict[@"paddingLeft"]) style.paddingLeft = [dict[@"paddingLeft"] doubleValue];
   if (dict[@"paddingRight"]) style.paddingRight = [dict[@"paddingRight"] doubleValue];
+  if (dict[@"paddingStart"]) style.paddingStart = [dict[@"paddingStart"] doubleValue];
+  if (dict[@"paddingEnd"]) style.paddingEnd = [dict[@"paddingEnd"] doubleValue];
+  if (dict[@"paddingHorizontal"]) style.paddingHorizontal = [dict[@"paddingHorizontal"] doubleValue];
+  if (dict[@"paddingVertical"]) style.paddingVertical = [dict[@"paddingVertical"] doubleValue];
 
-  // Margin
-  if (dict[@"marginVertical"]) style.marginVertical = [dict[@"marginVertical"] doubleValue];
-
-  // Border
+  // Border widths
   if (dict[@"borderWidth"]) style.borderWidth = [dict[@"borderWidth"] doubleValue];
-  if (dict[@"borderRadius"]) style.borderRadius = [dict[@"borderRadius"] doubleValue];
-  if (dict[@"borderLeftWidth"]) style.borderLeftWidth = [dict[@"borderLeftWidth"] doubleValue];
-  if (dict[@"borderRightWidth"]) style.borderRightWidth = [dict[@"borderRightWidth"] doubleValue];
   if (dict[@"borderTopWidth"]) style.borderTopWidth = [dict[@"borderTopWidth"] doubleValue];
   if (dict[@"borderBottomWidth"]) style.borderBottomWidth = [dict[@"borderBottomWidth"] doubleValue];
+  if (dict[@"borderLeftWidth"]) style.borderLeftWidth = [dict[@"borderLeftWidth"] doubleValue];
+  if (dict[@"borderRightWidth"]) style.borderRightWidth = [dict[@"borderRightWidth"] doubleValue];
 
-  // Size
-  if (dict[@"height"]) style.height = [dict[@"height"] doubleValue];
-  if (dict[@"width"]) style.width = [dict[@"width"] doubleValue];
-
-  // Colors (processColor returns ARGB integer on native)
-  style.color = [self colorFromValue:dict[@"color"]];
-  style.backgroundColor = [self colorFromValue:dict[@"backgroundColor"]];
+  // Border colors
   style.borderColor = [self colorFromValue:dict[@"borderColor"]];
-  style.borderLeftColor = [self colorFromValue:dict[@"borderLeftColor"]];
-  style.borderRightColor = [self colorFromValue:dict[@"borderRightColor"]];
   style.borderTopColor = [self colorFromValue:dict[@"borderTopColor"]];
   style.borderBottomColor = [self colorFromValue:dict[@"borderBottomColor"]];
+  style.borderLeftColor = [self colorFromValue:dict[@"borderLeftColor"]];
+  style.borderRightColor = [self colorFromValue:dict[@"borderRightColor"]];
+  style.borderBlockColor = [self colorFromValue:dict[@"borderBlockColor"]];
+  style.borderBlockStartColor = [self colorFromValue:dict[@"borderBlockStartColor"]];
+  style.borderBlockEndColor = [self colorFromValue:dict[@"borderBlockEndColor"]];
+  style.borderStartColor = [self colorFromValue:dict[@"borderStartColor"]];
+  style.borderEndColor = [self colorFromValue:dict[@"borderEndColor"]];
+
+  // Border radii
+  if (dict[@"borderRadius"]) style.borderRadius = [dict[@"borderRadius"] doubleValue];
+  if (dict[@"borderTopLeftRadius"]) style.borderTopLeftRadius = [dict[@"borderTopLeftRadius"] doubleValue];
+  if (dict[@"borderTopRightRadius"]) style.borderTopRightRadius = [dict[@"borderTopRightRadius"] doubleValue];
+  if (dict[@"borderBottomLeftRadius"]) style.borderBottomLeftRadius = [dict[@"borderBottomLeftRadius"] doubleValue];
+  if (dict[@"borderBottomRightRadius"]) style.borderBottomRightRadius = [dict[@"borderBottomRightRadius"] doubleValue];
+  if (dict[@"borderTopStartRadius"]) style.borderTopStartRadius = [dict[@"borderTopStartRadius"] doubleValue];
+  if (dict[@"borderTopEndRadius"]) style.borderTopEndRadius = [dict[@"borderTopEndRadius"] doubleValue];
+  if (dict[@"borderBottomStartRadius"]) style.borderBottomStartRadius = [dict[@"borderBottomStartRadius"] doubleValue];
+  if (dict[@"borderBottomEndRadius"]) style.borderBottomEndRadius = [dict[@"borderBottomEndRadius"] doubleValue];
+  if (dict[@"borderStartStartRadius"]) style.borderStartStartRadius = [dict[@"borderStartStartRadius"] doubleValue];
+  if (dict[@"borderStartEndRadius"]) style.borderStartEndRadius = [dict[@"borderStartEndRadius"] doubleValue];
+  if (dict[@"borderEndStartRadius"]) style.borderEndStartRadius = [dict[@"borderEndStartRadius"] doubleValue];
+  if (dict[@"borderEndEndRadius"]) style.borderEndEndRadius = [dict[@"borderEndEndRadius"] doubleValue];
+
+  if (dict[@"borderStyle"]) style.borderStyle = dict[@"borderStyle"];
+  if (dict[@"borderCurve"]) style.borderCurve = dict[@"borderCurve"];
 
   return style;
 }

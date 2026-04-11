@@ -294,8 +294,8 @@ using namespace facebook::react;
 
   NSRange savedRange = _textView.selectedRange;
 
-  UIFont *baseFont = [_styleConfig.paragraph resolvedFont];
-  UIColor *textColor = _styleConfig.paragraph.color;
+  UIFont *baseFont = [_styleConfig.base resolvedFont];
+  UIColor *textColor = _styleConfig.base.color;
 
   NSMutableDictionary *attrs = [NSMutableDictionary new];
   if (baseFont) attrs[NSFontAttributeName] = baseFont;

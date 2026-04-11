@@ -95,7 +95,7 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
                                             cellStyle:cellStyle
                                       headerCellStyle:headerCellStyle
                                           styleConfig:styleConfig];
-      UIColor *textColor = textStyle.color ?: styleConfig.text.color;
+      UIColor *textColor = textStyle.color ?: styleConfig.base.color;
 
       NSMutableArray<NSAttributedString *> *rowContents = [NSMutableArray new];
       for (NSUInteger c = 0; c < colCount; c++) {
@@ -276,7 +276,7 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
                    headerCellStyle:(MarkdownElementStyle *)headerCellStyle
                        styleConfig:(StyleConfig *)styleConfig {
   // Start from base text font, then cascade cell → header cell
-  UIFont *baseFont = [styleConfig.text resolvedFont];
+  UIFont *baseFont = [styleConfig.base resolvedFont];
   UIFont *cellFont = [cellStyle resolvedFontWithBase:baseFont] ?: baseFont;
   if (isHeader && headerCellStyle) {
     return [headerCellStyle resolvedFontWithBase:cellFont] ?: cellFont;
