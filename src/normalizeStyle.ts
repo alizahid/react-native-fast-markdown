@@ -10,7 +10,7 @@ const colors = {
   link: 'rgb(160, 47, 111)',
   user: 'rgb(102, 128, 11)',
   channel: 'rgb(32, 94, 166)',
-  command: 'rgb(160, 47, 111)',
+  command: 'rgb(94, 64, 157)',
 }
 
 const fonts = {
