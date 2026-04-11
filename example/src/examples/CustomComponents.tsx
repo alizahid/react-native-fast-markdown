@@ -4,7 +4,7 @@ import { Markdown } from 'react-native-markdown'
 const mentionsMarkdown = `\
 ## Mentions
 
-Hey <UserMention id="u_ali" name="Ali" />, have you seen the latest changes in <ChannelMention id="c_release" name="release" />?
+Hey <UserMention id="u_ali" name="Ali" foo="123" />, have you seen the latest changes in <ChannelMention id="c_release" name="release" />?
 
 I think <UserMention id="u_sarah" name="Sarah" /> and <UserMention id="u_james" name="James" /> should review the PR. Try <CommandMention id="review" /> to request a review.
 `
@@ -37,16 +37,6 @@ Here's a message with **bold text**, a [link](https://example.com), and a mentio
 - Contains <Spoiler>hidden details</Spoiler>
 `
 
-function describeMention(event: {
-  type: 'user' | 'channel' | 'command'
-  id: string
-  name?: string
-}) {
-  return `${event.type} • id=${event.id}${
-    event.name ? ` • name=${event.name}` : ''
-  }`
-}
-
 export function CustomComponentsScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
@@ -54,7 +44,7 @@ export function CustomComponentsScreen() {
       <View style={styles.card}>
         <Markdown
           onMentionPress={(event) => {
-            Alert.alert('Mention pressed', describeMention(event))
+            Alert.alert('Mention pressed', JSON.stringify(event, null, 2))
           }}
         >
           {mentionsMarkdown}
@@ -73,7 +63,7 @@ export function CustomComponentsScreen() {
             Alert.alert('Link pressed', event.url)
           }}
           onMentionPress={(event) => {
-            Alert.alert('Mention pressed', describeMention(event))
+            Alert.alert('Mention pressed', JSON.stringify(event, null, 2))
           }}
         >
           {mixedMarkdown}
