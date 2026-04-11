@@ -20,6 +20,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// Color for the spoiler overlay. Defaults to label color.
 @property (nonatomic, strong) UIColor *overlayColor;
 
+/// Corner radius applied to the spoiler shape path. Set by
+/// MarkdownView from styleConfig.spoiler.borderRadius. Defaults to 0
+/// (sharp corners).
+@property (nonatomic, assign) CGFloat cornerRadius;
+
 @end
 
 NS_ASSUME_NONNULL_END

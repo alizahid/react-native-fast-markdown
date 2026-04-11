@@ -414,6 +414,7 @@ using namespace facebook::react;
   if (spoilerStyle.backgroundColor) {
     spoilerOverlay.overlayColor = spoilerStyle.backgroundColor;
   }
+  spoilerOverlay.cornerRadius = spoilerStyle.borderRadius;
   [_spoilerOverlays addObject:spoilerOverlay];
 
   // Mentions — transparent highlight-on-press overlay that fires

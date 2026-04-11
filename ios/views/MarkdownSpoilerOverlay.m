@@ -3,7 +3,6 @@
 #import "MarkdownPressableOverlayView.h"
 
 static const CGFloat kRevealAnimationDuration = 0.25;
-static const CGFloat kSpoilerCornerRadius = 6.0;
 
 @implementation MarkdownSpoilerOverlay {
   __weak UITextView *_textView;
@@ -151,7 +150,7 @@ static const CGFloat kSpoilerCornerRadius = 6.0;
     }
     UIBezierPath *path =
         [MarkdownPressableOverlayView shapePathForRects:localRects
-                                           cornerRadius:kSpoilerCornerRadius];
+                                           cornerRadius:_cornerRadius];
 
     MarkdownPressableOverlayView *overlay =
         [[MarkdownPressableOverlayView alloc] initWithFrame:bounds];
