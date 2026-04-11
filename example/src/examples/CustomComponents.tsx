@@ -12,7 +12,7 @@ I think <Mention user="Sarah" /> and <Mention user="James" /> should review the 
 const spoilersMarkdown = `\
 ## Spoilers
 
-The movie ends with <Spoiler>the hero saving the world</Spoiler> which was unexpected.
+The movie ends with <Spoiler>the hero 😅 saving the world the hero 😅 saving the world the hero 😅 saving the world the hero 😅 saving the world</Spoiler> which was unexpected.
 
 Here's a bigger spoiler:
 

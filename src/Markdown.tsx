@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { StyleSheet, type StyleProp, type ViewProps } from 'react-native'
+import { type StyleProp, StyleSheet, type ViewProps } from 'react-native'
 import MarkdownViewNative from './MarkdownNativeComponent'
 import { normalizeMarkdownStyle } from './normalizeStyle'
 import {
@@ -17,14 +17,6 @@ export interface MarkdownProps extends Omit<ViewProps, 'style'> {
   /** Registered custom HTML-like tag names */
   customTags?: Array<string>
 
-  /** Custom styles for markdown elements */
-  styles?: MarkdownStyle
-
-  /** Style applied to the markdown container. Accepts both ViewStyle
-   *  (padding, background, borders, gap between blocks) and TextStyle
-   *  (default font, color, lineHeight inherited by all text). */
-  style?: StyleProp<MarkdownBlockStyle>
-
   /** Called when a link is long pressed */
   onLinkLongPress?: (event: LinkPressEvent) => void
 
@@ -36,6 +28,14 @@ export interface MarkdownProps extends Omit<ViewProps, 'style'> {
 
   /** Called when a task list checkbox is pressed */
   onTaskListItemPress?: (event: TaskListItemPressEvent) => void
+
+  /** Style applied to the markdown container. Accepts both ViewStyle
+   *  (padding, background, borders, gap between blocks) and TextStyle
+   *  (default font, color, lineHeight inherited by all text). */
+  style?: StyleProp<MarkdownBlockStyle>
+
+  /** Custom styles for markdown elements */
+  styles?: MarkdownStyle
 }
 
 export function Markdown({
@@ -83,8 +83,6 @@ export function Markdown({
       {...viewProps}
       customTags={customTags}
       markdown={children}
-      styles={serializedStyles}
-      style={height === undefined ? undefined : { height }}
       onContentSizeChange={handleContentSizeChange}
       onLinkLongPress={
         onLinkLongPress
@@ -118,6 +116,8 @@ export function Markdown({
               })
           : undefined
       }
+      style={height === undefined ? undefined : { height }}
+      styles={serializedStyles}
     />
   )
 }

@@ -1,6 +1,5 @@
-// biome-ignore lint/correctness/noGlobalDirnameFilename: CJS
-const path = require('node:path')
-const pkg = require('../package.json')
+import path from 'node:path'
+import pkg from '../package.json'
 
 module.exports = {
   project: {
@@ -10,7 +9,7 @@ module.exports = {
   },
   dependencies: {
     [pkg.name]: {
-      root: path.join(__dirname, '..'),
+      root: path.join(import.meta.dirname, '..'),
       platforms: {
         ios: {},
         android: {},

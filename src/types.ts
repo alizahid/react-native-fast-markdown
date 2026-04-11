@@ -64,6 +64,7 @@ export type MarkdownBlockStyle = MarkdownViewStyle & MarkdownTextStyle
 
 // --- Markdown Style ---
 
+// biome-ignore assist/source/useSortedInterfaceMembers: go away
 export interface MarkdownStyle {
   // Block elements (accept both view + text)
   paragraph?: MarkdownBlockStyle

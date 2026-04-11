@@ -18,6 +18,11 @@ const tablesMarkdown = `\
 | React Native | 120k | JavaScript |
 | Flutter | 165k | Dart |
 | SwiftUI | N/A | Swift |
+
+|Lorem ipsum dolor sit amet, consectetur adipiscing elit.|Cras quis eros ac nunc ullamcorper eleifend eget nec nunc.|Nam sollicitudin ipsum nec velit tempus dictum.|
+|:-|:-|:-|
+|Duis sagittis tortor quis dui consectetur venenatis.|Vivamus scelerisque ipsum et urna placerat porttitor.|Suspendisse eget purus eu erat viverra gravida.|
+|Aliquam maximus libero eget vulputate faucibus.|Aliquam iaculis quam ut magna molestie iaculis.|Sed eget libero tristique, ultrices eros eget, feugiat ligula.|
 `
 
 const taskListMarkdown = `\

@@ -28,9 +28,6 @@ export interface MarkdownInputProps extends ViewProps {
   /** Whether the input is editable */
   editable?: boolean
 
-  /** Custom styles for markdown elements */
-  styles?: MarkdownStyle
-
   /** Whether the input supports multiple lines */
   multiline?: boolean
 
@@ -69,6 +66,9 @@ export interface MarkdownInputProps extends ViewProps {
 
   /** Selection highlight color */
   selectionColor?: ColorValue
+
+  /** Custom styles for markdown elements */
+  styles?: MarkdownStyle
 }
 
 export const MarkdownInput = forwardRef<
@@ -259,7 +259,6 @@ export const MarkdownInput = forwardRef<
       customTags={customTags}
       defaultValue={defaultValue}
       editable={editable}
-      styles={serializedStyles}
       multiline={multiline}
       onChangeMarkdown={
         onChangeMarkdown
@@ -294,6 +293,7 @@ export const MarkdownInput = forwardRef<
       ref={nativeRef}
       scrollEnabled={scrollEnabled}
       selectionColor={selectionColor ? String(selectionColor) : undefined}
+      styles={serializedStyles}
     />
   )
 })

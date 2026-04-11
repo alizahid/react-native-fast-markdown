@@ -56,6 +56,20 @@ export function BasicRendererScreen() {
         onLinkPress={(event) => {
           Alert.alert('Link pressed', event.url)
         }}
+        style={{
+          backgroundColor: 'brown',
+          padding: 12,
+        }}
+        styles={{
+          text: {
+            fontFamily: 'American Typewriter',
+            fontSize: 14,
+            lineHeight: 20,
+          },
+          codeBlock: {
+            padding: 12,
+          },
+        }}
       >
         {basicMarkdown}
       </Markdown>

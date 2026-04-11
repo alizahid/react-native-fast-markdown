@@ -11,7 +11,6 @@ import {
 export interface MarkdownViewNativeProps extends ViewProps {
   customTags?: ReadonlyArray<string>
   markdown: string
-  styles?: string // JSON-serialized MarkdownStyle
 
   // Events
   onContentSizeChange?: DirectEventHandler<
@@ -23,6 +22,7 @@ export interface MarkdownViewNativeProps extends ViewProps {
   onTaskListItemPress?: DirectEventHandler<
     Readonly<{ index: Double; checked: boolean }>
   >
+  styles?: string // JSON-serialized MarkdownStyle
 }
 
 export default codegenNativeComponent<MarkdownViewNativeProps>(

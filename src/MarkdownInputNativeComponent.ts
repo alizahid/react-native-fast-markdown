@@ -17,7 +17,6 @@ export interface MarkdownInputViewNativeProps extends ViewProps {
   customTags?: ReadonlyArray<string>
   defaultValue?: string
   editable?: boolean
-  styles?: string // JSON-serialized MarkdownStyle
   multiline?: boolean
   onChangeMarkdown?: DirectEventHandler<Readonly<{ markdown: string }>>
   onChangeSelection?: DirectEventHandler<
@@ -46,6 +45,7 @@ export interface MarkdownInputViewNativeProps extends ViewProps {
   placeholderTextColor?: string
   scrollEnabled?: boolean
   selectionColor?: string
+  styles?: string // JSON-serialized MarkdownStyle
 }
 
 type MarkdownInputViewComponent = HostComponent<MarkdownInputViewNativeProps>
