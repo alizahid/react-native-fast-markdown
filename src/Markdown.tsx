@@ -106,19 +106,22 @@ export function Markdown({
       onMentionPress={
         onMentionPress
           ? (e) => {
-              let props: Record<string, string> = {}
+              let extras: Record<string, string> = {}
               try {
-                props = e.nativeEvent.mentionProps
+                extras = e.nativeEvent.mentionProps
                   ? JSON.parse(e.nativeEvent.mentionProps)
                   : {}
               } catch {
-                props = {}
+                extras = {}
               }
+              // Flatten: extras first, then the canonical fields on
+              // top so id/name/type always win over any extra prop
+              // that happens to share those names.
               onMentionPress({
+                ...extras,
                 type: e.nativeEvent.mentionType as MentionType,
                 id: e.nativeEvent.mentionId,
                 name: e.nativeEvent.mentionName || undefined,
-                props,
               })
             }
           : undefined

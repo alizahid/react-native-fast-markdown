@@ -122,15 +122,19 @@ export interface LinkPressEvent {
  *  `command` is `/`. */
 export type MentionType = 'user' | 'channel' | 'command'
 
-export interface MentionPressEvent {
+/** Payload delivered to `onMentionPress`. `type`, `id` and `name`
+ *  come from the tag's canonical attributes; any other attribute set
+ *  on the source tag flows through as an extra string field on the
+ *  same object. */
+export type MentionPressEvent = {
   /** Which kind of mention was pressed. */
   type: MentionType
   /** The `id` attribute that was on the mention tag. */
   id: string
   /** The `name` attribute, if present (optional for commands). */
   name?: string
-  /** Any extra props that were on the tag beyond `id` / `name`. */
-  props: Record<string, string>
+} & {
+  [key: string]: string | MentionType | undefined
 }
 
 
