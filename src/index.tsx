@@ -1,21 +1,15 @@
-export type { MarkdownProps } from './Markdown'
 export { Markdown } from './Markdown'
-export type { MarkdownInputProps } from './MarkdownInput'
+export type { MarkdownProps } from './Markdown'
 export { MarkdownInput } from './MarkdownInput'
+export type { MarkdownInputProps } from './MarkdownInput'
 export type {
   EditorStyleState,
   LinkPressEvent,
-  MarkdownBlockquoteStyle,
-  MarkdownCodeBlockStyle,
-  MarkdownCodeStyle,
-  MarkdownImageStyle,
+  MarkdownBlockStyle,
   MarkdownInputHandle,
-  MarkdownListItemStyle,
-  MarkdownMentionStyle,
-  MarkdownSpoilerStyle,
   MarkdownStyle,
-  MarkdownTableStyle,
-  MarkdownThematicBreakStyle,
+  MarkdownTextStyle,
+  MarkdownViewStyle,
   MentionPressEvent,
   TaskListItemPressEvent,
 } from './types'
