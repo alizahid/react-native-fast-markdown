@@ -1,6 +1,8 @@
 #import "MarkdownViewShadowNode.h"
 
 #import <Foundation/Foundation.h>
+#include <react/renderer/core/LayoutConstraints.h>
+#include <react/renderer/core/LayoutContext.h>
 
 #import "MarkdownMeasurer.h"
 
