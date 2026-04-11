@@ -1,6 +1,7 @@
 #import "HeadingRenderer.h"
 #import "ASTNodeWrapper.h"
 #import "RenderContext.h"
+#import "StyleAttributes.h"
 #import "StyleConfig.h"
 
 @implementation HeadingRenderer
@@ -11,12 +12,7 @@
   MarkdownElementStyle *style =
       [context.styleConfig styleForHeadingLevel:node.headingLevel];
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
-
-  if (style) {
-    UIFont *font = [style resolvedFont];
-    if (font) attrs[NSFontAttributeName] = font;
-    if (style.color) attrs[NSForegroundColorAttributeName] = style.color;
-  }
+  [StyleAttributes applyStyle:style toAttrs:attrs];
 
   [context pushAttributes:attrs];
   [context renderChildren:node into:output];

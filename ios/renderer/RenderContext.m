@@ -45,12 +45,8 @@
     baseAttrs[NSForegroundColorAttributeName] = textStyle.color;
   }
 
-  if (textStyle.lineHeight > 0) {
-    NSMutableParagraphStyle *paraStyle = [[NSMutableParagraphStyle alloc] init];
-    paraStyle.minimumLineHeight = textStyle.lineHeight;
-    paraStyle.maximumLineHeight = textStyle.lineHeight;
-    baseAttrs[NSParagraphStyleAttributeName] = paraStyle;
-  }
+  // lineHeight is applied per-block by ParagraphRenderer etc.
+  // If we set it here, it would clip elements with larger fonts (headings).
 
   return [baseAttrs copy];
 }

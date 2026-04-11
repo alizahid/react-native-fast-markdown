@@ -1,6 +1,7 @@
 #import "ParagraphRenderer.h"
 #import "ASTNodeWrapper.h"
 #import "RenderContext.h"
+#import "StyleAttributes.h"
 #import "StyleConfig.h"
 
 @implementation ParagraphRenderer
@@ -8,20 +9,12 @@
 - (void)renderNode:(ASTNodeWrapper *)node
               into:(NSMutableAttributedString *)output
            context:(RenderContext *)context {
-  MarkdownElementStyle *style = context.styleConfig.paragraph;
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
 
-  if (style) {
-    UIFont *font = [style resolvedFont];
-    if (font) attrs[NSFontAttributeName] = font;
-    if (style.color) attrs[NSForegroundColorAttributeName] = style.color;
-    if (style.lineHeight > 0) {
-      NSMutableParagraphStyle *paraStyle = [[NSMutableParagraphStyle alloc] init];
-      paraStyle.minimumLineHeight = style.lineHeight;
-      paraStyle.maximumLineHeight = style.lineHeight;
-      attrs[NSParagraphStyleAttributeName] = paraStyle;
-    }
-  }
+  // Apply the base text style's lineHeight/alignment first, then override
+  // with paragraph-specific style.
+  [StyleAttributes applyStyle:context.styleConfig.text toAttrs:attrs];
+  [StyleAttributes applyStyle:context.styleConfig.paragraph toAttrs:attrs];
 
   [context pushAttributes:attrs];
   [context renderChildren:node into:output];

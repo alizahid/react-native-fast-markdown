@@ -52,6 +52,70 @@
   return font;
 }
 
+- (UIFont *)resolvedFontWithBase:(UIFont *)baseFont {
+  if (!baseFont) return [self resolvedFont];
+
+  // Start from base font size/family, override with any properties set on self
+  CGFloat size = _fontSize > 0 ? _fontSize : baseFont.pointSize;
+  NSString *family = _fontFamily ?: baseFont.familyName;
+
+  // Inherit existing traits (bold/italic) from base font
+  UIFontDescriptorSymbolicTraits traits =
+      baseFont.fontDescriptor.symbolicTraits;
+
+  // Apply weight override
+  if (_fontWeight) {
+    if ([_fontWeight isEqualToString:@"bold"] ||
+        [_fontWeight isEqualToString:@"700"] ||
+        [_fontWeight isEqualToString:@"800"] ||
+        [_fontWeight isEqualToString:@"900"] ||
+        [_fontWeight isEqualToString:@"600"]) {
+      traits |= UIFontDescriptorTraitBold;
+    } else if ([_fontWeight isEqualToString:@"normal"] ||
+               [_fontWeight isEqualToString:@"400"] ||
+               [_fontWeight isEqualToString:@"300"] ||
+               [_fontWeight isEqualToString:@"200"] ||
+               [_fontWeight isEqualToString:@"100"]) {
+      traits &= ~UIFontDescriptorTraitBold;
+    }
+  }
+
+  // Apply italic override
+  if (_fontStyle) {
+    if ([_fontStyle isEqualToString:@"italic"]) {
+      traits |= UIFontDescriptorTraitItalic;
+    } else if ([_fontStyle isEqualToString:@"normal"]) {
+      traits &= ~UIFontDescriptorTraitItalic;
+    }
+  }
+
+  UIFont *resolved = nil;
+
+  // If family is a system/generic name, use systemFontOfSize
+  if (!family || [family isEqualToString:@"System"]) {
+    UIFontWeight weight = (traits & UIFontDescriptorTraitBold)
+        ? UIFontWeightBold
+        : UIFontWeightRegular;
+    resolved = [UIFont systemFontOfSize:size weight:weight];
+    if (traits & UIFontDescriptorTraitItalic) {
+      UIFontDescriptor *d =
+          [resolved.fontDescriptor fontDescriptorWithSymbolicTraits:
+              resolved.fontDescriptor.symbolicTraits | UIFontDescriptorTraitItalic];
+      if (d) resolved = [UIFont fontWithDescriptor:d size:size];
+    }
+  } else {
+    // Custom font family
+    UIFont *base = [UIFont fontWithName:family size:size];
+    if (base) {
+      UIFontDescriptor *d =
+          [base.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
+      resolved = d ? [UIFont fontWithDescriptor:d size:size] : base;
+    }
+  }
+
+  return resolved ?: baseFont;
+}
+
 - (UIEdgeInsets)resolvedPaddingInsets {
   // Specific edges override paddingHorizontal/paddingVertical which override padding
   CGFloat top = _paddingTop > 0

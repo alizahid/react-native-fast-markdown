@@ -89,11 +89,13 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
           ? (headerCellStyle ?: cellStyle)
           : cellStyle;
 
-      // Compose the effective font: headerCellStyle overrides cellStyle
+      // Compose the effective font: headerCellStyle overrides cellStyle,
+      // which overrides the base text style
       UIFont *baseFont = [self effectiveFontForHeader:isHeader
                                             cellStyle:cellStyle
-                                      headerCellStyle:headerCellStyle];
-      UIColor *textColor = textStyle.color;
+                                      headerCellStyle:headerCellStyle
+                                          styleConfig:styleConfig];
+      UIColor *textColor = textStyle.color ?: styleConfig.text.color;
 
       NSMutableArray<NSAttributedString *> *rowContents = [NSMutableArray new];
       for (NSUInteger c = 0; c < colCount; c++) {
@@ -271,22 +273,15 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
 
 - (UIFont *)effectiveFontForHeader:(BOOL)isHeader
                          cellStyle:(MarkdownElementStyle *)cellStyle
-                   headerCellStyle:(MarkdownElementStyle *)headerCellStyle {
-  // Cascade: header values override cell values. All come from JS.
-  MarkdownElementStyle *effective = [[MarkdownElementStyle alloc] init];
-  effective.fontSize = cellStyle.fontSize;
-  effective.fontFamily = cellStyle.fontFamily;
-  effective.fontWeight = cellStyle.fontWeight;
-  effective.fontStyle = cellStyle.fontStyle;
-
+                   headerCellStyle:(MarkdownElementStyle *)headerCellStyle
+                       styleConfig:(StyleConfig *)styleConfig {
+  // Start from base text font, then cascade cell → header cell
+  UIFont *baseFont = [styleConfig.text resolvedFont];
+  UIFont *cellFont = [cellStyle resolvedFontWithBase:baseFont] ?: baseFont;
   if (isHeader && headerCellStyle) {
-    if (headerCellStyle.fontSize > 0) effective.fontSize = headerCellStyle.fontSize;
-    if (headerCellStyle.fontFamily) effective.fontFamily = headerCellStyle.fontFamily;
-    if (headerCellStyle.fontWeight) effective.fontWeight = headerCellStyle.fontWeight;
-    if (headerCellStyle.fontStyle) effective.fontStyle = headerCellStyle.fontStyle;
+    return [headerCellStyle resolvedFontWithBase:cellFont] ?: cellFont;
   }
-
-  return [effective resolvedFont];
+  return cellFont;
 }
 
 - (NSAttributedString *)renderCellContent:(ASTNodeWrapper *)cellNode

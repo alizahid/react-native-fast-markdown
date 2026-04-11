@@ -1,6 +1,7 @@
 #import "ListItemRenderer.h"
 #import "ASTNodeWrapper.h"
 #import "RenderContext.h"
+#import "StyleAttributes.h"
 #import "StyleConfig.h"
 
 @implementation ListItemRenderer
@@ -8,14 +9,8 @@
 - (void)renderNode:(ASTNodeWrapper *)node
               into:(NSMutableAttributedString *)output
            context:(RenderContext *)context {
-  MarkdownElementStyle *style = context.styleConfig.listItem;
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
-
-  if (style) {
-    UIFont *font = [style resolvedFont];
-    if (font) attrs[NSFontAttributeName] = font;
-    if (style.color) attrs[NSForegroundColorAttributeName] = style.color;
-  }
+  [StyleAttributes applyStyle:context.styleConfig.listItem toAttrs:attrs];
 
   // Build indent
   NSString *indent = @"";
@@ -31,7 +26,6 @@
     bullet = [NSString stringWithFormat:@"%ld. ", (long)context.orderedListIndex];
     context.orderedListIndex++;
   } else {
-    // Use different bullets for different depths
     NSArray *bullets = @[ @"\u2022 ", @"\u25E6 ", @"\u25AA " ];
     NSInteger bulletIndex = (context.listDepth - 1) % bullets.count;
     bullet = bullets[bulletIndex];
@@ -39,21 +33,9 @@
 
   NSString *prefix = [indent stringByAppendingString:bullet];
 
-  // Build bullet attributes from listBullet style (color, font, etc.)
+  // Bullet gets its own style on top of the list item attrs
   NSMutableDictionary *bulletAttrs = [attrs mutableCopy];
-  MarkdownElementStyle *bulletStyle = context.styleConfig.listBullet;
-  if (bulletStyle) {
-    if (bulletStyle.color) {
-      bulletAttrs[NSForegroundColorAttributeName] = bulletStyle.color;
-    }
-    if (bulletStyle.fontSize > 0 || bulletStyle.fontFamily ||
-        bulletStyle.fontWeight) {
-      UIFont *bulletFont = [bulletStyle resolvedFont];
-      if (bulletFont) {
-        bulletAttrs[NSFontAttributeName] = bulletFont;
-      }
-    }
-  }
+  [StyleAttributes applyStyle:context.styleConfig.listBullet toAttrs:bulletAttrs];
 
   [output appendAttributedString:
       [[NSAttributedString alloc] initWithString:prefix attributes:bulletAttrs]];

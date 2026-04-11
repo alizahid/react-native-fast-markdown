@@ -1,6 +1,7 @@
 #import "BlockquoteRenderer.h"
 #import "ASTNodeWrapper.h"
 #import "RenderContext.h"
+#import "StyleAttributes.h"
 #import "StyleConfig.h"
 
 @implementation BlockquoteRenderer
@@ -10,21 +11,13 @@
            context:(RenderContext *)context {
   MarkdownElementStyle *style = context.styleConfig.blockquote;
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
+  [StyleAttributes applyStyle:style toAttrs:attrs];
 
-  if (style) {
-    UIFont *font = [style resolvedFont];
-    if (font) attrs[NSFontAttributeName] = font;
-    if (style.color) attrs[NSForegroundColorAttributeName] = style.color;
-  }
-
-  // Add blockquote indicator
-  NSString *prefix = @"\u2503 "; // vertical bar
-
+  // Vertical bar indicator — uses borderLeftColor if set, else current color
+  NSString *prefix = @"\u2503 ";
   NSMutableDictionary *prefixAttrs = [attrs mutableCopy];
-  if (style && style.borderLeftColor) {
+  if (style.borderLeftColor) {
     prefixAttrs[NSForegroundColorAttributeName] = style.borderLeftColor;
-  } else {
-    prefixAttrs[NSForegroundColorAttributeName] = [UIColor systemGrayColor];
   }
 
   [output appendAttributedString:

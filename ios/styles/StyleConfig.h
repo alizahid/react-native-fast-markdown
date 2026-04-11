@@ -57,6 +57,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (UIFont *)resolvedFont;
 
+/// Resolves a font by cascading from a base font. Properties set on
+/// this style override; unset properties inherit from baseFont.
+- (nullable UIFont *)resolvedFontWithBase:(nullable UIFont *)baseFont;
+
 @end
 
 @interface StyleConfig : NSObject

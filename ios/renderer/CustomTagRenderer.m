@@ -1,6 +1,7 @@
 #import "CustomTagRenderer.h"
 #import "ASTNodeWrapper.h"
 #import "RenderContext.h"
+#import "StyleAttributes.h"
 #import "StyleConfig.h"
 
 NSString *const MarkdownCustomTagKey = @"MarkdownCustomTag";
@@ -31,20 +32,13 @@ static NSString *const kSpoilerTag = @"Spoiler";
               context:(RenderContext *)context {
   MarkdownElementStyle *style = context.styleConfig.mention;
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
-
-  NSString *user = node.tagProps[@"user"] ?: @"";
-  NSString *displayText = [@"@" stringByAppendingString:user];
-
-  if (style) {
-    UIFont *font = [style resolvedFont];
-    if (font) attrs[NSFontAttributeName] = font;
-    if (style.color) attrs[NSForegroundColorAttributeName] = style.color;
-  } else {
-    attrs[NSForegroundColorAttributeName] = [UIColor systemBlueColor];
-  }
+  [StyleAttributes applyStyle:style toAttrs:attrs];
 
   attrs[MarkdownCustomTagKey] = kMentionTag;
   attrs[MarkdownCustomTagPropsKey] = node.tagProps;
+
+  NSString *user = node.tagProps[@"user"] ?: @"";
+  NSString *displayText = [@"@" stringByAppendingString:user];
 
   [output appendAttributedString:
       [[NSAttributedString alloc] initWithString:displayText attributes:attrs]];
