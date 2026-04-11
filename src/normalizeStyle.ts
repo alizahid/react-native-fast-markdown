@@ -1,21 +1,99 @@
-import { processColor } from 'react-native'
+import { Platform, processColor, StyleSheet } from 'react-native'
+
 import { type MarkdownStyle } from './types'
 
 const styleCache = new WeakMap<MarkdownStyle, string>()
 
+const colors = {
+  background: 'rgb(242, 240, 229)',
+  border: 'rgb(183, 181, 172)',
+  link: 'rgb(160, 47, 111)',
+}
+
+const fonts = {
+  mono: Platform.select({
+    ios: 'Menlo',
+    android: 'monospace',
+  }),
+}
+
 /** Library-provided default styles. Merged underneath the user's styles
  *  so users only need to override the keys they care about. */
-const defaultStyle: MarkdownStyle = {}
+const defaultStyle: MarkdownStyle = {
+  heading1: {
+    fontSize: 24,
+    fontWeight: '600',
+  },
+  heading2: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  heading3: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  strong: {
+    fontWeight: '600',
+  },
+  emphasis: {
+    fontStyle: 'italic',
+  },
+  strikethrough: {
+    textDecorationLine: 'line-through',
+  },
+  underline: {
+    textDecorationLine: 'underline',
+  },
+  code: {
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    backgroundColor: colors.background,
+  },
+  codeBlock: {
+    fontFamily: fonts.mono,
+    fontSize: 14,
+    backgroundColor: colors.background,
+    borderRadius: 6,
+    padding: 12,
+  },
+  link: {
+    color: colors.link,
+  },
+  blockquote: {
+    backgroundColor: colors.background,
+    padding: 6,
+    borderRadius: 6,
+    borderLeftWidth: 6,
+    borderColor: colors.border,
+  },
+  listBullet: {
+    color: colors.link,
+  },
+  tableHeaderRow: {
+    backgroundColor: colors.background,
+  },
+  tableHeaderCell: {
+    fontWeight: '600',
+  },
+  tableCell: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 6,
+  },
+  thematicBreak: {
+    backgroundColor: 'rgb(218, 216, 206)',
+    height: StyleSheet.hairlineWidth,
+    marginVertical: 12,
+  },
+}
 
 function normalizeColorValues(
   style: Record<string, unknown>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {}
+
   for (const [key, value] of Object.entries(style)) {
-    if (
-      typeof value === 'string' &&
-      (key.toLowerCase().includes('color') || key === 'backgroundColor')
-    ) {
+    if (typeof value === 'string' && key.toLowerCase().includes('color')) {
       result[key] = processColor(value)
     } else if (
       typeof value === 'object' &&
@@ -27,6 +105,7 @@ function normalizeColorValues(
       result[key] = value
     }
   }
+
   return result
 }
 
@@ -34,7 +113,10 @@ function mergeStyles(
   defaults: Record<string, unknown>,
   overrides: Record<string, unknown>,
 ): Record<string, unknown> {
-  const result: Record<string, unknown> = { ...defaults }
+  const result: Record<string, unknown> = {
+    ...defaults,
+  }
+
   for (const [key, value] of Object.entries(overrides)) {
     if (
       typeof value === 'object' &&
@@ -51,12 +133,14 @@ function mergeStyles(
       result[key] = value
     }
   }
+
   return result
 }
 
 export function normalizeMarkdownStyle(userStyle?: MarkdownStyle): string {
   if (!userStyle) {
     const cached = styleCache.get(defaultStyle)
+
     if (cached) {
       return cached
     }
@@ -64,11 +148,14 @@ export function normalizeMarkdownStyle(userStyle?: MarkdownStyle): string {
     const serialized = JSON.stringify(
       normalizeColorValues(defaultStyle as unknown as Record<string, unknown>),
     )
+
     styleCache.set(defaultStyle, serialized)
+
     return serialized
   }
 
   const cached = styleCache.get(userStyle)
+
   if (cached) {
     return cached
   }
@@ -77,8 +164,11 @@ export function normalizeMarkdownStyle(userStyle?: MarkdownStyle): string {
     defaultStyle as unknown as Record<string, unknown>,
     userStyle as unknown as Record<string, unknown>,
   )
+
   const normalized = normalizeColorValues(merged)
   const serialized = JSON.stringify(normalized)
+
   styleCache.set(userStyle, serialized)
+
   return serialized
 }

@@ -54,10 +54,20 @@ export function Markdown({
   // (color, fontSize, etc.) and outer container styles (padding,
   // backgroundColor, borders, gap between blocks) for the whole markdown.
   const effectiveStyle = useMemo(() => {
-    const flatStyle = StyleSheet.flatten(style) ?? {}
+    const flatStyle = StyleSheet.flatten([
+      {
+        color: 'rgb(16, 15, 15)',
+        fontSize: 14,
+        lineHeight: 20,
+        gap: 8,
+      },
+      style,
+    ])
+
     if (Object.keys(flatStyle).length === 0 && !markdownStyles) {
       return
     }
+
     return {
       ...markdownStyles,
       base: flatStyle,

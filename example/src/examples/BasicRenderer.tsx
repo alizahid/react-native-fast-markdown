@@ -24,6 +24,8 @@ function greet(name: string): string {
 console.log(greet("World"))
 \`\`\`
 
+---
+
 ## Blockquotes
 
 > "The best way to predict the future is to invent it."
@@ -33,6 +35,7 @@ console.log(greet("World"))
 ## Lists
 
 ### Unordered
+
 - First item
 - Second item
   - Nested item
@@ -40,6 +43,7 @@ console.log(greet("World"))
 - Third item
 
 ### Ordered
+
 1. Step one
 2. Step two
 3. Step three
@@ -55,18 +59,6 @@ export function BasicRendererScreen() {
       <Markdown
         onLinkPress={(event) => {
           Alert.alert('Link pressed', event.url)
-        }}
-        style={{
-          backgroundColor: 'brown',
-          fontFamily: 'American Typewriter',
-          fontSize: 14,
-          lineHeight: 20,
-          padding: 12,
-        }}
-        styles={{
-          codeBlock: {
-            padding: 12,
-          },
         }}
       >
         {basicMarkdown}
