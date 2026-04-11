@@ -15,16 +15,6 @@
                                              toAttrs:attrs];
   [StyleAttributes applyStyle:style toAttrs:attrs];
 
-  // Vertical bar indicator — uses borderLeftColor if set, else current color
-  NSString *prefix = @"\u2503 ";
-  NSMutableDictionary *prefixAttrs = [attrs mutableCopy];
-  if (style.borderLeftColor) {
-    prefixAttrs[NSForegroundColorAttributeName] = style.borderLeftColor;
-  }
-
-  [output appendAttributedString:
-      [[NSAttributedString alloc] initWithString:prefix attributes:prefixAttrs]];
-
   context.isInsideBlockquote = YES;
   [context pushAttributes:attrs];
   [context renderChildren:node into:output];
