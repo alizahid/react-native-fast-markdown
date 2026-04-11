@@ -44,8 +44,8 @@ class MarkdownInputViewManager : SimpleViewManager<MarkdownInputView>(),
         // Apply placeholder color
     }
 
-    @ReactProp(name = "markdownStyle")
-    override fun setMarkdownStyle(view: MarkdownInputView, value: String?) {
+    @ReactProp(name = "styles")
+    override fun setStyles(view: MarkdownInputView, value: String?) {
         view.setMarkdownStyle(value ?: "")
     }
 

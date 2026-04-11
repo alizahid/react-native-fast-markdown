@@ -17,7 +17,7 @@ export interface MarkdownInputViewNativeProps extends ViewProps {
   customTags?: ReadonlyArray<string>
   defaultValue?: string
   editable?: boolean
-  markdownStyle?: string // JSON-serialized MarkdownStyle
+  styles?: string // JSON-serialized MarkdownStyle
   multiline?: boolean
   onChangeMarkdown?: DirectEventHandler<Readonly<{ markdown: string }>>
   onChangeSelection?: DirectEventHandler<

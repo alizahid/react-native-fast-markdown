@@ -11,7 +11,7 @@ import {
 export interface MarkdownViewNativeProps extends ViewProps {
   customTags?: ReadonlyArray<string>
   markdown: string
-  markdownStyle?: string // JSON-serialized MarkdownStyle
+  styles?: string // JSON-serialized MarkdownStyle
 
   // Events
   onContentSizeChange?: DirectEventHandler<

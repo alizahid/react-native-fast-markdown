@@ -29,7 +29,7 @@ export interface MarkdownInputProps extends ViewProps {
   editable?: boolean
 
   /** Custom styles for markdown elements */
-  markdownStyle?: MarkdownStyle
+  styles?: MarkdownStyle
 
   /** Whether the input supports multiple lines */
   multiline?: boolean
@@ -79,7 +79,7 @@ export const MarkdownInput = forwardRef<
     defaultValue,
     placeholder,
     placeholderTextColor,
-    markdownStyle,
+    styles: markdownStyles,
     customTags,
     editable = true,
     multiline = true,
@@ -103,9 +103,9 @@ export const MarkdownInput = forwardRef<
   const nativeRef =
     React.useRef<React.ElementRef<typeof MarkdownInputViewNative>>(null)
 
-  const serializedStyle = useMemo(
-    () => normalizeMarkdownStyle(markdownStyle),
-    [markdownStyle],
+  const serializedStyles = useMemo(
+    () => normalizeMarkdownStyle(markdownStyles),
+    [markdownStyles],
   )
 
   // Expose imperative handle
@@ -259,7 +259,7 @@ export const MarkdownInput = forwardRef<
       customTags={customTags}
       defaultValue={defaultValue}
       editable={editable}
-      markdownStyle={serializedStyle}
+      styles={serializedStyles}
       multiline={multiline}
       onChangeMarkdown={
         onChangeMarkdown

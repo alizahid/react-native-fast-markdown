@@ -69,7 +69,7 @@ function generateItems(count: number) {
   return items
 }
 
-const markdownStyle: MarkdownStyle = {
+const markdownStyles: MarkdownStyle = {
   paragraph: { fontSize: 15, lineHeight: 22 },
   heading1: { fontSize: 20, fontWeight: 'bold' },
   heading2: { fontSize: 18, fontWeight: '600' },
@@ -94,7 +94,7 @@ function MessageRow({ item }: { item: MessageItem }) {
           <Text style={styles.authorText}>{item.author}</Text>
           <Text style={styles.timeText}>{item.time}</Text>
         </View>
-        <Markdown customTags={['Mention']} markdownStyle={markdownStyle}>
+        <Markdown customTags={['Mention']} styles={markdownStyles}>
           {item.markdown}
         </Markdown>
       </View>

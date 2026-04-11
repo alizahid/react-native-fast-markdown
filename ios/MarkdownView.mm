@@ -99,9 +99,9 @@ using namespace facebook::react;
 
   NSString *markdown =
       [NSString stringWithUTF8String:newViewProps.markdown.c_str()];
-  NSString *styleJSON = newViewProps.markdownStyle.empty()
+  NSString *styleJSON = newViewProps.styles.empty()
                             ? @""
-                            : [NSString stringWithUTF8String:newViewProps.markdownStyle.c_str()];
+                            : [NSString stringWithUTF8String:newViewProps.styles.c_str()];
 
   NSMutableArray<NSString *> *customTags = [NSMutableArray new];
   for (const auto &tag : newViewProps.customTags) {

@@ -217,7 +217,7 @@ export function StylingScreen() {
         <View key={theme.name}>
           <Text style={styles.sectionLabel}>{theme.name.toUpperCase()}</Text>
           <View style={[styles.card, { backgroundColor: theme.background }]}>
-            <Markdown markdownStyle={theme.style}>{sampleMarkdown}</Markdown>
+            <Markdown styles={theme.style}>{sampleMarkdown}</Markdown>
           </View>
         </View>
       ))}

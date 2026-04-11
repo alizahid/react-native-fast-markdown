@@ -32,8 +32,8 @@ class MarkdownViewManager : SimpleViewManager<MarkdownView>(),
         view.setMarkdown(value ?: "")
     }
 
-    @ReactProp(name = "markdownStyle")
-    override fun setMarkdownStyle(view: MarkdownView, value: String?) {
+    @ReactProp(name = "styles")
+    override fun setStyles(view: MarkdownView, value: String?) {
         view.setMarkdownStyle(value ?: "")
     }
 

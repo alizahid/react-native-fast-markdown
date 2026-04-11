@@ -73,9 +73,9 @@ using namespace facebook::react;
   _textView.editable = newProps.editable;
 
   // Style
-  NSString *styleJSON = newProps.markdownStyle.empty()
+  NSString *styleJSON = newProps.styles.empty()
                             ? @""
-                            : [NSString stringWithUTF8String:newProps.markdownStyle.c_str()];
+                            : [NSString stringWithUTF8String:newProps.styles.c_str()];
   if (![styleJSON isEqualToString:_currentStyleJSON ?: @""]) {
     _currentStyleJSON = styleJSON;
     _styleConfig = [StyleConfig fromJSON:styleJSON];

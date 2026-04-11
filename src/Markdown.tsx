@@ -18,7 +18,7 @@ export interface MarkdownProps extends Omit<ViewProps, 'style'> {
   customTags?: Array<string>
 
   /** Custom styles for markdown elements */
-  markdownStyle?: MarkdownStyle
+  styles?: MarkdownStyle
 
   /** Style applied to the markdown container. Accepts both ViewStyle
    *  (padding, background, borders, gap between blocks) and TextStyle
@@ -40,7 +40,7 @@ export interface MarkdownProps extends Omit<ViewProps, 'style'> {
 
 export function Markdown({
   children,
-  markdownStyle,
+  styles: markdownStyles,
   customTags,
   style,
   onLinkPress,
@@ -49,22 +49,22 @@ export function Markdown({
   onTaskListItemPress,
   ...viewProps
 }: MarkdownProps) {
-  // Merge the style prop into markdownStyle as the internal `base` key.
+  // Merge the style prop into styles as the internal `base` key.
   // The `style` prop is the user-facing way to set default text styles
   // (color, fontSize, etc.) and outer container styles (padding,
   // backgroundColor, borders, gap between blocks) for the whole markdown.
   const effectiveStyle = useMemo(() => {
     const flatStyle = StyleSheet.flatten(style) ?? {}
-    if (Object.keys(flatStyle).length === 0 && !markdownStyle) {
+    if (Object.keys(flatStyle).length === 0 && !markdownStyles) {
       return
     }
     return {
-      ...markdownStyle,
+      ...markdownStyles,
       base: flatStyle,
     } as MarkdownStyle
-  }, [markdownStyle, style])
+  }, [markdownStyles, style])
 
-  const serializedStyle = useMemo(
+  const serializedStyles = useMemo(
     () => normalizeMarkdownStyle(effectiveStyle),
     [effectiveStyle],
   )
@@ -83,7 +83,7 @@ export function Markdown({
       {...viewProps}
       customTags={customTags}
       markdown={children}
-      markdownStyle={serializedStyle}
+      styles={serializedStyles}
       style={height === undefined ? undefined : { height }}
       onContentSizeChange={handleContentSizeChange}
       onLinkLongPress={
