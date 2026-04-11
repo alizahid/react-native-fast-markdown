@@ -69,6 +69,19 @@ const defaultStyle: MarkdownStyle = {
   listBullet: {
     color: colors.link,
   },
+  userMention: {
+    color: colors.link,
+    fontWeight: '600',
+  },
+  channelMention: {
+    color: colors.link,
+    fontWeight: '600',
+  },
+  commandMention: {
+    color: colors.link,
+    fontWeight: '600',
+    fontFamily: fonts.mono,
+  },
   tableHeaderRow: {
     backgroundColor: colors.background,
   },

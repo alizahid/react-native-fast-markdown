@@ -4,9 +4,9 @@ import { Markdown } from 'react-native-markdown'
 const mentionsMarkdown = `\
 ## Mentions
 
-Hey <Mention user="Ali" />, have you seen the latest changes?
+Hey <UserMention id="u_ali" name="Ali" />, have you seen the latest changes in <ChannelMention id="c_release" name="release" />?
 
-I think <Mention user="Sarah" /> and <Mention user="James" /> should review the PR.
+I think <UserMention id="u_sarah" name="Sarah" /> and <UserMention id="u_james" name="James" /> should review the PR. Try <CommandMention id="review" /> to request a review.
 `
 
 const spoilersMarkdown = `\
@@ -25,16 +25,27 @@ None of the events actually happened as described.
 const mixedMarkdown = `\
 ## Mixed Content
 
-Here's a message with **bold text**, a [link](https://example.com), and a mention <Mention user="Ali" /> all in one paragraph.
+Here's a message with **bold text**, a [link](https://example.com), and a mention <UserMention id="u_ali" name="Ali" /> all in one paragraph.
 
-> <Mention user="Sarah" /> said: "Check out <Spoiler>the secret feature</Spoiler> in the latest release!"
+> <UserMention id="u_sarah" name="Sarah" /> said: "Check out <Spoiler>the secret feature</Spoiler> in the latest release!"
 
 ### Custom Tags in Lists
 
-- Assigned to <Mention user="James" />
+- Assigned to <UserMention id="u_james" name="James" />
+- Post in <ChannelMention id="c_general" name="general" />
+- Run <CommandMention id="deploy" />
 - Contains <Spoiler>hidden details</Spoiler>
-- Regular list item with **formatting**
 `
+
+function describeMention(event: {
+  type: 'user' | 'channel' | 'command'
+  id: string
+  name?: string
+}) {
+  return `${event.type} • id=${event.id}${
+    event.name ? ` • name=${event.name}` : ''
+  }`
+}
 
 export function CustomComponentsScreen() {
   return (
@@ -42,9 +53,8 @@ export function CustomComponentsScreen() {
       <Text style={styles.sectionLabel}>MENTIONS</Text>
       <View style={styles.card}>
         <Markdown
-          customTags={['Mention', 'Spoiler']}
           onMentionPress={(event) => {
-            Alert.alert('Mention pressed', `User: ${event.user}`)
+            Alert.alert('Mention pressed', describeMention(event))
           }}
         >
           {mentionsMarkdown}
@@ -53,20 +63,17 @@ export function CustomComponentsScreen() {
 
       <Text style={styles.sectionLabel}>SPOILERS</Text>
       <View style={styles.card}>
-        <Markdown customTags={['Mention', 'Spoiler']}>
-          {spoilersMarkdown}
-        </Markdown>
+        <Markdown>{spoilersMarkdown}</Markdown>
       </View>
 
       <Text style={styles.sectionLabel}>MIXED CONTENT</Text>
       <View style={styles.card}>
         <Markdown
-          customTags={['Mention', 'Spoiler']}
           onLinkPress={(event) => {
             Alert.alert('Link pressed', event.url)
           }}
           onMentionPress={(event) => {
-            Alert.alert('Mention pressed', `User: ${event.user}`)
+            Alert.alert('Mention pressed', describeMention(event))
           }}
         >
           {mixedMarkdown}

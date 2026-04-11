@@ -7,6 +7,7 @@ import {
   type MarkdownBlockStyle,
   type MarkdownStyle,
   type MentionPressEvent,
+  type MentionType,
   type TaskListItemPressEvent,
 } from './types'
 
@@ -104,7 +105,22 @@ export function Markdown({
       }
       onMentionPress={
         onMentionPress
-          ? (e) => onMentionPress({ user: e.nativeEvent.user })
+          ? (e) => {
+              let props: Record<string, string> = {}
+              try {
+                props = e.nativeEvent.mentionProps
+                  ? JSON.parse(e.nativeEvent.mentionProps)
+                  : {}
+              } catch {
+                props = {}
+              }
+              onMentionPress({
+                type: e.nativeEvent.mentionType as MentionType,
+                id: e.nativeEvent.mentionId,
+                name: e.nativeEvent.mentionName || undefined,
+                props,
+              })
+            }
           : undefined
       }
       onTaskListItemPress={

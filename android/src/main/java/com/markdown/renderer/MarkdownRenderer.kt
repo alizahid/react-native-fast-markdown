@@ -245,20 +245,46 @@ class MarkdownRenderer(private val context: Context) {
         builder.setSpan(ForegroundColorSpan(Color.GRAY), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
+    private fun renderMention(
+        node: ASTNode,
+        builder: SpannableStringBuilder,
+        style: ElementStyle,
+        prefix: String,
+    ) {
+        val id = node.props["id"] ?: ""
+        val name = node.props["name"] ?: ""
+        val label = if (name.isNotEmpty()) name else id
+        val start = builder.length
+        builder.append(prefix).append(label)
+        if (style.color != null) {
+            builder.setSpan(
+                ForegroundColorSpan(style.color),
+                start,
+                builder.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+        val typeface = style.resolveTypeface()
+        if (typeface != Typeface.DEFAULT) {
+            builder.setSpan(
+                StyleSpan(typeface.style),
+                start,
+                builder.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+    }
+
     private fun renderCustomTag(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
         when (node.tag) {
-            "Mention" -> {
-                val style = ctx.styleConfig.mention
-                val user = node.props["user"] ?: ""
-                val start = builder.length
-                builder.append("@$user")
-                if (style.color != null) {
-                    builder.setSpan(ForegroundColorSpan(style.color), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
-                val typeface = style.resolveTypeface()
-                if (typeface != Typeface.DEFAULT) {
-                    builder.setSpan(StyleSpan(typeface.style), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
+            "UserMention" -> {
+                renderMention(node, builder, ctx.styleConfig.userMention, "@")
+            }
+            "ChannelMention" -> {
+                renderMention(node, builder, ctx.styleConfig.channelMention, "#")
+            }
+            "CommandMention" -> {
+                renderMention(node, builder, ctx.styleConfig.commandMention, "/")
             }
             "Spoiler" -> {
                 val style = ctx.styleConfig.spoiler

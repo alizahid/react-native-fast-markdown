@@ -100,8 +100,12 @@ export interface MarkdownStyle {
   underline?: MarkdownTextStyle
   code?: MarkdownTextStyle
   link?: MarkdownTextStyle
-  mention?: MarkdownTextStyle
   listBullet?: MarkdownTextStyle
+
+  // Mentions — three trigger types, each with its own style
+  userMention?: MarkdownTextStyle
+  channelMention?: MarkdownTextStyle
+  commandMention?: MarkdownTextStyle
 
   // Special
   spoiler?: MarkdownViewStyle
@@ -114,9 +118,21 @@ export interface LinkPressEvent {
   url: string
 }
 
+/** The three mention trigger types. `user` is `@`, `channel` is `#`,
+ *  `command` is `/`. */
+export type MentionType = 'user' | 'channel' | 'command'
+
 export interface MentionPressEvent {
-  user: string
+  /** Which kind of mention was pressed. */
+  type: MentionType
+  /** The `id` attribute that was on the mention tag. */
+  id: string
+  /** The `name` attribute, if present (optional for commands). */
+  name?: string
+  /** Any extra props that were on the tag beyond `id` / `name`. */
+  props: Record<string, string>
 }
+
 
 export interface TaskListItemPressEvent {
   checked: boolean

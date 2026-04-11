@@ -49,11 +49,15 @@ class MarkdownView(context: Context) : TextView(context) {
 
         val markdown = currentMarkdown
         val config = styleConfig
-        val tags = customTags.toSet()
+        // Built-in custom tags — always recognized so users don't have to
+        // register them via the customTags prop. Matches iOS MarkdownView.
+        val builtInTags = listOf("UserMention", "ChannelMention", "CommandMention", "Spoiler")
+        val effectiveTags = (builtInTags + customTags).distinct()
+        val tags = effectiveTags.toSet()
 
         // Short content: render synchronously
         if (markdown.length < 500) {
-            val ast = ParserBridge.parse(markdown, customTags)
+            val ast = ParserBridge.parse(markdown, effectiveTags)
             val spannable = renderer.renderCached(markdown, ast, config, tags)
             text = spannable
             return
@@ -61,7 +65,7 @@ class MarkdownView(context: Context) : TextView(context) {
 
         // Longer content: render on background thread
         executor.execute {
-            val ast = ParserBridge.parse(markdown, customTags)
+            val ast = ParserBridge.parse(markdown, effectiveTags)
             val spannable = renderer.renderCached(markdown, ast, config, tags)
             post {
                 if (markdown == currentMarkdown) {

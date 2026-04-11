@@ -271,6 +271,11 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   options.enableStrikethrough = true;
   options.enableTaskLists = true;
   options.enableAutolinks = true;
+  // Built-in custom tags — match MarkdownView.renderMarkdown.
+  options.customTags.insert("UserMention");
+  options.customTags.insert("ChannelMention");
+  options.customTags.insert("CommandMention");
+  options.customTags.insert("Spoiler");
   for (NSString *tag in customTags) {
     options.customTags.insert(std::string([tag UTF8String]));
   }

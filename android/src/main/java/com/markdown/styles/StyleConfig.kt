@@ -140,7 +140,9 @@ data class StyleConfig(
     val tableHeaderCell: ElementStyle = ElementStyle(),
     val thematicBreak: ElementStyle = ElementStyle(),
     val image: ElementStyle = ElementStyle(),
-    val mention: ElementStyle = ElementStyle(),
+    val userMention: ElementStyle = ElementStyle(),
+    val channelMention: ElementStyle = ElementStyle(),
+    val commandMention: ElementStyle = ElementStyle(),
     val spoiler: ElementStyle = ElementStyle(),
 ) {
     fun styleForHeadingLevel(level: Int): ElementStyle = when (level) {
@@ -184,7 +186,9 @@ data class StyleConfig(
                     tableHeaderCell = ElementStyle.fromJSON(obj.optJSONObject("tableHeaderCell")),
                     thematicBreak = ElementStyle.fromJSON(obj.optJSONObject("thematicBreak")),
                     image = ElementStyle.fromJSON(obj.optJSONObject("image")),
-                    mention = ElementStyle.fromJSON(obj.optJSONObject("mention")),
+                    userMention = ElementStyle.fromJSON(obj.optJSONObject("userMention")),
+                    channelMention = ElementStyle.fromJSON(obj.optJSONObject("channelMention")),
+                    commandMention = ElementStyle.fromJSON(obj.optJSONObject("commandMention")),
                     spoiler = ElementStyle.fromJSON(obj.optJSONObject("spoiler")),
                 )
             } catch (_: Exception) {

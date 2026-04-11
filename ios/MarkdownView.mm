@@ -116,6 +116,13 @@ using namespace facebook::react;
   options.enableTaskLists = true;
   options.enableAutolinks = true;
 
+  // Built-in custom tags — always recognized so users don't have to
+  // register them via the `customTags` prop.
+  options.customTags.insert("UserMention");
+  options.customTags.insert("ChannelMention");
+  options.customTags.insert("CommandMention");
+  options.customTags.insert("Spoiler");
+
   for (NSString *tag in customTags) {
     options.customTags.insert(std::string([tag UTF8String]));
   }
@@ -423,6 +430,19 @@ using namespace facebook::react;
   NSString *scheme = URL.scheme.lowercaseString;
   BOOL isHttp = [scheme isEqualToString:@"http"] ||
                 [scheme isEqualToString:@"https"];
+  BOOL isMention = [scheme isEqualToString:@"mention"];
+
+  // Mentions — custom URL scheme we attach via NSLinkAttributeName in
+  // CustomTagRenderer. We own taps on these entirely: fire
+  // onMentionPress on tap, suppress the long-press context menu so
+  // users don't see a confusing "Open mention://..." sheet.
+  if (isMention) {
+    if (interaction == UITextItemInteractionInvokeDefaultAction &&
+        _eventEmitter) {
+      [self emitMentionPressForURL:URL];
+    }
+    return NO;
+  }
 
   if (interaction == UITextItemInteractionInvokeDefaultAction) {
     // Tap — emit onLinkPress so JS can handle (open in-app, log,
@@ -461,6 +481,57 @@ using namespace facebook::react;
   }
 
   return NO;
+}
+
+#pragma mark - Mention press
+
+- (void)emitMentionPressForURL:(NSURL *)url {
+  if (!_eventEmitter || !url) return;
+
+  NSURLComponents *components =
+      [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
+  if (!components) return;
+
+  NSString *type = components.host ?: @"";
+
+  // The id sits on the path as "/<id>". Strip the leading slash.
+  NSString *path = components.path ?: @"";
+  NSString *mentionId =
+      path.length > 1 ? [path substringFromIndex:1] : @"";
+  // Percent decode — URLComponents stores it percent-encoded.
+  mentionId = [mentionId stringByRemovingPercentEncoding] ?: mentionId;
+
+  NSString *name = @"";
+  NSMutableDictionary<NSString *, NSString *> *extras = [NSMutableDictionary new];
+  for (NSURLQueryItem *item in components.queryItems) {
+    NSString *value = item.value ?: @"";
+    if ([item.name isEqualToString:@"name"]) {
+      name = value;
+    } else {
+      extras[item.name] = value;
+    }
+  }
+
+  // Serialize extras as JSON so they can travel through the Fabric
+  // event payload (which only supports primitive fields).
+  NSString *propsJson = @"{}";
+  NSError *jsonError = nil;
+  NSData *data = [NSJSONSerialization dataWithJSONObject:extras
+                                                 options:0
+                                                   error:&jsonError];
+  if (!jsonError && data) {
+    propsJson =
+        [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"{}";
+  }
+
+  const auto &eventEmitter =
+      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+  eventEmitter.onMentionPress({
+      .mentionType = std::string([type UTF8String]),
+      .mentionId = std::string([mentionId UTF8String]),
+      .mentionName = std::string([name UTF8String]),
+      .mentionProps = std::string([propsJson UTF8String]),
+  });
 }
 
 @end

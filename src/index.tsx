@@ -11,6 +11,7 @@ export type {
   MarkdownTextStyle,
   MarkdownViewStyle,
   MentionPressEvent,
+  MentionType,
   TaskListItemPressEvent,
 } from './types'
 export { useMarkdownInput } from './useMarkdownInput'
