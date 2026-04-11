@@ -347,6 +347,11 @@ using namespace facebook::react;
 
 - (UITextView *)makeTextViewWithAttributedText:(NSAttributedString *)text {
   UITextView *textView = [[UITextView alloc] init];
+  // Empty linkTextAttributes tells UITextView not to override the
+  // attributed string's own color / underline / etc. on ranges that
+  // have NSLinkAttributeName set. Otherwise it forces its tint color
+  // and ignores whatever our LinkRenderer put on the string.
+  textView.linkTextAttributes = @{};
   textView.attributedText = text;
   textView.editable = NO;
   textView.scrollEnabled = NO;
