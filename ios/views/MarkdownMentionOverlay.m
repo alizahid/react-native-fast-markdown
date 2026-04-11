@@ -83,9 +83,11 @@ static const void *kMentionDataKey = &kMentionDataKey;
         [layoutManager glyphRangeForCharacterRange:charRange
                              actualCharacterRange:NULL];
 
-    // Walk each line fragment the mention touches. Use the FULL
-    // line rect vertically (via enumerateLineFragmentsForGlyphRange)
-    // so adjacent lines of a wrapped mention touch without a gap.
+    // Walk each line fragment the mention touches. Horizontal and
+    // vertical extent both come from boundingRectForGlyphRange on
+    // the per-line intersection, which is the tight glyph bounding
+    // box (ascender→descender, no leading) — much snugger than the
+    // full line fragment rect.
     NSMutableArray<NSValue *> *perLineRects = [NSMutableArray new];
     [layoutManager
         enumerateLineFragmentsForGlyphRange:glyphRange
@@ -101,16 +103,33 @@ static const void *kMentionDataKey = &kMentionDataKey;
       CGRect textBounds =
           [layoutManager boundingRectForGlyphRange:intersection
                                    inTextContainer:container];
-
-      CGRect rect = CGRectMake(CGRectGetMinX(textBounds),
-                               CGRectGetMinY(lineRect),
-                               CGRectGetWidth(textBounds),
-                               CGRectGetHeight(lineRect));
-      rect = CGRectOffset(rect, textOrigin.x, textOrigin.y);
+      CGRect rect = CGRectOffset(textBounds, textOrigin.x, textOrigin.y);
       [perLineRects addObject:[NSValue valueWithCGRect:rect]];
     }];
 
     if (perLineRects.count == 0) continue;
+
+    // Second pass: extend each line's bottom down to the next
+    // line's top so inter-line leading is filled and adjacent
+    // lines visually connect.
+    [perLineRects sortUsingComparator:^NSComparisonResult(NSValue *a,
+                                                          NSValue *b) {
+      CGFloat ay = a.CGRectValue.origin.y;
+      CGFloat by = b.CGRectValue.origin.y;
+      if (ay < by) return NSOrderedAscending;
+      if (ay > by) return NSOrderedDescending;
+      return NSOrderedSame;
+    }];
+    for (NSUInteger i = 0; i + 1 < perLineRects.count; i++) {
+      CGRect curr = [perLineRects[i] CGRectValue];
+      CGRect next = [perLineRects[i + 1] CGRectValue];
+      CGFloat desiredBottom = next.origin.y;
+      if (desiredBottom > CGRectGetMaxY(curr)) {
+        curr.size.height = desiredBottom - curr.origin.y;
+        [perLineRects replaceObjectAtIndex:i
+                                withObject:[NSValue valueWithCGRect:curr]];
+      }
+    }
 
     CGRect bounds = [perLineRects[0] CGRectValue];
     for (NSValue *v in perLineRects) {

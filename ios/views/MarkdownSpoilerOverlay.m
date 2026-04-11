@@ -88,9 +88,6 @@ static const CGFloat kRevealAnimationDuration = 0.25;
   for (NSString *spoilerId in spoilerRanges) {
     BOOL isRevealed = [_revealedIds containsObject:spoilerId];
 
-    // Union of per-line rects for this spoiler across all its
-    // character-range chunks. Each chunk is a contiguous span with
-    // the same spoilerId attribute; usually there's just one.
     NSMutableArray<NSValue *> *perLineRects = [NSMutableArray new];
 
     for (NSValue *rangeValue in spoilerRanges[spoilerId]) {
@@ -99,10 +96,11 @@ static const CGFloat kRevealAnimationDuration = 0.25;
           [layoutManager glyphRangeForCharacterRange:charRange
                                actualCharacterRange:NULL];
 
-      // Walk line fragments that intersect this chunk. Using
-      // enumerateLineFragmentsForGlyphRange gives us the FULL line
-      // rect (including leading / line spacing), so stacked rects
-      // touch vertically with no visible gap.
+      // Walk line fragments touching this chunk. We use
+      // boundingRectForGlyphRange for BOTH horizontal and vertical
+      // extent — it returns the tight glyph bounding box on that
+      // line (ascender→descender, no leading), which hugs the text
+      // much more snugly than the full line fragment rect.
       [layoutManager
           enumerateLineFragmentsForGlyphRange:chunkGlyphRange
                                    usingBlock:^(CGRect lineRect,
@@ -114,23 +112,39 @@ static const CGFloat kRevealAnimationDuration = 0.25;
             NSIntersectionRange(chunkGlyphRange, lineGlyphRange);
         if (intersection.length == 0) return;
 
-        // Horizontal extent = bounding rect of the glyphs that the
-        // spoiler actually covers on this line. Vertical extent =
-        // the full line fragment rect (so adjacent lines touch).
         CGRect textBounds =
             [layoutManager boundingRectForGlyphRange:intersection
                                      inTextContainer:container];
-
-        CGRect rect = CGRectMake(CGRectGetMinX(textBounds),
-                                 CGRectGetMinY(lineRect),
-                                 CGRectGetWidth(textBounds),
-                                 CGRectGetHeight(lineRect));
-        rect = CGRectOffset(rect, textOrigin.x, textOrigin.y);
+        CGRect rect = CGRectOffset(textBounds, textOrigin.x, textOrigin.y);
         [perLineRects addObject:[NSValue valueWithCGRect:rect]];
       }];
     }
 
     if (perLineRects.count == 0) continue;
+
+    // Sort by y (safety — normally already in order) then extend
+    // each rect's bottom down to the next rect's top, filling the
+    // inter-line leading gap so adjacent lines visually connect
+    // without losing the tight top/bottom hug on the outermost
+    // edges.
+    [perLineRects sortUsingComparator:^NSComparisonResult(NSValue *a,
+                                                          NSValue *b) {
+      CGFloat ay = a.CGRectValue.origin.y;
+      CGFloat by = b.CGRectValue.origin.y;
+      if (ay < by) return NSOrderedAscending;
+      if (ay > by) return NSOrderedDescending;
+      return NSOrderedSame;
+    }];
+    for (NSUInteger i = 0; i + 1 < perLineRects.count; i++) {
+      CGRect curr = [perLineRects[i] CGRectValue];
+      CGRect next = [perLineRects[i + 1] CGRectValue];
+      CGFloat desiredBottom = next.origin.y;
+      if (desiredBottom > CGRectGetMaxY(curr)) {
+        curr.size.height = desiredBottom - curr.origin.y;
+        [perLineRects replaceObjectAtIndex:i
+                                withObject:[NSValue valueWithCGRect:curr]];
+      }
+    }
 
     // Bounding box for the whole spoiler — this is the overlay's
     // frame in the text view's coordinate space.
