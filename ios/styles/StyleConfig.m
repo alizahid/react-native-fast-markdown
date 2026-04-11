@@ -102,6 +102,7 @@
                                                          error:&error];
   if (error || ![dict isKindOfClass:[NSDictionary class]]) return config;
 
+  config.text = [self elementStyleFromDict:dict[@"text"]];
   config.heading1 = [self elementStyleFromDict:dict[@"heading1"]];
   config.heading2 = [self elementStyleFromDict:dict[@"heading2"]];
   config.heading3 = [self elementStyleFromDict:dict[@"heading3"]];

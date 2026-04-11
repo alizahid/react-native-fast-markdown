@@ -1,5 +1,6 @@
 #import "RenderContext.h"
 #import "RendererFactory.h"
+#import "StyleConfig.h"
 
 @implementation RenderContext
 
@@ -13,11 +14,45 @@
     _isInsideCodeBlock = NO;
     _taskListIndex = 0;
 
-    // Start with an empty base. Renderers push their own attributes
-    // (font, color) from the style config before rendering children.
+    // Start with empty base; will be replaced when styleConfig is set
     [_attributeStack addObject:@{}];
   }
   return self;
+}
+
+- (void)setStyleConfig:(StyleConfig *)styleConfig {
+  _styleConfig = styleConfig;
+
+  // Reset the stack and push the `text` base style as the root attributes.
+  // All subsequent renderers inherit these unless they override explicitly.
+  [_attributeStack removeAllObjects];
+  [_attributeStack addObject:[self baseAttributesFromStyleConfig:styleConfig]];
+}
+
+- (NSDictionary<NSAttributedStringKey, id> *)baseAttributesFromStyleConfig:
+    (StyleConfig *)styleConfig {
+  NSMutableDictionary *baseAttrs = [NSMutableDictionary new];
+
+  MarkdownElementStyle *textStyle = styleConfig.text;
+  if (!textStyle) return baseAttrs;
+
+  UIFont *font = [textStyle resolvedFont];
+  if (font) {
+    baseAttrs[NSFontAttributeName] = font;
+  }
+
+  if (textStyle.color) {
+    baseAttrs[NSForegroundColorAttributeName] = textStyle.color;
+  }
+
+  if (textStyle.lineHeight > 0) {
+    NSMutableParagraphStyle *paraStyle = [[NSMutableParagraphStyle alloc] init];
+    paraStyle.minimumLineHeight = textStyle.lineHeight;
+    paraStyle.maximumLineHeight = textStyle.lineHeight;
+    baseAttrs[NSParagraphStyleAttributeName] = paraStyle;
+  }
+
+  return [baseAttrs copy];
 }
 
 - (void)pushAttributes:(NSDictionary<NSAttributedStringKey, id> *)attrs {
@@ -40,8 +75,7 @@
                   into:(NSMutableAttributedString *)output {
   NSArray<ASTNodeWrapper *> *children = [node children];
   for (ASTNodeWrapper *child in children) {
-    id<NodeRenderer> renderer =
-        [RendererFactory rendererForNode:child];
+    id<NodeRenderer> renderer = [RendererFactory rendererForNode:child];
     if (renderer) {
       [renderer renderNode:child into:output context:self];
     }

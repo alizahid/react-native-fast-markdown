@@ -114,6 +114,8 @@ data class ElementStyle(
 }
 
 data class StyleConfig(
+    /** Base text style — applies to all text unless overridden */
+    val text: ElementStyle = ElementStyle(),
     val heading1: ElementStyle = ElementStyle(),
     val heading2: ElementStyle = ElementStyle(),
     val heading3: ElementStyle = ElementStyle(),
@@ -157,6 +159,7 @@ data class StyleConfig(
             return try {
                 val obj = JSONObject(json)
                 StyleConfig(
+                    text = ElementStyle.fromJSON(obj.optJSONObject("text")),
                     heading1 = ElementStyle.fromJSON(obj.optJSONObject("heading1")),
                     heading2 = ElementStyle.fromJSON(obj.optJSONObject("heading2")),
                     heading3 = ElementStyle.fromJSON(obj.optJSONObject("heading3")),

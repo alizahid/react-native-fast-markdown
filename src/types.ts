@@ -7,6 +7,10 @@ import { type TextStyle, type ViewStyle } from 'react-native'
 // standard equivalents (padding on tableCell, color on listBullet).
 
 export interface MarkdownStyle {
+  /** Base text style — applies to all text unless overridden.
+   *  Use this for global font, color, line height, etc. */
+  text?: TextStyle
+
   // Block elements
   blockquote?: TextStyle
   code?: TextStyle

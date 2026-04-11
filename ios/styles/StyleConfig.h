@@ -61,6 +61,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface StyleConfig : NSObject
 
+/// Base text style — applies to all text unless overridden
+@property (nonatomic, strong) MarkdownElementStyle *text;
+
 @property (nonatomic, strong) MarkdownElementStyle *heading1;
 @property (nonatomic, strong) MarkdownElementStyle *heading2;
 @property (nonatomic, strong) MarkdownElementStyle *heading3;

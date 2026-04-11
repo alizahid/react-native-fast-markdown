@@ -3,57 +3,43 @@ import { type MarkdownStyle } from './types'
 
 const styleCache = new WeakMap<MarkdownStyle, string>()
 
-const defaultFonts = Platform.select({
-  ios: {
-    body: 'System',
-    mono: 'Menlo',
-  },
-  android: {
-    body: 'sans-serif',
-    mono: 'monospace',
-  },
-  default: {
-    body: 'System',
-    mono: 'monospace',
-  },
+const monoFont = Platform.select({
+  ios: 'Menlo',
+  android: 'monospace',
+  default: 'monospace',
 })
 
 const defaultStyle: MarkdownStyle = {
+  text: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: '#111',
+  },
   heading1: {
     fontSize: 32,
     fontWeight: 'bold',
-    fontFamily: defaultFonts.body,
   },
   heading2: {
     fontSize: 28,
     fontWeight: 'bold',
-    fontFamily: defaultFonts.body,
   },
   heading3: {
     fontSize: 24,
     fontWeight: '600',
-    fontFamily: defaultFonts.body,
   },
   heading4: {
     fontSize: 20,
     fontWeight: '600',
-    fontFamily: defaultFonts.body,
   },
   heading5: {
     fontSize: 18,
     fontWeight: '600',
-    fontFamily: defaultFonts.body,
   },
   heading6: {
     fontSize: 16,
     fontWeight: '600',
-    fontFamily: defaultFonts.body,
   },
-  paragraph: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontFamily: defaultFonts.body,
-  },
+  paragraph: {},
   strong: {
     fontWeight: 'bold',
   },
@@ -67,14 +53,14 @@ const defaultStyle: MarkdownStyle = {
     textDecorationLine: 'underline',
   },
   code: {
-    fontFamily: defaultFonts.mono,
+    fontFamily: monoFont,
     fontSize: 14,
     backgroundColor: '#f0f0f0',
     borderRadius: 3,
     padding: 2,
   },
   codeBlock: {
-    fontFamily: defaultFonts.mono,
+    fontFamily: monoFont,
     fontSize: 14,
     backgroundColor: '#f5f5f5',
     borderRadius: 6,
@@ -88,9 +74,7 @@ const defaultStyle: MarkdownStyle = {
     borderLeftWidth: 3,
     fontStyle: 'italic',
   },
-  listItem: {
-    fontSize: 16,
-  },
+  listItem: {},
   listBullet: {
     color: '#666',
   },
