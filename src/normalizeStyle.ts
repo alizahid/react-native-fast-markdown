@@ -74,6 +74,7 @@ const defaultStyle: MarkdownStyle = {
   },
   spoiler: {
     backgroundColor: colors.link,
+    borderRadius: 4,
   },
   mentionUser: {
     color: colors.user,
