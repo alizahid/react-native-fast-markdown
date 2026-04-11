@@ -46,19 +46,36 @@ static const CGFloat kRevealAnimationDuration = 0.25;
 }
 
 - (void)updateOverlays {
-  [self removeAllOverlays];
-
   UITextView *textView = _textView;
   if (!textView) return;
 
+  // Without a real width the layout manager wraps everything into a
+  // single bogus line fragment, so any rects we compute here are
+  // garbage. Skip until the text view has been sized and we'll get
+  // called back when layoutSubviews runs again.
+  if (textView.bounds.size.width <= 0) return;
+
   NSAttributedString *attrText = textView.attributedText;
-  if (!attrText || attrText.length == 0) return;
+  if (!attrText || attrText.length == 0) {
+    [self removeAllOverlays];
+    return;
+  }
 
   NSLayoutManager *layoutManager = textView.layoutManager;
   NSTextContainer *textContainer = textView.textContainer;
-  CGPoint textOrigin = textView.textContainerInset.left > 0 || textView.textContainerInset.top > 0
-      ? CGPointMake(textView.textContainerInset.left, textView.textContainerInset.top)
-      : CGPointZero;
+  if (!layoutManager || !textContainer) {
+    [self removeAllOverlays];
+    return;
+  }
+
+  // Force the layout manager to compute glyph positions for the full
+  // text container. Without this, enumerateEnclosingRectsForGlyphRange
+  // can return stale / empty rects on the first pass.
+  [layoutManager ensureLayoutForTextContainer:textContainer];
+
+  CGPoint textOrigin =
+      CGPointMake(textView.textContainerInset.left,
+                  textView.textContainerInset.top);
 
   // Find all spoiler ranges
   NSMutableDictionary<NSString *, NSMutableArray<NSValue *> *> *spoilerRanges =
@@ -77,6 +94,8 @@ static const CGFloat kRevealAnimationDuration = 0.25;
     [spoilerRanges[spoilerId] addObject:[NSValue valueWithRange:range]];
   }];
 
+  [self removeAllOverlays];
+
   // For each spoiler, get glyph rects and create overlays
   for (NSString *spoilerId in spoilerRanges) {
     BOOL isRevealed = [_revealedIds containsObject:spoilerId];
@@ -86,13 +105,13 @@ static const CGFloat kRevealAnimationDuration = 0.25;
 
       // Convert to glyph range
       NSRange glyphRange = [layoutManager glyphRangeForCharacterRange:charRange
-                                                actualCharacterRange:NULL];
+                                                 actualCharacterRange:NULL];
 
       // Enumerate enclosing rects (one per line fragment the range spans)
       [layoutManager enumerateEnclosingRectsForGlyphRange:glyphRange
-                                withinSelectedGlyphRange:NSMakeRange(NSNotFound, 0)
-                                         inTextContainer:textContainer
-                                              usingBlock:^(CGRect rect, BOOL *stop) {
+                                 withinSelectedGlyphRange:NSMakeRange(NSNotFound, 0)
+                                          inTextContainer:textContainer
+                                               usingBlock:^(CGRect rect, BOOL *stop) {
         if (CGRectIsEmpty(rect) || rect.size.width < 1) return;
 
         CGRect overlayRect = CGRectOffset(rect, textOrigin.x, textOrigin.y);

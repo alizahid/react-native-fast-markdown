@@ -139,6 +139,13 @@ bool CustomTagParser::parseSingleTag(const std::string &html,
   return parseTag(html, pos, tagName, props, isSelfClosing, isClosing);
 }
 
+bool CustomTagParser::parseTagAt(const std::string &html, size_t &pos,
+                                 std::string &tagName,
+                                 std::map<std::string, std::string> &props,
+                                 bool &isSelfClosing, bool &isClosing) {
+  return parseTag(html, pos, tagName, props, isSelfClosing, isClosing);
+}
+
 std::vector<ASTNode>
 CustomTagParser::parse(const std::string &html,
                        const std::set<std::string> &registeredTags) {

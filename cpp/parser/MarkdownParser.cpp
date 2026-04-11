@@ -1,7 +1,9 @@
 #include "MarkdownParser.hpp"
 #include "CustomTagParser.hpp"
 #include "md4c.h"
+#include <cctype>
 #include <stack>
+#include <utility>
 
 namespace markdown {
 
@@ -108,6 +110,18 @@ int MarkdownParser::onEnterBlock(int blockType, void *detail,
     return 0;
   }
 
+  // Skip MD_BLOCK_HTML entirely. We don't need an HtmlBlock node in
+  // the AST — the text inside accumulates in ctx.pendingHtml and
+  // flushPendingHtml (called from leaveBlock) parses it against the
+  // registered custom tags, adding CustomTag or HtmlInline children
+  // directly to the real parent on the stack. If we DID push an
+  // HtmlBlock here, the parsed children would end up as its children
+  // instead of the parent's, and HtmlBlock has no renderer so they
+  // would never be shown.
+  if (static_cast<MD_BLOCKTYPE>(blockType) == MD_BLOCK_HTML) {
+    return 0;
+  }
+
   NodeType type;
   switch (static_cast<MD_BLOCKTYPE>(blockType)) {
   case MD_BLOCK_DOC:
@@ -180,6 +194,15 @@ int MarkdownParser::onLeaveBlock(int blockType, void * /*detail*/,
     return 0;
   }
 
+  // Matches the enter_block skip for MD_BLOCK_HTML — flush the
+  // buffered HTML text so any parsed custom tags / text attach to
+  // the current real parent, but don't pop the stack (we never
+  // pushed for this block).
+  if (static_cast<MD_BLOCKTYPE>(blockType) == MD_BLOCK_HTML) {
+    flushPendingHtml(*ctx);
+    return 0;
+  }
+
   flushPendingHtml(*ctx);
   if (ctx->stack.size() > 1) {
     ctx->stack.pop_back();
@@ -237,24 +260,72 @@ int MarkdownParser::onLeaveSpan(int /*spanType*/, void * /*detail*/,
   return 0;
 }
 
+static bool containsNonWhitespace(const std::string &s) {
+  for (char c : s) {
+    if (!std::isspace(static_cast<unsigned char>(c))) return true;
+  }
+  return false;
+}
+
 void MarkdownParser::flushPendingHtml(ParseContext &ctx) {
   if (ctx.pendingHtml.empty())
     return;
 
   const auto &customTags = ctx.options->customTags;
-  if (!customTags.empty()) {
+
+  // Walk the accumulated HTML. Inline HTML usually arrives one tag
+  // at a time, in which case we go around this loop once — but a
+  // block HTML (e.g. a multi-line <Spoiler>…</Spoiler>) buffers the
+  // open tag, content, and close tag all together, and we need to
+  // process each piece in order so none get lost.
+  size_t pos = 0;
+  while (pos < ctx.pendingHtml.size()) {
+    size_t tagStart = ctx.pendingHtml.find('<', pos);
+
+    // Emit any text that appears before the next tag.
+    size_t textEnd =
+        tagStart == std::string::npos ? ctx.pendingHtml.size() : tagStart;
+    if (textEnd > pos) {
+      std::string text = ctx.pendingHtml.substr(pos, textEnd - pos);
+      if (containsNonWhitespace(text)) {
+        // Trim the surrounding newlines that block-level HTML like
+        // <Spoiler>\ncontent\n</Spoiler> wraps around its content —
+        // otherwise they render as blank pseudo-lines. Internal
+        // newlines are preserved so multi-line content still wraps.
+        size_t first = text.find_first_not_of("\r\n");
+        size_t last = text.find_last_not_of("\r\n");
+        if (first != std::string::npos && last != std::string::npos) {
+          text = text.substr(first, last - first + 1);
+        }
+        ASTNode textNode(NodeType::Text);
+        textNode.content = std::move(text);
+        ctx.stack.back()->children.push_back(std::move(textNode));
+      }
+      pos = textEnd;
+    }
+
+    if (tagStart == std::string::npos) break;
+
+    // Try to parse the tag at `pos`.
+    size_t saved = pos;
     std::string tagName;
     std::map<std::string, std::string> props;
     bool isSelfClosing = false;
     bool isClosing = false;
 
-    if (CustomTagParser::parseSingleTag(ctx.pendingHtml, tagName, props,
-                                        isSelfClosing, isClosing) &&
-        customTags.count(tagName) > 0) {
+    if (!CustomTagParser::parseTagAt(ctx.pendingHtml, pos, tagName, props,
+                                     isSelfClosing, isClosing)) {
+      // Not a well-formed tag — emit the `<` as literal text and
+      // keep walking.
+      ASTNode textNode(NodeType::Text);
+      textNode.content = "<";
+      ctx.stack.back()->children.push_back(std::move(textNode));
+      pos = saved + 1;
+      continue;
+    }
 
+    if (customTags.count(tagName) > 0) {
       if (isClosing) {
-        // </TagName> — pop the custom tag node from the stack
-        // Find the matching open tag on the stack
         if (ctx.stack.size() > 1) {
           ASTNode *top = ctx.stack.back();
           if (top->type == NodeType::CustomTag && top->tagName == tagName) {
@@ -262,33 +333,25 @@ void MarkdownParser::flushPendingHtml(ParseContext &ctx) {
           }
         }
       } else if (isSelfClosing) {
-        // <TagName prop="val" /> — add as a leaf node
         ASTNode node(NodeType::CustomTag);
         node.tagName = tagName;
         node.tagProps = props;
-        ASTNode *parent = ctx.stack.back();
-        parent->children.push_back(std::move(node));
+        ctx.stack.back()->children.push_back(std::move(node));
       } else {
-        // <TagName> — opening tag, push onto stack
-        // Children will be added until </TagName>
         ASTNode node(NodeType::CustomTag);
         node.tagName = tagName;
         node.tagProps = props;
-        ASTNode *parent = ctx.stack.back();
-        parent->children.push_back(std::move(node));
-        ctx.stack.push_back(&parent->children.back());
+        ctx.stack.back()->children.push_back(std::move(node));
+        ctx.stack.push_back(&ctx.stack.back()->children.back());
       }
-
-      ctx.pendingHtml.clear();
-      return;
+    } else {
+      // Unknown tag — emit as raw HTML inline so it's preserved.
+      ASTNode htmlNode(NodeType::HtmlInline);
+      htmlNode.content = ctx.pendingHtml.substr(saved, pos - saved);
+      ctx.stack.back()->children.push_back(std::move(htmlNode));
     }
   }
 
-  // Not a custom tag — add as raw HTML inline
-  ASTNode htmlNode(NodeType::HtmlInline);
-  htmlNode.content = std::move(ctx.pendingHtml);
-  ASTNode *parent = ctx.stack.back();
-  parent->children.push_back(std::move(htmlNode));
   ctx.pendingHtml.clear();
 }
 

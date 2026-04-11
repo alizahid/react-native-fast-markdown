@@ -23,6 +23,15 @@ public:
                              std::map<std::string, std::string> &props,
                              bool &isSelfClosing, bool &isClosing);
 
+  // Parse one tag starting at html[pos]. On success advances pos
+  // past the closing `>` and fills the out parameters. Used when
+  // walking through an accumulated HTML stream that may contain
+  // multiple tags + interleaved text (e.g. from an MD_BLOCK_HTML).
+  static bool parseTagAt(const std::string &html, size_t &pos,
+                         std::string &tagName,
+                         std::map<std::string, std::string> &props,
+                         bool &isSelfClosing, bool &isClosing);
+
 private:
   // Parse a single tag: <TagName prop="value" /> or <TagName prop="value">
   // Returns true if successfully parsed, fills outNode.

@@ -7,6 +7,7 @@
 
 #import "ASTNodeWrapper.h"
 #import "MarkdownBlockView.h"
+#import "MarkdownInternalTextView.h"
 #import "MarkdownParser.hpp"
 #import "MarkdownSegmentStackView.h"
 #import "MarkdownSpoilerOverlay.h"
@@ -366,7 +367,7 @@ using namespace facebook::react;
 }
 
 - (UITextView *)makeTextViewWithAttributedText:(NSAttributedString *)text {
-  UITextView *textView = [[UITextView alloc] init];
+  MarkdownInternalTextView *textView = [[MarkdownInternalTextView alloc] init];
   // Empty linkTextAttributes tells UITextView not to override the
   // attributed string's own color / underline / etc. on ranges that
   // have NSLinkAttributeName set. Otherwise it forces its tint color
@@ -385,8 +386,6 @@ using namespace facebook::react;
 
 - (void)attachSpoilerOverlayToTextView:(UITextView *)textView
                            styleConfig:(StyleConfig *)styleConfig {
-  [textView layoutIfNeeded];
-
   MarkdownSpoilerOverlay *spoilerOverlay =
       [[MarkdownSpoilerOverlay alloc] initWithTextView:textView];
 
@@ -395,7 +394,19 @@ using namespace facebook::react;
     spoilerOverlay.overlayColor = spoilerStyle.backgroundColor;
   }
 
-  [spoilerOverlay updateOverlays];
+  // Rebuild the overlay rects every time the text view lays out —
+  // they depend on the computed line fragments, which only become
+  // accurate after the view has a real width. Without this the
+  // overlay is sized against the zero bounds the text view has at
+  // construction time and ends up as one giant rect on the first
+  // line.
+  if ([textView isKindOfClass:[MarkdownInternalTextView class]]) {
+    __weak MarkdownSpoilerOverlay *weakOverlay = spoilerOverlay;
+    ((MarkdownInternalTextView *)textView).onLayoutSubviews = ^{
+      [weakOverlay updateOverlays];
+    };
+  }
+
   [_spoilerOverlays addObject:spoilerOverlay];
 }
 
