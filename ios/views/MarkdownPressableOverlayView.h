@@ -39,6 +39,28 @@ NS_ASSUME_NONNULL_BEGIN
 /// coordination because each target is now a single view.
 @property (nonatomic, copy, nullable) NSString *groupId;
 
+/// Builds a rounded shape path that covers every rect in `rects`,
+/// interpreted as touching horizontal strips (one per line of a
+/// multi-line text highlight). Rects should be sorted by y
+/// ascending and adjacent rects should share their y boundary —
+/// that's what the spoiler / mention overlays produce via
+/// enumerateLineFragmentsForGlyphRange:.
+///
+/// The path is the staircase outline of the rect union with every
+/// corner (convex AND concave) smoothed by a quadratic bezier of
+/// the requested radius. Concave corners at line boundaries
+/// naturally get inward curves, which gives the connected-line
+/// highlight look used in Messages, Discord, etc.
+///
+/// Radius is clamped per-corner to half of the shorter adjacent
+/// segment so tight vertices don't overshoot.
+///
+/// The returned path is in the coordinate space of the union of
+/// `rects` — pass the union as the view's frame and the path as
+/// `shapePath` directly. Returns an empty path for empty input.
++ (UIBezierPath *)shapePathForRects:(NSArray<NSValue *> *)rects
+                       cornerRadius:(CGFloat)radius;
+
 @end
 
 NS_ASSUME_NONNULL_END

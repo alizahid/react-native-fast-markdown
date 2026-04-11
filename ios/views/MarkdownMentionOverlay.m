@@ -4,6 +4,8 @@
 
 #import <objc/runtime.h>
 
+static const CGFloat kMentionCornerRadius = 4.0;
+
 // Associated-object key — any unique pointer works.
 static const void *kMentionDataKey = &kMentionDataKey;
 
@@ -115,12 +117,15 @@ static const void *kMentionDataKey = &kMentionDataKey;
       bounds = CGRectUnion(bounds, v.CGRectValue);
     }
 
-    UIBezierPath *path = [UIBezierPath bezierPath];
+    NSMutableArray<NSValue *> *localRects = [NSMutableArray new];
     for (NSValue *v in perLineRects) {
       CGRect local =
           CGRectOffset(v.CGRectValue, -bounds.origin.x, -bounds.origin.y);
-      [path appendPath:[UIBezierPath bezierPathWithRect:local]];
+      [localRects addObject:[NSValue valueWithCGRect:local]];
     }
+    UIBezierPath *path =
+        [MarkdownPressableOverlayView shapePathForRects:localRects
+                                           cornerRadius:kMentionCornerRadius];
 
     MarkdownPressableOverlayView *overlay =
         [[MarkdownPressableOverlayView alloc] initWithFrame:bounds];

@@ -3,6 +3,7 @@
 #import "MarkdownPressableOverlayView.h"
 
 static const CGFloat kRevealAnimationDuration = 0.25;
+static const CGFloat kSpoilerCornerRadius = 6.0;
 
 @implementation MarkdownSpoilerOverlay {
   __weak UITextView *_textView;
@@ -139,16 +140,18 @@ static const CGFloat kRevealAnimationDuration = 0.25;
       bounds = CGRectUnion(bounds, v.CGRectValue);
     }
 
-    // Build a single path containing every per-line rect, in
-    // bounds-local coordinates. When adjacent line rects touch (same
-    // bottom/top y), CAShapeLayer's fillRule:nonZero draws them as
-    // one continuous shape.
-    UIBezierPath *path = [UIBezierPath bezierPath];
+    // Convert per-line rects to the overlay's local coordinate
+    // space (union origin at 0,0) and build a rounded shape path
+    // that smooths the staircase outline.
+    NSMutableArray<NSValue *> *localRects = [NSMutableArray new];
     for (NSValue *v in perLineRects) {
       CGRect local =
           CGRectOffset(v.CGRectValue, -bounds.origin.x, -bounds.origin.y);
-      [path appendPath:[UIBezierPath bezierPathWithRect:local]];
+      [localRects addObject:[NSValue valueWithCGRect:local]];
     }
+    UIBezierPath *path =
+        [MarkdownPressableOverlayView shapePathForRects:localRects
+                                           cornerRadius:kSpoilerCornerRadius];
 
     MarkdownPressableOverlayView *overlay =
         [[MarkdownPressableOverlayView alloc] initWithFrame:bounds];
