@@ -9,6 +9,7 @@
 #import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
 #import "MarkdownInternalTextView.h"
+#import "MarkdownMentionOverlay.h"
 #import "MarkdownParser.hpp"
 #import "MarkdownSegmentStackView.h"
 #import "MarkdownSpoilerOverlay.h"
@@ -33,6 +34,7 @@ using namespace facebook::react;
   StyleConfig *_styleConfig;
 
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
+  NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -50,6 +52,7 @@ using namespace facebook::react;
     _baseContainer.contentView = _stackView;
 
     _spoilerOverlays = [NSMutableArray new];
+    _mentionOverlays = [NSMutableArray new];
   }
   return self;
 }
@@ -150,6 +153,11 @@ using namespace facebook::react;
   }
   [_spoilerOverlays removeAllObjects];
 
+  for (MarkdownMentionOverlay *overlay in _mentionOverlays) {
+    [overlay removeAllOverlays];
+  }
+  [_mentionOverlays removeAllObjects];
+
   [_stackView removeAllArrangedSubviews];
 }
 
@@ -211,7 +219,7 @@ using namespace facebook::react;
   [stack addArrangedSubview:blockView];
 
   // Spoiler overlays for this text view
-  [self attachSpoilerOverlayToTextView:textView styleConfig:styleConfig];
+  [self attachOverlaysToTextView:textView styleConfig:styleConfig];
 }
 
 - (void)addListSegment:(ASTNodeWrapper *)node
@@ -270,7 +278,7 @@ using namespace facebook::react;
     itemView.contentView = textView;
 
     [itemStack addArrangedSubview:itemView];
-    [self attachSpoilerOverlayToTextView:textView styleConfig:styleConfig];
+    [self attachOverlaysToTextView:textView styleConfig:styleConfig];
   }
 
   [stack addArrangedSubview:listContainer];
@@ -396,8 +404,9 @@ using namespace facebook::react;
   return textView;
 }
 
-- (void)attachSpoilerOverlayToTextView:(UITextView *)textView
-                           styleConfig:(StyleConfig *)styleConfig {
+- (void)attachOverlaysToTextView:(UITextView *)textView
+                     styleConfig:(StyleConfig *)styleConfig {
+  // Spoilers — tap-to-reveal overlay with press feedback.
   MarkdownSpoilerOverlay *spoilerOverlay =
       [[MarkdownSpoilerOverlay alloc] initWithTextView:textView];
 
@@ -405,21 +414,34 @@ using namespace facebook::react;
   if (spoilerStyle.backgroundColor) {
     spoilerOverlay.overlayColor = spoilerStyle.backgroundColor;
   }
+  [_spoilerOverlays addObject:spoilerOverlay];
 
-  // Rebuild the overlay rects every time the text view lays out —
-  // they depend on the computed line fragments, which only become
-  // accurate after the view has a real width. Without this the
-  // overlay is sized against the zero bounds the text view has at
-  // construction time and ends up as one giant rect on the first
-  // line.
+  // Mentions — transparent highlight-on-press overlay that fires
+  // onMentionPress on tap-up. Replaces the old NSLinkAttributeName
+  // path so users can't long-press into the system link menu or
+  // drag the mention range out of the text view.
+  MarkdownMentionOverlay *mentionOverlay =
+      [[MarkdownMentionOverlay alloc] initWithTextView:textView];
+
+  __weak __typeof(self) weakSelf = self;
+  mentionOverlay.onPress = ^(NSDictionary *mention) {
+    [weakSelf emitMentionPressForData:mention];
+  };
+  [_mentionOverlays addObject:mentionOverlay];
+
+  // Rebuild overlay rects every time the text view lays out — they
+  // depend on computed line fragments, which only become accurate
+  // after the view has a real width. Without this the overlays are
+  // sized against the zero bounds the text view has at construction
+  // time and end up as one giant rect on the first line.
   if ([textView isKindOfClass:[MarkdownInternalTextView class]]) {
-    __weak MarkdownSpoilerOverlay *weakOverlay = spoilerOverlay;
+    __weak MarkdownSpoilerOverlay *weakSpoiler = spoilerOverlay;
+    __weak MarkdownMentionOverlay *weakMention = mentionOverlay;
     ((MarkdownInternalTextView *)textView).onLayoutSubviews = ^{
-      [weakOverlay updateOverlays];
+      [weakSpoiler updateOverlays];
+      [weakMention updateOverlays];
     };
   }
-
-  [_spoilerOverlays addObject:spoilerOverlay];
 }
 
 #pragma mark - UITextViewDelegate
@@ -431,21 +453,6 @@ using namespace facebook::react;
   NSString *scheme = URL.scheme.lowercaseString;
   BOOL isHttp = [scheme isEqualToString:@"http"] ||
                 [scheme isEqualToString:@"https"];
-  BOOL isMention = [scheme isEqualToString:@"mention"];
-
-  // Mentions — CustomTagRenderer attaches a sentinel `mention://` URL
-  // via NSLinkAttributeName alongside the real mention data stored
-  // under MarkdownMentionKey. We own taps on these entirely: on tap
-  // read the dict out of the attributed string at the delegate-
-  // supplied characterRange and fire onMentionPress. Long-press is
-  // suppressed so users don't see a "Open mention://..." sheet.
-  if (isMention) {
-    if (interaction == UITextItemInteractionInvokeDefaultAction &&
-        _eventEmitter) {
-      [self emitMentionPressInTextView:textView characterRange:characterRange];
-    }
-    return NO;
-  }
 
   if (interaction == UITextItemInteractionInvokeDefaultAction) {
     // Tap — emit onLinkPress so JS can handle (open in-app, log,
@@ -488,21 +495,9 @@ using namespace facebook::react;
 
 #pragma mark - Mention press
 
-- (void)emitMentionPressInTextView:(UITextView *)textView
-                    characterRange:(NSRange)characterRange {
-  if (!_eventEmitter) return;
+- (void)emitMentionPressForData:(NSDictionary *)mention {
+  if (!_eventEmitter || ![mention isKindOfClass:[NSDictionary class]]) return;
 
-  NSAttributedString *attrText = textView.attributedText;
-  if (!attrText || characterRange.location >= attrText.length) return;
-
-  // CustomTagRenderer stores the mention data as a plain NSDictionary
-  // under MarkdownMentionKey. No URL parsing — just read it back.
-  id raw = [attrText attribute:MarkdownMentionKey
-                       atIndex:characterRange.location
-                effectiveRange:NULL];
-  if (![raw isKindOfClass:[NSDictionary class]]) return;
-
-  NSDictionary *mention = (NSDictionary *)raw;
   NSString *type = mention[@"type"] ?: @"";
   NSString *mentionId = mention[@"id"] ?: @"";
   NSString *name = mention[@"name"] ?: @"";

@@ -1,28 +1,13 @@
 #import "MarkdownSpoilerOverlay.h"
 #import "CustomTagRenderer.h"
+#import "MarkdownPressableOverlayView.h"
 
 static const CGFloat kOverlayCornerRadius = 4.0;
 static const CGFloat kRevealAnimationDuration = 0.25;
 
-@interface MarkdownSpoilerOverlayView : UIView
-@property (nonatomic, copy) NSString *spoilerId;
-@property (nonatomic, assign) BOOL revealed;
-@end
-
-@implementation MarkdownSpoilerOverlayView
-
-- (void)toggleReveal {
-  _revealed = !_revealed;
-  [UIView animateWithDuration:kRevealAnimationDuration animations:^{
-    self.alpha = self->_revealed ? 0.0 : 1.0;
-  }];
-}
-
-@end
-
 @implementation MarkdownSpoilerOverlay {
   __weak UITextView *_textView;
-  NSMutableArray<MarkdownSpoilerOverlayView *> *_overlays;
+  NSMutableArray<MarkdownPressableOverlayView *> *_overlays;
   // Track which spoiler IDs are revealed
   NSMutableSet<NSString *> *_revealedIds;
 }
@@ -96,18 +81,21 @@ static const CGFloat kRevealAnimationDuration = 0.25;
 
   [self removeAllOverlays];
 
-  // For each spoiler, get glyph rects and create overlays
+  // A spoiler is "normally" its overlayColor (opaque) and flashes
+  // slightly transparent on touch to acknowledge the tap. On touch-up
+  // it toggles revealed state.
+  UIColor *normalColor = _overlayColor;
+  UIColor *pressedColor = [_overlayColor colorWithAlphaComponent:0.8];
+
   for (NSString *spoilerId in spoilerRanges) {
     BOOL isRevealed = [_revealedIds containsObject:spoilerId];
 
     for (NSValue *rangeValue in spoilerRanges[spoilerId]) {
       NSRange charRange = rangeValue.rangeValue;
 
-      // Convert to glyph range
       NSRange glyphRange = [layoutManager glyphRangeForCharacterRange:charRange
                                                  actualCharacterRange:NULL];
 
-      // Enumerate enclosing rects (one per line fragment the range spans)
       [layoutManager enumerateEnclosingRectsForGlyphRange:glyphRange
                                  withinSelectedGlyphRange:NSMakeRange(NSNotFound, 0)
                                           inTextContainer:textContainer
@@ -116,20 +104,21 @@ static const CGFloat kRevealAnimationDuration = 0.25;
 
         CGRect overlayRect = CGRectOffset(rect, textOrigin.x, textOrigin.y);
 
-        MarkdownSpoilerOverlayView *overlay =
-            [[MarkdownSpoilerOverlayView alloc] initWithFrame:overlayRect];
-        overlay.spoilerId = spoilerId;
-        overlay.backgroundColor = self->_overlayColor;
+        MarkdownPressableOverlayView *overlay =
+            [[MarkdownPressableOverlayView alloc] initWithFrame:overlayRect];
+        overlay.groupId = spoilerId;
+        overlay.normalColor = normalColor;
+        overlay.pressedColor = pressedColor;
         overlay.layer.cornerRadius = kOverlayCornerRadius;
         overlay.layer.masksToBounds = YES;
-        overlay.revealed = isRevealed;
         overlay.alpha = isRevealed ? 0.0 : 1.0;
-        overlay.userInteractionEnabled = YES;
 
-        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc]
-            initWithTarget:self
-                    action:@selector(handleSpoilerTap:)];
-        [overlay addGestureRecognizer:tap];
+        [overlay addTarget:self
+                    action:@selector(handleSpoilerPressDown:)
+          forControlEvents:UIControlEventTouchDown];
+        [overlay addTarget:self
+                    action:@selector(handleSpoilerPressUp:)
+          forControlEvents:UIControlEventTouchUpInside];
 
         [textView addSubview:overlay];
         [self->_overlays addObject:overlay];
@@ -138,26 +127,37 @@ static const CGFloat kRevealAnimationDuration = 0.25;
   }
 }
 
-- (void)handleSpoilerTap:(UITapGestureRecognizer *)gesture {
-  MarkdownSpoilerOverlayView *tappedOverlay =
-      (MarkdownSpoilerOverlayView *)gesture.view;
-  if (!tappedOverlay) return;
+#pragma mark - Press handling
 
-  NSString *spoilerId = tappedOverlay.spoilerId;
+- (void)handleSpoilerPressDown:(MarkdownPressableOverlayView *)sender {
+  // Mirror the press state to every other overlay in the same group
+  // so a multi-line spoiler highlights as one unit.
+  for (MarkdownPressableOverlayView *overlay in _overlays) {
+    if (overlay != sender && [overlay.groupId isEqualToString:sender.groupId]) {
+      overlay.highlighted = YES;
+    }
+  }
+}
+
+- (void)handleSpoilerPressUp:(MarkdownPressableOverlayView *)sender {
+  for (MarkdownPressableOverlayView *overlay in _overlays) {
+    if (overlay != sender && [overlay.groupId isEqualToString:sender.groupId]) {
+      overlay.highlighted = NO;
+    }
+  }
+
+  NSString *spoilerId = sender.groupId;
   if (!spoilerId) return;
 
-  // Toggle all overlays with the same spoiler ID
   BOOL willReveal = ![_revealedIds containsObject:spoilerId];
-
   if (willReveal) {
     [_revealedIds addObject:spoilerId];
   } else {
     [_revealedIds removeObject:spoilerId];
   }
 
-  for (MarkdownSpoilerOverlayView *overlay in _overlays) {
-    if ([overlay.spoilerId isEqualToString:spoilerId]) {
-      overlay.revealed = willReveal;
+  for (MarkdownPressableOverlayView *overlay in _overlays) {
+    if ([overlay.groupId isEqualToString:spoilerId]) {
       [UIView animateWithDuration:kRevealAnimationDuration animations:^{
         overlay.alpha = willReveal ? 0.0 : 1.0;
       }];

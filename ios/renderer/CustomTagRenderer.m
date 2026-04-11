@@ -8,7 +8,6 @@ NSString *const MarkdownCustomTagKey = @"MarkdownCustomTag";
 NSString *const MarkdownCustomTagPropsKey = @"MarkdownCustomTagProps";
 NSString *const MarkdownSpoilerRangeKey = @"MarkdownSpoilerRange";
 NSString *const MarkdownMentionKey = @"MarkdownMention";
-NSString *const MarkdownMentionTapURLString = @"mention://tap";
 
 // Built-in mention tags.
 static NSString *const kUserMentionTag = @"UserMention";
@@ -92,12 +91,11 @@ static NSString *const kSpoilerTag = @"Spoiler";
   attrs[MarkdownCustomTagKey] = node.tagName;
   attrs[MarkdownCustomTagPropsKey] = tagProps;
   attrs[MarkdownMentionKey] = mentionData;
-  // NSLinkAttributeName is only used as a tap trigger — its value is
-  // a fixed sentinel. MarkdownView.shouldInteractWithURL keys off the
-  // `mention` scheme and reads the real data from MarkdownMentionKey
-  // at the delegate-supplied character range.
-  attrs[NSLinkAttributeName] =
-      [NSURL URLWithString:MarkdownMentionTapURLString];
+  // Intentionally no NSLinkAttributeName here — we don't want
+  // UITextView to treat mention ranges as links (long-press menu,
+  // drag-to-drop, accessibility as link, etc.). Tap handling is
+  // provided by MarkdownMentionOverlay which installs pressable
+  // overlay views over the mention rects after layout.
 
   // Display the prefix plus the name (or id as a fallback when name
   // is missing — typical for command mentions like `/help` that
