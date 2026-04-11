@@ -2,6 +2,7 @@
 
 #import "ASTNodeWrapper.h"
 #import "MarkdownParser.hpp"
+#import "MarkdownTableView.h"
 #import "RenderContext.h"
 #import "StyleConfig.h"
 
@@ -135,30 +136,19 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   }
 
   if (type == MDNodeTypeTable) {
-    // Tables are measured by instantiating MarkdownTableView in the
-    // render path; during shadow-thread measurement we estimate the
-    // height from row count × paragraph line height. Users with tables
-    // get a close-enough first pass; the actual view lays itself out
-    // correctly when the frame arrives.
+    // Tables share the full layout pipeline with the view build path,
+    // so the measurement here matches the final rendered size exactly.
     MarkdownElementStyle *tableStyle = styleConfig.table;
-    NSInteger rowCount = 0;
-    for (ASTNodeWrapper *child in node.children) {
-      if (child.nodeType == MDNodeTypeTableHead ||
-          child.nodeType == MDNodeTypeTableBody) {
-        for (ASTNodeWrapper *row in child.children) {
-          if (row.nodeType == MDNodeTypeTableRow) rowCount++;
-        }
-      } else if (child.nodeType == MDNodeTypeTableRow) {
-        rowCount++;
-      }
-    }
-    CGFloat rowHeight = styleConfig.paragraph.lineHeight > 0
-                            ? styleConfig.paragraph.lineHeight
-                            : styleConfig.base.lineHeight > 0
-                                  ? styleConfig.base.lineHeight
-                                  : 20;
-    CGFloat h = rowCount * rowHeight;
-    CGSize framed = SizeForBlockStyle(tableStyle, CGSizeMake(innerWidth, h));
+    UIEdgeInsets wrapperPadding = [tableStyle resolvedPaddingInsets];
+    UIEdgeInsets wrapperBorders = [tableStyle resolvedBorderWidths];
+    CGFloat tableInnerWidth = innerWidth - wrapperPadding.left -
+                              wrapperPadding.right - wrapperBorders.left -
+                              wrapperBorders.right;
+
+    CGSize tableSize = [MarkdownTableView sizeForTableNode:node
+                                               styleConfig:styleConfig
+                                                  maxWidth:tableInnerWidth];
+    CGSize framed = SizeForBlockStyle(tableStyle, tableSize);
     return framed.height;
   }
 

@@ -17,6 +17,14 @@ NS_ASSUME_NONNULL_BEGIN
 /// Total height of the rendered table (for parent layout).
 @property (nonatomic, readonly) CGFloat tableHeight;
 
+/// Computes the fully laid-out size of a table AST node without
+/// instantiating a view. Thread-safe — intended for calls from the
+/// Fabric shadow tree during measureContent. Shares the cell rendering
+/// + column-width / row-height pipeline with the instance initializer.
++ (CGSize)sizeForTableNode:(ASTNodeWrapper *)tableNode
+               styleConfig:(StyleConfig *)styleConfig
+                  maxWidth:(CGFloat)maxWidth;
+
 @end
 
 NS_ASSUME_NONNULL_END
