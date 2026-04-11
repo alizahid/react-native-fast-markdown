@@ -103,9 +103,9 @@ export interface MarkdownStyle {
   listBullet?: MarkdownTextStyle
 
   // Mentions — three trigger types, each with its own style
-  userMention?: MarkdownTextStyle
-  channelMention?: MarkdownTextStyle
-  commandMention?: MarkdownTextStyle
+  mentionUser?: MarkdownTextStyle
+  mentionChannel?: MarkdownTextStyle
+  mentionCommand?: MarkdownTextStyle
 
   // Special
   spoiler?: MarkdownViewStyle

@@ -140,9 +140,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) MarkdownElementStyle *link;
 
 // Mentions — three trigger types, each with its own text style.
-@property (nonatomic, strong) MarkdownElementStyle *userMention;
-@property (nonatomic, strong) MarkdownElementStyle *channelMention;
-@property (nonatomic, strong) MarkdownElementStyle *commandMention;
+@property (nonatomic, strong) MarkdownElementStyle *mentionUser;
+@property (nonatomic, strong) MarkdownElementStyle *mentionChannel;
+@property (nonatomic, strong) MarkdownElementStyle *mentionCommand;
 
 // Special
 @property (nonatomic, strong) MarkdownElementStyle *spoiler;

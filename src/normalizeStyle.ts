@@ -69,15 +69,15 @@ const defaultStyle: MarkdownStyle = {
   listBullet: {
     color: colors.border,
   },
-  userMention: {
+  mentionUser: {
     color: colors.link,
     fontWeight: '600',
   },
-  channelMention: {
+  mentionChannel: {
     color: colors.link,
     fontWeight: '600',
   },
-  commandMention: {
+  mentionCommand: {
     color: colors.link,
     fontWeight: '600',
     fontFamily: fonts.mono,

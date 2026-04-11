@@ -28,21 +28,21 @@ static NSString *const kSpoilerTag = @"Spoiler";
     [self renderMentionNode:node
                        type:@"user"
                      prefix:@"@"
-                      style:context.styleConfig.userMention
+                      style:context.styleConfig.mentionUser
                        into:output
                     context:context];
   } else if ([tag isEqualToString:kChannelMentionTag]) {
     [self renderMentionNode:node
                        type:@"channel"
                      prefix:@"#"
-                      style:context.styleConfig.channelMention
+                      style:context.styleConfig.mentionChannel
                        into:output
                     context:context];
   } else if ([tag isEqualToString:kCommandMentionTag]) {
     [self renderMentionNode:node
                        type:@"command"
                      prefix:@"/"
-                      style:context.styleConfig.commandMention
+                      style:context.styleConfig.mentionCommand
                        into:output
                     context:context];
   } else if ([tag isEqualToString:kSpoilerTag]) {
@@ -85,7 +85,7 @@ static NSString *const kSpoilerTag = @"Spoiler";
   };
 
   // Visual attrs come from the matching style key
-  // (userMention/channelMention/commandMention).
+  // (mentionUser/mentionChannel/mentionCommand).
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
   [StyleAttributes applyStyle:style toAttrs:attrs];
 

@@ -222,9 +222,9 @@
   config.underline = [self elementStyleFromDict:dict[@"underline"]];
   config.code = [self elementStyleFromDict:dict[@"code"]];
   config.link = [self elementStyleFromDict:dict[@"link"]];
-  config.userMention = [self elementStyleFromDict:dict[@"userMention"]];
-  config.channelMention = [self elementStyleFromDict:dict[@"channelMention"]];
-  config.commandMention = [self elementStyleFromDict:dict[@"commandMention"]];
+  config.mentionUser = [self elementStyleFromDict:dict[@"mentionUser"]];
+  config.mentionChannel = [self elementStyleFromDict:dict[@"mentionChannel"]];
+  config.mentionCommand = [self elementStyleFromDict:dict[@"mentionCommand"]];
   config.spoiler = [self elementStyleFromDict:dict[@"spoiler"]];
 
   return config;

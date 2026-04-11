@@ -278,13 +278,13 @@ class MarkdownRenderer(private val context: Context) {
     private fun renderCustomTag(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
         when (node.tag) {
             "UserMention" -> {
-                renderMention(node, builder, ctx.styleConfig.userMention, "@")
+                renderMention(node, builder, ctx.styleConfig.mentionUser, "@")
             }
             "ChannelMention" -> {
-                renderMention(node, builder, ctx.styleConfig.channelMention, "#")
+                renderMention(node, builder, ctx.styleConfig.mentionChannel, "#")
             }
             "CommandMention" -> {
-                renderMention(node, builder, ctx.styleConfig.commandMention, "/")
+                renderMention(node, builder, ctx.styleConfig.mentionCommand, "/")
             }
             "Spoiler" -> {
                 val style = ctx.styleConfig.spoiler
