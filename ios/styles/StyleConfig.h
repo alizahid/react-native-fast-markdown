@@ -31,8 +31,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat marginBottom;
 @property (nonatomic, assign) CGFloat marginLeft;
 @property (nonatomic, assign) CGFloat marginRight;
-@property (nonatomic, assign) CGFloat marginStart;
-@property (nonatomic, assign) CGFloat marginEnd;
 @property (nonatomic, assign) CGFloat marginHorizontal;
 @property (nonatomic, assign) CGFloat marginVertical;
 
@@ -42,8 +40,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat paddingBottom;
 @property (nonatomic, assign) CGFloat paddingLeft;
 @property (nonatomic, assign) CGFloat paddingRight;
-@property (nonatomic, assign) CGFloat paddingStart;
-@property (nonatomic, assign) CGFloat paddingEnd;
 @property (nonatomic, assign) CGFloat paddingHorizontal;
 @property (nonatomic, assign) CGFloat paddingVertical;
 
@@ -60,11 +56,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) UIColor *borderBottomColor;
 @property (nonatomic, strong, nullable) UIColor *borderLeftColor;
 @property (nonatomic, strong, nullable) UIColor *borderRightColor;
-@property (nonatomic, strong, nullable) UIColor *borderBlockColor;
-@property (nonatomic, strong, nullable) UIColor *borderBlockStartColor;
-@property (nonatomic, strong, nullable) UIColor *borderBlockEndColor;
-@property (nonatomic, strong, nullable) UIColor *borderStartColor;
-@property (nonatomic, strong, nullable) UIColor *borderEndColor;
 
 // Border radii
 @property (nonatomic, assign) CGFloat borderRadius;
@@ -72,14 +63,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat borderTopRightRadius;
 @property (nonatomic, assign) CGFloat borderBottomLeftRadius;
 @property (nonatomic, assign) CGFloat borderBottomRightRadius;
-@property (nonatomic, assign) CGFloat borderTopStartRadius;
-@property (nonatomic, assign) CGFloat borderTopEndRadius;
-@property (nonatomic, assign) CGFloat borderBottomStartRadius;
-@property (nonatomic, assign) CGFloat borderBottomEndRadius;
-@property (nonatomic, assign) CGFloat borderStartStartRadius;
-@property (nonatomic, assign) CGFloat borderStartEndRadius;
-@property (nonatomic, assign) CGFloat borderEndStartRadius;
-@property (nonatomic, assign) CGFloat borderEndEndRadius;
 
 // Border style
 @property (nonatomic, copy, nullable) NSString *borderStyle;

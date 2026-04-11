@@ -73,24 +73,18 @@
 
 - (UIEdgeInsets)resolvedPaddingInsets {
   // Specific edges override paddingHorizontal/paddingVertical which override padding.
-  // paddingLeft/paddingStart and paddingRight/paddingEnd are treated as equivalents.
   CGFloat top = _paddingTop > 0
       ? _paddingTop
       : (_paddingVertical > 0 ? _paddingVertical : _padding);
   CGFloat bottom = _paddingBottom > 0
       ? _paddingBottom
       : (_paddingVertical > 0 ? _paddingVertical : _padding);
-
   CGFloat left = _paddingLeft > 0
       ? _paddingLeft
-      : (_paddingStart > 0
-             ? _paddingStart
-             : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding));
+      : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding);
   CGFloat right = _paddingRight > 0
       ? _paddingRight
-      : (_paddingEnd > 0
-             ? _paddingEnd
-             : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding));
+      : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding);
 
   return UIEdgeInsetsMake(top, left, bottom, right);
 }
@@ -104,14 +98,10 @@
       : (_marginVertical > 0 ? _marginVertical : _margin);
   CGFloat left = _marginLeft > 0
       ? _marginLeft
-      : (_marginStart > 0
-             ? _marginStart
-             : (_marginHorizontal > 0 ? _marginHorizontal : _margin));
+      : (_marginHorizontal > 0 ? _marginHorizontal : _margin);
   CGFloat right = _marginRight > 0
       ? _marginRight
-      : (_marginEnd > 0
-             ? _marginEnd
-             : (_marginHorizontal > 0 ? _marginHorizontal : _margin));
+      : (_marginHorizontal > 0 ? _marginHorizontal : _margin);
 
   return UIEdgeInsetsMake(top, left, bottom, right);
 }
@@ -127,13 +117,13 @@
 - (UIColor *)resolvedBorderColorForEdge:(UIRectEdge)edge {
   switch (edge) {
     case UIRectEdgeTop:
-      return _borderTopColor ?: _borderBlockStartColor ?: _borderBlockColor ?: _borderColor;
+      return _borderTopColor ?: _borderColor;
     case UIRectEdgeBottom:
-      return _borderBottomColor ?: _borderBlockEndColor ?: _borderBlockColor ?: _borderColor;
+      return _borderBottomColor ?: _borderColor;
     case UIRectEdgeLeft:
-      return _borderLeftColor ?: _borderStartColor ?: _borderColor;
+      return _borderLeftColor ?: _borderColor;
     case UIRectEdgeRight:
-      return _borderRightColor ?: _borderEndColor ?: _borderColor;
+      return _borderRightColor ?: _borderColor;
     default:
       return _borderColor;
   }
@@ -142,21 +132,13 @@
 - (CGFloat)resolvedRadiusForCorner:(UIRectCorner)corner {
   switch (corner) {
     case UIRectCornerTopLeft:
-      return _borderTopLeftRadius > 0 ? _borderTopLeftRadius
-                                      : (_borderTopStartRadius > 0 ? _borderTopStartRadius
-                                                                   : (_borderStartStartRadius > 0 ? _borderStartStartRadius : _borderRadius));
+      return _borderTopLeftRadius > 0 ? _borderTopLeftRadius : _borderRadius;
     case UIRectCornerTopRight:
-      return _borderTopRightRadius > 0 ? _borderTopRightRadius
-                                       : (_borderTopEndRadius > 0 ? _borderTopEndRadius
-                                                                  : (_borderStartEndRadius > 0 ? _borderStartEndRadius : _borderRadius));
+      return _borderTopRightRadius > 0 ? _borderTopRightRadius : _borderRadius;
     case UIRectCornerBottomLeft:
-      return _borderBottomLeftRadius > 0 ? _borderBottomLeftRadius
-                                         : (_borderBottomStartRadius > 0 ? _borderBottomStartRadius
-                                                                         : (_borderEndStartRadius > 0 ? _borderEndStartRadius : _borderRadius));
+      return _borderBottomLeftRadius > 0 ? _borderBottomLeftRadius : _borderRadius;
     case UIRectCornerBottomRight:
-      return _borderBottomRightRadius > 0 ? _borderBottomRightRadius
-                                          : (_borderBottomEndRadius > 0 ? _borderBottomEndRadius
-                                                                        : (_borderEndEndRadius > 0 ? _borderEndEndRadius : _borderRadius));
+      return _borderBottomRightRadius > 0 ? _borderBottomRightRadius : _borderRadius;
     default:
       return _borderRadius;
   }
@@ -170,11 +152,7 @@
 - (BOOL)hasAnyRadius {
   return _borderRadius > 0 ||
          _borderTopLeftRadius > 0 || _borderTopRightRadius > 0 ||
-         _borderBottomLeftRadius > 0 || _borderBottomRightRadius > 0 ||
-         _borderTopStartRadius > 0 || _borderTopEndRadius > 0 ||
-         _borderBottomStartRadius > 0 || _borderBottomEndRadius > 0 ||
-         _borderStartStartRadius > 0 || _borderStartEndRadius > 0 ||
-         _borderEndStartRadius > 0 || _borderEndEndRadius > 0;
+         _borderBottomLeftRadius > 0 || _borderBottomRightRadius > 0;
 }
 
 - (BOOL)hasNonUniformBorders {
@@ -278,8 +256,6 @@
   if (dict[@"marginBottom"]) style.marginBottom = [dict[@"marginBottom"] doubleValue];
   if (dict[@"marginLeft"]) style.marginLeft = [dict[@"marginLeft"] doubleValue];
   if (dict[@"marginRight"]) style.marginRight = [dict[@"marginRight"] doubleValue];
-  if (dict[@"marginStart"]) style.marginStart = [dict[@"marginStart"] doubleValue];
-  if (dict[@"marginEnd"]) style.marginEnd = [dict[@"marginEnd"] doubleValue];
   if (dict[@"marginHorizontal"]) style.marginHorizontal = [dict[@"marginHorizontal"] doubleValue];
   if (dict[@"marginVertical"]) style.marginVertical = [dict[@"marginVertical"] doubleValue];
 
@@ -289,8 +265,6 @@
   if (dict[@"paddingBottom"]) style.paddingBottom = [dict[@"paddingBottom"] doubleValue];
   if (dict[@"paddingLeft"]) style.paddingLeft = [dict[@"paddingLeft"] doubleValue];
   if (dict[@"paddingRight"]) style.paddingRight = [dict[@"paddingRight"] doubleValue];
-  if (dict[@"paddingStart"]) style.paddingStart = [dict[@"paddingStart"] doubleValue];
-  if (dict[@"paddingEnd"]) style.paddingEnd = [dict[@"paddingEnd"] doubleValue];
   if (dict[@"paddingHorizontal"]) style.paddingHorizontal = [dict[@"paddingHorizontal"] doubleValue];
   if (dict[@"paddingVertical"]) style.paddingVertical = [dict[@"paddingVertical"] doubleValue];
 
@@ -307,11 +281,6 @@
   style.borderBottomColor = [self colorFromValue:dict[@"borderBottomColor"]];
   style.borderLeftColor = [self colorFromValue:dict[@"borderLeftColor"]];
   style.borderRightColor = [self colorFromValue:dict[@"borderRightColor"]];
-  style.borderBlockColor = [self colorFromValue:dict[@"borderBlockColor"]];
-  style.borderBlockStartColor = [self colorFromValue:dict[@"borderBlockStartColor"]];
-  style.borderBlockEndColor = [self colorFromValue:dict[@"borderBlockEndColor"]];
-  style.borderStartColor = [self colorFromValue:dict[@"borderStartColor"]];
-  style.borderEndColor = [self colorFromValue:dict[@"borderEndColor"]];
 
   // Border radii
   if (dict[@"borderRadius"]) style.borderRadius = [dict[@"borderRadius"] doubleValue];
@@ -319,14 +288,6 @@
   if (dict[@"borderTopRightRadius"]) style.borderTopRightRadius = [dict[@"borderTopRightRadius"] doubleValue];
   if (dict[@"borderBottomLeftRadius"]) style.borderBottomLeftRadius = [dict[@"borderBottomLeftRadius"] doubleValue];
   if (dict[@"borderBottomRightRadius"]) style.borderBottomRightRadius = [dict[@"borderBottomRightRadius"] doubleValue];
-  if (dict[@"borderTopStartRadius"]) style.borderTopStartRadius = [dict[@"borderTopStartRadius"] doubleValue];
-  if (dict[@"borderTopEndRadius"]) style.borderTopEndRadius = [dict[@"borderTopEndRadius"] doubleValue];
-  if (dict[@"borderBottomStartRadius"]) style.borderBottomStartRadius = [dict[@"borderBottomStartRadius"] doubleValue];
-  if (dict[@"borderBottomEndRadius"]) style.borderBottomEndRadius = [dict[@"borderBottomEndRadius"] doubleValue];
-  if (dict[@"borderStartStartRadius"]) style.borderStartStartRadius = [dict[@"borderStartStartRadius"] doubleValue];
-  if (dict[@"borderStartEndRadius"]) style.borderStartEndRadius = [dict[@"borderStartEndRadius"] doubleValue];
-  if (dict[@"borderEndStartRadius"]) style.borderEndStartRadius = [dict[@"borderEndStartRadius"] doubleValue];
-  if (dict[@"borderEndEndRadius"]) style.borderEndEndRadius = [dict[@"borderEndEndRadius"] doubleValue];
 
   if (dict[@"borderStyle"]) style.borderStyle = dict[@"borderStyle"];
   if (dict[@"borderCurve"]) style.borderCurve = dict[@"borderCurve"];
