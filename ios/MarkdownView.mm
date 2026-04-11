@@ -2,15 +2,16 @@
 
 #import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
-#import <react/renderer/components/MarkdownViewSpec/ComponentDescriptors.h>
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
 #import "ASTNodeWrapper.h"
 #import "MarkdownBlockView.h"
 #import "MarkdownParser.hpp"
+#import "MarkdownSegmentStackView.h"
 #import "MarkdownSpoilerOverlay.h"
 #import "MarkdownTableView.h"
+#import "MarkdownViewComponentDescriptor.h"
 #import "RenderContext.h"
 #import "RendererFactory.h"
 #import "StyleConfig.h"
@@ -22,13 +23,12 @@ using namespace facebook::react;
 
 @implementation MarkdownView {
   MarkdownBlockView *_baseContainer;
-  UIStackView *_stackView;
+  MarkdownSegmentStackView *_stackView;
   NSString *_currentMarkdown;
   NSString *_currentStyleJSON;
   NSArray<NSString *> *_customTags;
   StyleConfig *_styleConfig;
 
-  BOOL _pendingSizeEmit;
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
 }
 
@@ -42,9 +42,7 @@ using namespace facebook::react;
     _baseContainer = [[MarkdownBlockView alloc] initWithStyle:nil];
     [self addSubview:_baseContainer];
 
-    _stackView = [[UIStackView alloc] initWithFrame:CGRectZero];
-    _stackView.axis = UILayoutConstraintAxisVertical;
-    _stackView.alignment = UIStackViewAlignmentFill;
+    _stackView = [[MarkdownSegmentStackView alloc] initWithFrame:CGRectZero];
     _stackView.spacing = 0;
     _baseContainer.contentView = _stackView;
 
@@ -56,40 +54,6 @@ using namespace facebook::react;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _baseContainer.frame = self.bounds;
-
-  if (self.bounds.size.width > 0 && _stackView.arrangedSubviews.count > 0) {
-    [self emitContentSizeIfNeeded];
-  }
-}
-
-- (void)updateEventEmitter:(const EventEmitter::Shared &)eventEmitter {
-  [super updateEventEmitter:eventEmitter];
-
-  if (_pendingSizeEmit && _stackView.arrangedSubviews.count > 0) {
-    _pendingSizeEmit = NO;
-    [self emitContentSizeIfNeeded];
-  }
-}
-
-- (void)emitContentSizeIfNeeded {
-  if (_stackView.arrangedSubviews.count == 0) return;
-  if (!_eventEmitter) {
-    _pendingSizeEmit = YES;
-    return;
-  }
-
-  CGFloat width = self.bounds.size.width > 0
-      ? self.bounds.size.width
-      : UIScreen.mainScreen.bounds.size.width;
-
-  CGSize size = [_baseContainer sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
-
-  const auto &eventEmitter =
-      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
-  eventEmitter.onContentSizeChange({
-      .width = static_cast<double>(size.width),
-      .height = static_cast<double>(size.height),
-  });
 }
 
 - (void)updateProps:(const Props::Shared &)props
@@ -164,8 +128,6 @@ using namespace facebook::react;
   for (ASTNodeWrapper *child in rootWrapper.children) {
     [self addSegmentForNode:child styleConfig:styleConfig customTags:customTags];
   }
-
-  [self emitContentSizeIfNeeded];
 }
 
 - (void)clearSegments {
@@ -174,10 +136,7 @@ using namespace facebook::react;
   }
   [_spoilerOverlays removeAllObjects];
 
-  for (UIView *view in [_stackView.arrangedSubviews copy]) {
-    [_stackView removeArrangedSubview:view];
-    [view removeFromSuperview];
-  }
+  [_stackView removeAllArrangedSubviews];
 }
 
 - (void)addSegmentForNode:(ASTNodeWrapper *)node
@@ -205,9 +164,10 @@ using namespace facebook::react;
   MarkdownElementStyle *blockStyle = [self blockStyleForNode:node styleConfig:styleConfig];
 
   // Render the node's content to an attributed string
-  NSAttributedString *content = [self renderNodeToAttributedString:node
-                                                       styleConfig:styleConfig
-                                                        customTags:customTags];
+  NSAttributedString *content =
+      [RenderContext renderNodeToAttributedString:node
+                                      styleConfig:styleConfig
+                                       customTags:customTags];
 
   if (content.length == 0) return;
 
@@ -230,9 +190,8 @@ using namespace facebook::react;
   MarkdownBlockView *listContainer =
       [[MarkdownBlockView alloc] initWithStyle:listStyle];
 
-  UIStackView *itemStack = [[UIStackView alloc] initWithFrame:CGRectZero];
-  itemStack.axis = UILayoutConstraintAxisVertical;
-  itemStack.alignment = UIStackViewAlignmentFill;
+  MarkdownSegmentStackView *itemStack =
+      [[MarkdownSegmentStackView alloc] initWithFrame:CGRectZero];
   itemStack.spacing = listStyle.gap;
   listContainer.contentView = itemStack;
 
@@ -246,10 +205,10 @@ using namespace facebook::react;
         [[MarkdownBlockView alloc] initWithStyle:itemStyle];
 
     NSAttributedString *content =
-        [self renderListItemContent:child
-                      orderedIndex:orderedIndex
-                       styleConfig:styleConfig
-                        customTags:customTags];
+        [RenderContext renderListItemContent:child
+                                orderedIndex:orderedIndex
+                                 styleConfig:styleConfig
+                                  customTags:customTags];
 
     if (child.isOrderedList) orderedIndex++;
 
@@ -289,65 +248,6 @@ using namespace facebook::react;
   MarkdownBlockView *hrView =
       [[MarkdownBlockView alloc] initWithStyle:styleConfig.thematicBreak];
   [_stackView addArrangedSubview:hrView];
-}
-
-#pragma mark - Content rendering
-
-- (NSAttributedString *)renderNodeToAttributedString:(ASTNodeWrapper *)node
-                                         styleConfig:(StyleConfig *)styleConfig
-                                          customTags:(NSArray<NSString *> *)customTags {
-  RenderContext *context = [[RenderContext alloc] init];
-  context.styleConfig = styleConfig;
-  context.customTags = [NSSet setWithArray:customTags];
-
-  NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
-
-  id<NodeRenderer> renderer = [RendererFactory rendererForNode:node];
-  if (renderer) {
-    [renderer renderNode:node into:output context:context];
-  }
-
-  // Trim trailing newlines — block separators are handled by stack spacing
-  while (output.length > 0) {
-    unichar last = [output.string characterAtIndex:output.length - 1];
-    if (last == '\n') {
-      [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
-    } else {
-      break;
-    }
-  }
-
-  return [output copy];
-}
-
-- (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
-                                 orderedIndex:(NSInteger)orderedIndex
-                                  styleConfig:(StyleConfig *)styleConfig
-                                   customTags:(NSArray<NSString *> *)customTags {
-  RenderContext *context = [[RenderContext alloc] init];
-  context.styleConfig = styleConfig;
-  context.customTags = [NSSet setWithArray:customTags];
-  context.orderedListIndex = orderedIndex;
-  context.listDepth = 1;
-
-  NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
-
-  id<NodeRenderer> renderer = [RendererFactory rendererForNode:item];
-  if (renderer) {
-    [renderer renderNode:item into:output context:context];
-  }
-
-  // Trim trailing newlines
-  while (output.length > 0) {
-    unichar last = [output.string characterAtIndex:output.length - 1];
-    if (last == '\n') {
-      [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
-    } else {
-      break;
-    }
-  }
-
-  return [output copy];
 }
 
 #pragma mark - Helpers

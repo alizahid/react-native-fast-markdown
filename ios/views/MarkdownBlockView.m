@@ -218,7 +218,14 @@
       ? [_contentView sizeThatFits:availableSize]
       : CGSizeZero;
 
-  return CGSizeMake(contentSize.width + extraW, contentSize.height + extraH);
+  CGFloat w = contentSize.width + extraW;
+  CGFloat h = contentSize.height + extraH;
+
+  // Explicit width/height from the style override any calculation.
+  if (_style.width > 0) w = _style.width;
+  if (_style.height > 0) h = _style.height;
+
+  return CGSizeMake(w, h);
 }
 
 @end

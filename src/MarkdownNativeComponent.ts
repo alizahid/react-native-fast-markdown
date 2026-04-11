@@ -13,9 +13,6 @@ export interface MarkdownViewNativeProps extends ViewProps {
   markdown: string
 
   // Events
-  onContentSizeChange?: DirectEventHandler<
-    Readonly<{ width: Double; height: Double }>
-  >
   onLinkLongPress?: DirectEventHandler<Readonly<{ url: string; title: string }>>
   onLinkPress?: DirectEventHandler<Readonly<{ url: string; title: string }>>
   onMentionPress?: DirectEventHandler<Readonly<{ user: string }>>

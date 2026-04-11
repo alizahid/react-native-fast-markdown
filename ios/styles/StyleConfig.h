@@ -24,6 +24,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Layout
 @property (nonatomic, assign) CGFloat gap;
+@property (nonatomic, assign) CGFloat width;   // 0 = unset
+@property (nonatomic, assign) CGFloat height;  // 0 = unset
 
 // Margin
 @property (nonatomic, assign) CGFloat margin;

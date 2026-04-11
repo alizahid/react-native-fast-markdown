@@ -271,6 +271,13 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
   return self;
 }
 
+- (CGSize)sizeThatFits:(CGSize)size {
+  // UIScrollView's default sizeThatFits returns bounds.size which is
+  // useless here. Return the actual rendered table size so parent
+  // layout (MarkdownBlockView → MarkdownSegmentStackView) can size us.
+  return CGSizeMake(_totalWidth, _tableHeight);
+}
+
 - (UIFont *)effectiveFontForHeader:(BOOL)isHeader
                          cellStyle:(MarkdownElementStyle *)cellStyle
                    headerCellStyle:(MarkdownElementStyle *)headerCellStyle

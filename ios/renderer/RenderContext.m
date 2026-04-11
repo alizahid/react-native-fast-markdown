@@ -78,4 +78,58 @@
   }
 }
 
++ (NSAttributedString *)renderNodeToAttributedString:(ASTNodeWrapper *)node
+                                         styleConfig:(StyleConfig *)styleConfig
+                                          customTags:
+                                              (NSArray<NSString *> *)customTags {
+  RenderContext *context = [[RenderContext alloc] init];
+  context.styleConfig = styleConfig;
+  context.customTags = [NSSet setWithArray:customTags];
+
+  NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
+  id<NodeRenderer> renderer = [RendererFactory rendererForNode:node];
+  if (renderer) {
+    [renderer renderNode:node into:output context:context];
+  }
+
+  while (output.length > 0) {
+    unichar last = [output.string characterAtIndex:output.length - 1];
+    if (last == '\n') {
+      [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
+    } else {
+      break;
+    }
+  }
+
+  return [output copy];
+}
+
++ (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
+                                 orderedIndex:(NSInteger)orderedIndex
+                                  styleConfig:(StyleConfig *)styleConfig
+                                   customTags:(NSArray<NSString *> *)customTags {
+  RenderContext *context = [[RenderContext alloc] init];
+  context.styleConfig = styleConfig;
+  context.customTags = [NSSet setWithArray:customTags];
+  context.orderedListIndex = orderedIndex;
+  context.listDepth = 1;
+
+  NSMutableAttributedString *output = [[NSMutableAttributedString alloc] init];
+  id<NodeRenderer> renderer = [RendererFactory rendererForNode:item];
+  if (renderer) {
+    [renderer renderNode:item into:output context:context];
+  }
+
+  while (output.length > 0) {
+    unichar last = [output.string characterAtIndex:output.length - 1];
+    if (last == '\n') {
+      [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
+    } else {
+      break;
+    }
+  }
+
+  return [output copy];
+}
+
 @end

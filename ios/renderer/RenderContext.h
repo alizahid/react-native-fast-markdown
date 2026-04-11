@@ -37,6 +37,20 @@ typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
 - (void)renderChildren:(ASTNodeWrapper *)node
                   into:(NSMutableAttributedString *)output;
 
+/// Renders a top-level block node to an attributed string using a
+/// fresh RenderContext, trimming trailing newlines. Thread-safe.
++ (NSAttributedString *)renderNodeToAttributedString:(ASTNodeWrapper *)node
+                                         styleConfig:(StyleConfig *)styleConfig
+                                          customTags:
+                                              (NSArray<NSString *> *)customTags;
+
+/// Renders a single list item, preserving the ordered index / depth
+/// so bullets render correctly. Thread-safe.
++ (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
+                                 orderedIndex:(NSInteger)orderedIndex
+                                  styleConfig:(StyleConfig *)styleConfig
+                                   customTags:(NSArray<NSString *> *)customTags;
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -249,6 +249,8 @@
   style.backgroundColor = [self colorFromValue:dict[@"backgroundColor"]];
 
   if (dict[@"gap"]) style.gap = [dict[@"gap"] doubleValue];
+  if (dict[@"width"]) style.width = [dict[@"width"] doubleValue];
+  if (dict[@"height"]) style.height = [dict[@"height"] doubleValue];
 
   // Margin
   if (dict[@"margin"]) style.margin = [dict[@"margin"] doubleValue];
