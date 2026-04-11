@@ -1,7 +1,7 @@
-export { Markdown } from './Markdown'
 export type { MarkdownProps } from './Markdown'
-export { MarkdownInput } from './MarkdownInput'
+export { Markdown } from './Markdown'
 export type { MarkdownInputProps } from './MarkdownInput'
+export { MarkdownInput } from './MarkdownInput'
 export type {
   EditorStyleState,
   LinkPressEvent,

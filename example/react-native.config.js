@@ -1,4 +1,3 @@
-// biome-ignore lint/correctness/noGlobalDirnameFilename: CJS
 const path = require('node:path')
 const pkg = require('../package.json')
 
@@ -10,6 +9,7 @@ module.exports = {
   },
   dependencies: {
     [pkg.name]: {
+      // biome-ignore lint/correctness/noGlobalDirnameFilename: go away
       root: path.join(__dirname, '..'),
       platforms: {
         ios: {},
