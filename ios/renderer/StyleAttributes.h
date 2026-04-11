@@ -18,6 +18,14 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)applyStyle:(nullable MarkdownElementStyle *)style
             toAttrs:(NSMutableDictionary *)attrs;
 
+/// Applies only the paragraph-level properties (lineHeight, textAlign)
+/// from a style to the attrs dict. Used by block renderers to cascade
+/// these from the base style without re-applying font/color/bg (which
+/// already cascade via the attribute stack, and where bg would mean
+/// something different at the container level vs inline).
++ (void)applyParagraphPropertiesFromStyle:(nullable MarkdownElementStyle *)style
+                                  toAttrs:(NSMutableDictionary *)attrs;
+
 /// Builds a paragraph style from the element style. Returns nil if
 /// no paragraph-relevant properties are set.
 + (nullable NSMutableParagraphStyle *)

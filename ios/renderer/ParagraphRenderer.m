@@ -11,7 +11,11 @@
            context:(RenderContext *)context {
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
 
-  // Apply paragraph-specific text style on top of base (already in context)
+  // Cascade base lineHeight / textAlign from the root style first, then
+  // overlay the paragraph-specific style. Font and color already cascade
+  // via the attribute stack in RenderContext.
+  [StyleAttributes applyParagraphPropertiesFromStyle:context.styleConfig.base
+                                             toAttrs:attrs];
   [StyleAttributes applyStyle:context.styleConfig.paragraph toAttrs:attrs];
 
   [context pushAttributes:attrs];

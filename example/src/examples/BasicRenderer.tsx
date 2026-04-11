@@ -58,14 +58,12 @@ export function BasicRendererScreen() {
         }}
         style={{
           backgroundColor: 'brown',
+          fontFamily: 'American Typewriter',
+          fontSize: 14,
+          lineHeight: 20,
           padding: 12,
         }}
         styles={{
-          text: {
-            fontFamily: 'American Typewriter',
-            fontSize: 14,
-            lineHeight: 20,
-          },
           codeBlock: {
             padding: 12,
           },

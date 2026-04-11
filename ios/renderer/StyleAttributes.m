@@ -61,6 +61,18 @@
   }
 }
 
++ (void)applyParagraphPropertiesFromStyle:(MarkdownElementStyle *)style
+                                  toAttrs:(NSMutableDictionary *)attrs {
+  if (!style) return;
+
+  NSParagraphStyle *existing = attrs[NSParagraphStyleAttributeName];
+  NSMutableParagraphStyle *pStyle =
+      [self paragraphStyleFromStyle:style existingPStyle:existing];
+  if (pStyle) {
+    attrs[NSParagraphStyleAttributeName] = pStyle;
+  }
+}
+
 + (NSUnderlineStyle)underlineStyleFromName:(NSString *)name {
   if ([name isEqualToString:@"double"]) return NSUnderlineStyleDouble;
   if ([name isEqualToString:@"dotted"]) return NSUnderlineStyleSingle | NSUnderlinePatternDot;

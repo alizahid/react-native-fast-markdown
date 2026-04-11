@@ -11,6 +11,8 @@
            context:(RenderContext *)context {
   MarkdownElementStyle *style = context.styleConfig.blockquote;
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
+  [StyleAttributes applyParagraphPropertiesFromStyle:context.styleConfig.base
+                                             toAttrs:attrs];
   [StyleAttributes applyStyle:style toAttrs:attrs];
 
   // Vertical bar indicator — uses borderLeftColor if set, else current color

@@ -25,6 +25,7 @@ export type MarkdownViewStyle = Pick<
   | 'borderTopWidth'
   | 'borderWidth'
   | 'gap'
+  | 'height'
   | 'margin'
   | 'marginBottom'
   | 'marginHorizontal'
@@ -39,12 +40,14 @@ export type MarkdownViewStyle = Pick<
   | 'paddingRight'
   | 'paddingTop'
   | 'paddingVertical'
+  | 'width'
 >
 
 /** Standard React Native TextStyle properties supported on text and
  *  block-level elements. Applied via attributed string attributes. */
 export type MarkdownTextStyle = Pick<
   TextStyle,
+  | 'backgroundColor'
   | 'color'
   | 'fontFamily'
   | 'fontSize'
@@ -102,9 +105,6 @@ export interface MarkdownStyle {
 
   // Special
   spoiler?: MarkdownViewStyle
-
-  // Extensible: any custom tag
-  [key: string]: unknown
 }
 
 // --- Event Types ---

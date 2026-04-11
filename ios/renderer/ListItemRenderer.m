@@ -10,6 +10,8 @@
               into:(NSMutableAttributedString *)output
            context:(RenderContext *)context {
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
+  [StyleAttributes applyParagraphPropertiesFromStyle:context.styleConfig.base
+                                             toAttrs:attrs];
   [StyleAttributes applyStyle:context.styleConfig.listItem toAttrs:attrs];
 
   // Build indent
