@@ -6,6 +6,7 @@
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
 #import "ASTNodeWrapper.h"
+#import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
 #import "MarkdownInternalTextView.h"
 #import "MarkdownParser.hpp"
