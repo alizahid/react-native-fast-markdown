@@ -67,7 +67,7 @@ const defaultStyle: MarkdownStyle = {
     borderColor: colors.border,
   },
   listBullet: {
-    color: colors.link,
+    color: colors.border,
   },
   userMention: {
     color: colors.link,
@@ -94,7 +94,7 @@ const defaultStyle: MarkdownStyle = {
     padding: 6,
   },
   thematicBreak: {
-    backgroundColor: 'rgb(218, 216, 206)',
+    backgroundColor: colors.border,
     height: StyleSheet.hairlineWidth,
     marginVertical: 12,
   },
