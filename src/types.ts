@@ -135,16 +135,15 @@ export type MentionType = 'user' | 'channel' | 'command'
  *  which is accurate: the tag may or may not have had that
  *  attribute. */
 export interface MentionPressEvent {
-  /** Which kind of mention was pressed. */
-  type: MentionType
   /** The `id` attribute that was on the mention tag. */
   id: string
   /** The `name` attribute, if present (optional for commands). */
   name?: string
+  /** Which kind of mention was pressed. */
+  type: MentionType
   /** Any other attribute set on the source tag. */
   [key: string]: string | undefined
 }
-
 
 export interface TaskListItemPressEvent {
   checked: boolean

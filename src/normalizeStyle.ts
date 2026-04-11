@@ -8,6 +8,9 @@ const colors = {
   background: 'rgb(242, 240, 229)',
   border: 'rgb(183, 181, 172)',
   link: 'rgb(160, 47, 111)',
+  user: 'rgb(102, 128, 11)',
+  channel: 'rgb(32, 94, 166)',
+  command: 'rgb(160, 47, 111)',
 }
 
 const fonts = {
@@ -69,16 +72,19 @@ const defaultStyle: MarkdownStyle = {
   listBullet: {
     color: colors.border,
   },
+  spoiler: {
+    backgroundColor: colors.link,
+  },
   mentionUser: {
-    color: colors.link,
+    color: colors.user,
     fontWeight: '600',
   },
   mentionChannel: {
-    color: colors.link,
+    color: colors.channel,
     fontWeight: '600',
   },
   mentionCommand: {
-    color: colors.link,
+    color: colors.command,
     fontWeight: '600',
     fontFamily: fonts.mono,
   },
