@@ -12,6 +12,13 @@ static const CGFloat kSpoilerPadding = 4.0;
   NSMutableArray<MarkdownPressableOverlayView *> *_overlays;
   // Track which spoiler IDs are revealed
   NSMutableSet<NSString *> *_revealedIds;
+
+  // Cache so we can short-circuit updateOverlays when layoutSubviews
+  // fires without a relevant change (e.g. during animations on an
+  // ancestor view). A rebuild is only needed when the text view's
+  // width or attributed text actually changed.
+  CGFloat _cachedWidth;
+  __weak NSAttributedString *_cachedText;
 }
 
 - (instancetype)initWithTextView:(UITextView *)textView {
@@ -21,6 +28,8 @@ static const CGFloat kSpoilerPadding = 4.0;
     _overlays = [NSMutableArray new];
     _revealedIds = [NSMutableSet new];
     _overlayColor = [UIColor labelColor];
+    _cachedWidth = 0;
+    _cachedText = nil;
   }
   return self;
 }
@@ -30,6 +39,8 @@ static const CGFloat kSpoilerPadding = 4.0;
     [overlay removeFromSuperview];
   }
   [_overlays removeAllObjects];
+  _cachedWidth = 0;
+  _cachedText = nil;
 }
 
 - (void)updateOverlays {
@@ -40,13 +51,25 @@ static const CGFloat kSpoilerPadding = 4.0;
   // single bogus line fragment, so any rects we compute here are
   // garbage. Skip until the text view has been sized and we'll get
   // called back when layoutSubviews runs again.
-  if (textView.bounds.size.width <= 0) return;
+  CGFloat width = textView.bounds.size.width;
+  if (width <= 0) return;
 
   NSAttributedString *attrText = textView.attributedText;
   if (!attrText || attrText.length == 0) {
     [self removeAllOverlays];
     return;
   }
+
+  // Skip the rebuild when layoutSubviews fires without a change we
+  // care about. We compare attributedText by pointer identity
+  // because MarkdownView always rebuilds a fresh NSAttributedString
+  // when the markdown or style JSON changes, so same-pointer means
+  // same content.
+  if (fabs(width - _cachedWidth) < 0.5 && attrText == _cachedText) {
+    return;
+  }
+  _cachedWidth = width;
+  _cachedText = attrText;
 
   NSLayoutManager *layoutManager = textView.layoutManager;
   NSTextContainer *textContainer = textView.textContainer;
@@ -99,15 +122,25 @@ static const CGFloat kSpoilerPadding = 4.0;
           [layoutManager glyphRangeForCharacterRange:charRange
                                actualCharacterRange:NULL];
 
+      // Look up the font once per range. Spoilers use the
+      // surrounding text's font in the ~100% case — looking it up
+      // per line fragment was a redundant O(log N) attribute
+      // lookup per call.
+      UIFont *rangeFont = [attrText attribute:NSFontAttributeName
+                                      atIndex:charRange.location
+                               effectiveRange:NULL];
+      if (![rangeFont isKindOfClass:[UIFont class]]) {
+        rangeFont = [UIFont systemFontOfSize:UIFont.systemFontSize];
+      }
+      CGFloat ascender = rangeFont.ascender;
+      CGFloat descender = rangeFont.descender; // negative
+
       // Walk line fragments touching this chunk. For each line we
       // compute a tight text rect from font metrics (baseline
       // minus ascender to baseline minus descender), NOT from the
       // line fragment rect — that includes leading (the paragraph
       // style's extra line height above the ascender) which left
-      // asymmetric empty space above the text. This is also why
-      // boundingRectForGlyphRange: didn't visibly change anything:
-      // it returns the line's used rect, which still carries the
-      // leading.
+      // asymmetric empty space above the text.
       [layoutManager
           enumerateLineFragmentsForGlyphRange:chunkGlyphRange
                                    usingBlock:^(CGRect lineRect,
@@ -119,26 +152,15 @@ static const CGFloat kSpoilerPadding = 4.0;
             NSIntersectionRange(chunkGlyphRange, lineGlyphRange);
         if (intersection.length == 0) return;
 
-        // Horizontal: tight glyph extent via the layout manager.
         CGRect horizBounds =
             [layoutManager boundingRectForGlyphRange:intersection
                                      inTextContainer:container];
 
-        // Vertical: compute from font metrics so we always get
-        // ascender→descender regardless of paragraph line-height.
-        NSUInteger firstGlyph = intersection.location;
-        NSUInteger firstChar =
-            [layoutManager characterIndexForGlyphAtIndex:firstGlyph];
-        UIFont *font = [attrText attribute:NSFontAttributeName
-                                   atIndex:firstChar
-                            effectiveRange:NULL];
-        if (![font isKindOfClass:[UIFont class]]) {
-          font = [UIFont systemFontOfSize:UIFont.systemFontSize];
-        }
-        CGPoint glyphLoc = [layoutManager locationForGlyphAtIndex:firstGlyph];
+        CGPoint glyphLoc =
+            [layoutManager locationForGlyphAtIndex:intersection.location];
         CGFloat baseline = CGRectGetMinY(lineRect) + glyphLoc.y;
-        CGFloat top = baseline - font.ascender;
-        CGFloat bottom = baseline - font.descender; // descender is negative
+        CGFloat top = baseline - ascender;
+        CGFloat bottom = baseline - descender;
 
         CGRect rect = CGRectMake(CGRectGetMinX(horizBounds),
                                  top,

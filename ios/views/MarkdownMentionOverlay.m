@@ -15,6 +15,11 @@ static const void *kMentionDataKey = &kMentionDataKey;
 @implementation MarkdownMentionOverlay {
   __weak UITextView *_textView;
   NSMutableArray<MarkdownPressableOverlayView *> *_overlays;
+
+  // Short-circuit cache — see MarkdownSpoilerOverlay for the
+  // reasoning.
+  CGFloat _cachedWidth;
+  __weak NSAttributedString *_cachedText;
 }
 
 - (instancetype)initWithTextView:(UITextView *)textView {
@@ -22,6 +27,8 @@ static const void *kMentionDataKey = &kMentionDataKey;
   if (self) {
     _textView = textView;
     _overlays = [NSMutableArray new];
+    _cachedWidth = 0;
+    _cachedText = nil;
   }
   return self;
 }
@@ -31,6 +38,8 @@ static const void *kMentionDataKey = &kMentionDataKey;
     [overlay removeFromSuperview];
   }
   [_overlays removeAllObjects];
+  _cachedWidth = 0;
+  _cachedText = nil;
 }
 
 - (void)updateOverlays {
@@ -40,13 +49,21 @@ static const void *kMentionDataKey = &kMentionDataKey;
   // See MarkdownSpoilerOverlay.updateOverlays for why we skip when
   // bounds.width is 0 — the layout manager can't produce valid glyph
   // rects against a zero-width text container.
-  if (textView.bounds.size.width <= 0) return;
+  CGFloat width = textView.bounds.size.width;
+  if (width <= 0) return;
 
   NSAttributedString *attrText = textView.attributedText;
   if (!attrText || attrText.length == 0) {
     [self removeAllOverlays];
     return;
   }
+
+  // Short-circuit the rebuild when nothing we care about changed.
+  if (fabs(width - _cachedWidth) < 0.5 && attrText == _cachedText) {
+    return;
+  }
+  _cachedWidth = width;
+  _cachedText = attrText;
 
   NSLayoutManager *layoutManager = textView.layoutManager;
   NSTextContainer *textContainer = textView.textContainer;
@@ -86,10 +103,22 @@ static const void *kMentionDataKey = &kMentionDataKey;
         [layoutManager glyphRangeForCharacterRange:charRange
                              actualCharacterRange:NULL];
 
+    // Font is uniform across a single mention span (all glyphs are
+    // either the @/# prefix or the name, all styled the same) — one
+    // attribute lookup per mention instead of per line fragment.
+    UIFont *rangeFont = [attrText attribute:NSFontAttributeName
+                                    atIndex:charRange.location
+                             effectiveRange:NULL];
+    if (![rangeFont isKindOfClass:[UIFont class]]) {
+      rangeFont = [UIFont systemFontOfSize:UIFont.systemFontSize];
+    }
+    CGFloat ascender = rangeFont.ascender;
+    CGFloat descender = rangeFont.descender;
+
     // Per-line rects computed from font metrics — top = baseline -
-    // ascender, bottom = baseline - descender. This gives a tight
-    // hug on the glyphs (no paragraph leading) and stays stable
-    // even when the parent paragraph style bumps lineHeight.
+    // ascender, bottom = baseline - descender. Tight hug on the
+    // glyphs (no paragraph leading), stable even when the parent
+    // paragraph style bumps lineHeight.
     NSMutableArray<NSValue *> *perLineRects = [NSMutableArray new];
     [layoutManager
         enumerateLineFragmentsForGlyphRange:glyphRange
@@ -106,19 +135,11 @@ static const void *kMentionDataKey = &kMentionDataKey;
           [layoutManager boundingRectForGlyphRange:intersection
                                    inTextContainer:container];
 
-      NSUInteger firstGlyph = intersection.location;
-      NSUInteger firstChar =
-          [layoutManager characterIndexForGlyphAtIndex:firstGlyph];
-      UIFont *font = [attrText attribute:NSFontAttributeName
-                                 atIndex:firstChar
-                          effectiveRange:NULL];
-      if (![font isKindOfClass:[UIFont class]]) {
-        font = [UIFont systemFontOfSize:UIFont.systemFontSize];
-      }
-      CGPoint glyphLoc = [layoutManager locationForGlyphAtIndex:firstGlyph];
+      CGPoint glyphLoc =
+          [layoutManager locationForGlyphAtIndex:intersection.location];
       CGFloat baseline = CGRectGetMinY(lineRect) + glyphLoc.y;
-      CGFloat top = baseline - font.ascender;
-      CGFloat bottom = baseline - font.descender;
+      CGFloat top = baseline - ascender;
+      CGFloat bottom = baseline - descender;
 
       CGRect rect = CGRectMake(CGRectGetMinX(horizBounds),
                                top,
