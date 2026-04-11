@@ -23,6 +23,11 @@ typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
 // Rendering state
 @property (nonatomic, assign) NSInteger listDepth;
 @property (nonatomic, assign) NSInteger orderedListIndex;
+/// Whether the innermost enclosing list is ordered. md4c only sets
+/// listType on the List node itself, not on the individual list items,
+/// so ListItemRenderer needs this on the context instead of reading
+/// it off its own node.
+@property (nonatomic, assign) BOOL currentListIsOrdered;
 @property (nonatomic, assign) BOOL isInsideBlockquote;
 @property (nonatomic, assign) BOOL isInsideCodeBlock;
 @property (nonatomic, assign) NSInteger taskListIndex;
@@ -59,8 +64,11 @@ typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
                                               inheritedAttrs;
 
 /// Renders a single list item, preserving the ordered index / depth
-/// so bullets render correctly. Thread-safe.
+/// so bullets render correctly. isOrdered reflects the parent list's
+/// type — md4c only sets listType on the List node, so the caller
+/// (who has the List node in hand) must pass it in. Thread-safe.
 + (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
+                                    isOrdered:(BOOL)isOrdered
                                  orderedIndex:(NSInteger)orderedIndex
                                   styleConfig:(StyleConfig *)styleConfig
                                    customTags:(NSArray<NSString *> *)customTags

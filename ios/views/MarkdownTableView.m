@@ -84,11 +84,14 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
                                           maxWidth:(CGFloat)maxWidth {
   MarkdownTableLayout *layout = [MarkdownTableLayout new];
 
-  MarkdownElementStyle *tableStyle = styleConfig.table;
   MarkdownElementStyle *cellStyle = styleConfig.tableCell;
   MarkdownElementStyle *headerCellStyle = styleConfig.tableHeaderCell;
 
-  CGFloat borderWidth = tableStyle.borderWidth;
+  // Cell-grid division width (used to reserve space between cells
+  // during layout). Read from tableCell; the outer table border is
+  // handled by the wrapping MarkdownBlockView and doesn't influence
+  // the scrollable grid size here.
+  CGFloat borderWidth = cellStyle.borderWidth;
 
   // Collect rows
   NSMutableArray<ASTNodeWrapper *> *headerRows = [NSMutableArray new];
@@ -266,8 +269,13 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
     MarkdownElementStyle *cellStyle = styleConfig.tableCell;
     MarkdownElementStyle *headerCellStyle = styleConfig.tableHeaderCell;
 
-    UIColor *borderColor = tableStyle.borderColor;
-    CGFloat borderWidth = tableStyle.borderWidth;
+    // The cell-grid lines come from tableCell (the cell's own border).
+    // The outer table box is drawn separately by the MarkdownBlockView
+    // wrapper using tableStyle.borderColor / borderWidth, so we don't
+    // read those here — otherwise setting table.borderWidth alone would
+    // leak onto every cell division too.
+    UIColor *borderColor = cellStyle.borderColor;
+    CGFloat borderWidth = cellStyle.borderWidth;
     UIColor *headerRowBg = headerRowStyle.backgroundColor;
     UIColor *rowBg = rowStyle.backgroundColor;
 

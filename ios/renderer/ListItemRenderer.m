@@ -14,6 +14,20 @@
                                              toAttrs:attrs];
   [StyleAttributes applyStyle:context.styleConfig.listItem toAttrs:attrs];
 
+  // md4c omits MD_BLOCK_P for items in tight lists, so a list item's
+  // text can be rendered inline without a trailing newline — which
+  // would make the next item's bullet land on the same line. Force a
+  // preceding newline whenever we're not at the very start of the
+  // output buffer.
+  if (output.length > 0) {
+    unichar lastChar = [output.string characterAtIndex:output.length - 1];
+    if (lastChar != '\n') {
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:@"\n"
+                                          attributes:attrs]];
+    }
+  }
+
   // Build indent
   NSString *indent = @"";
   for (NSInteger i = 1; i < context.listDepth; i++) {
@@ -24,7 +38,7 @@
   NSString *bullet;
   if (node.isTaskItem) {
     bullet = node.taskChecked ? @"[x] " : @"[ ] ";
-  } else if (node.isOrderedList) {
+  } else if (context.currentListIsOrdered) {
     bullet = [NSString stringWithFormat:@"%ld. ", (long)context.orderedListIndex];
     context.orderedListIndex++;
   } else {

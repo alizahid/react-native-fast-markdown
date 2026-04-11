@@ -222,7 +222,8 @@ using namespace facebook::react;
 
   MarkdownElementStyle *itemStyle = styleConfig.listItem;
 
-  NSInteger orderedIndex = node.listStart > 0 ? node.listStart : 1;
+  BOOL isOrdered = node.isOrderedList;
+  NSInteger orderedIndex = isOrdered && node.listStart > 0 ? node.listStart : 1;
   for (ASTNodeWrapper *child in node.children) {
     if (child.nodeType != MDNodeTypeListItem) continue;
 
@@ -231,12 +232,13 @@ using namespace facebook::react;
 
     NSAttributedString *content =
         [RenderContext renderListItemContent:child
+                                   isOrdered:isOrdered
                                 orderedIndex:orderedIndex
                                  styleConfig:styleConfig
                                   customTags:customTags
                               inheritedAttrs:inheritedAttrs];
 
-    if (child.isOrderedList) orderedIndex++;
+    if (isOrdered) orderedIndex++;
 
     UITextView *textView = [self makeTextViewWithAttributedText:content];
     itemView.contentView = textView;

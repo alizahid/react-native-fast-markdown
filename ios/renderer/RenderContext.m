@@ -10,6 +10,7 @@
     _attributeStack = [NSMutableArray new];
     _listDepth = 0;
     _orderedListIndex = 0;
+    _currentListIsOrdered = NO;
     _isInsideBlockquote = NO;
     _isInsideCodeBlock = NO;
     _taskListIndex = 0;
@@ -124,6 +125,7 @@
 }
 
 + (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
+                                    isOrdered:(BOOL)isOrdered
                                  orderedIndex:(NSInteger)orderedIndex
                                   styleConfig:(StyleConfig *)styleConfig
                                    customTags:(NSArray<NSString *> *)customTags
@@ -134,6 +136,7 @@
   context.styleConfig = styleConfig;
   context.customTags = [NSSet setWithArray:customTags];
   context.orderedListIndex = orderedIndex;
+  context.currentListIsOrdered = isOrdered;
   context.listDepth = 1;
 
   if (inheritedAttrs) {

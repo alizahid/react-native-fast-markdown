@@ -9,14 +9,17 @@
            context:(RenderContext *)context {
   NSInteger savedDepth = context.listDepth;
   NSInteger savedIndex = context.orderedListIndex;
+  BOOL savedIsOrdered = context.currentListIsOrdered;
 
   context.listDepth = savedDepth + 1;
-  context.orderedListIndex = node.listStart;
+  context.orderedListIndex = node.isOrderedList ? node.listStart : 0;
+  context.currentListIsOrdered = node.isOrderedList;
 
   [context renderChildren:node into:output];
 
   context.listDepth = savedDepth;
   context.orderedListIndex = savedIndex;
+  context.currentListIsOrdered = savedIsOrdered;
 }
 
 @end

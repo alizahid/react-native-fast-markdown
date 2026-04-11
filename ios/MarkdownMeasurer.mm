@@ -144,20 +144,23 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
                                itemPadding.right - itemBorders.left -
                                itemBorders.right;
 
+    BOOL isOrdered = node.isOrderedList;
     CGFloat totalItemsHeight = 0;
     NSInteger visibleItems = 0;
-    NSInteger orderedIndex = node.listStart > 0 ? node.listStart : 1;
+    NSInteger orderedIndex =
+        isOrdered && node.listStart > 0 ? node.listStart : 1;
 
     for (ASTNodeWrapper *child in node.children) {
       if (child.nodeType != MDNodeTypeListItem) continue;
 
       NSAttributedString *content =
           [RenderContext renderListItemContent:child
+                                     isOrdered:isOrdered
                                   orderedIndex:orderedIndex
                                    styleConfig:styleConfig
                                     customTags:customTags
                                 inheritedAttrs:inheritedAttrs];
-      if (child.isOrderedList) orderedIndex++;
+      if (isOrdered) orderedIndex++;
 
       CGSize textSize = MeasureAttributedString(content, itemContentWidth);
       CGSize itemSize = SizeForBlockStyle(itemStyle, textSize);
