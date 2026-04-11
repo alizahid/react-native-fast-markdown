@@ -4,8 +4,6 @@
 
 #import <objc/runtime.h>
 
-static const CGFloat kOverlayCornerRadius = 4.0;
-
 // Associated-object key — any unique pointer works.
 static const void *kMentionDataKey = &kMentionDataKey;
 
@@ -76,73 +74,77 @@ static const void *kMentionDataKey = &kMentionDataKey;
 
   [self removeAllOverlays];
 
-  // Each mention gets a unique group id so a multi-line mention
-  // highlights all its line fragments in lockstep.
-  NSInteger groupCounter = 0;
   for (NSDictionary *hit in mentionHits) {
     NSDictionary *data = hit[@"data"];
     NSRange charRange = [hit[@"range"] rangeValue];
-    NSString *groupId =
-        [NSString stringWithFormat:@"mention-%ld", (long)groupCounter++];
-
     NSRange glyphRange =
         [layoutManager glyphRangeForCharacterRange:charRange
                              actualCharacterRange:NULL];
 
+    // Walk each line fragment the mention touches. Use the FULL
+    // line rect vertically (via enumerateLineFragmentsForGlyphRange)
+    // so adjacent lines of a wrapped mention touch without a gap.
+    NSMutableArray<NSValue *> *perLineRects = [NSMutableArray new];
     [layoutManager
-        enumerateEnclosingRectsForGlyphRange:glyphRange
-                    withinSelectedGlyphRange:NSMakeRange(NSNotFound, 0)
-                             inTextContainer:textContainer
-                                  usingBlock:^(CGRect rect, BOOL *stop) {
-      if (CGRectIsEmpty(rect) || rect.size.width < 1) return;
+        enumerateLineFragmentsForGlyphRange:glyphRange
+                                 usingBlock:^(CGRect lineRect,
+                                              CGRect usedRect,
+                                              NSTextContainer *container,
+                                              NSRange lineGlyphRange,
+                                              BOOL *stop) {
+      NSRange intersection =
+          NSIntersectionRange(glyphRange, lineGlyphRange);
+      if (intersection.length == 0) return;
 
-      CGRect overlayRect = CGRectOffset(rect, textOrigin.x, textOrigin.y);
+      CGRect textBounds =
+          [layoutManager boundingRectForGlyphRange:intersection
+                                   inTextContainer:container];
 
-      MarkdownPressableOverlayView *overlay =
-          [[MarkdownPressableOverlayView alloc] initWithFrame:overlayRect];
-      overlay.groupId = groupId;
-      overlay.normalColor = [UIColor clearColor];
-      overlay.pressedColor = [UIColor colorWithWhite:0.0 alpha:0.12];
-      overlay.layer.cornerRadius = kOverlayCornerRadius;
-      overlay.layer.masksToBounds = YES;
-
-      // Hang the mention dict off the overlay so the press handler
-      // can read it back without re-querying the attributed string.
-      objc_setAssociatedObject(overlay, kMentionDataKey, data,
-                               OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-      [overlay addTarget:self
-                  action:@selector(handlePressDown:)
-        forControlEvents:UIControlEventTouchDown];
-      [overlay addTarget:self
-                  action:@selector(handlePressUp:)
-        forControlEvents:UIControlEventTouchUpInside];
-
-      [textView addSubview:overlay];
-      [self->_overlays addObject:overlay];
+      CGRect rect = CGRectMake(CGRectGetMinX(textBounds),
+                               CGRectGetMinY(lineRect),
+                               CGRectGetWidth(textBounds),
+                               CGRectGetHeight(lineRect));
+      rect = CGRectOffset(rect, textOrigin.x, textOrigin.y);
+      [perLineRects addObject:[NSValue valueWithCGRect:rect]];
     }];
+
+    if (perLineRects.count == 0) continue;
+
+    CGRect bounds = [perLineRects[0] CGRectValue];
+    for (NSValue *v in perLineRects) {
+      bounds = CGRectUnion(bounds, v.CGRectValue);
+    }
+
+    UIBezierPath *path = [UIBezierPath bezierPath];
+    for (NSValue *v in perLineRects) {
+      CGRect local =
+          CGRectOffset(v.CGRectValue, -bounds.origin.x, -bounds.origin.y);
+      [path appendPath:[UIBezierPath bezierPathWithRect:local]];
+    }
+
+    MarkdownPressableOverlayView *overlay =
+        [[MarkdownPressableOverlayView alloc] initWithFrame:bounds];
+    overlay.normalColor = [UIColor clearColor];
+    overlay.pressedColor = [UIColor colorWithWhite:0.0 alpha:0.12];
+    overlay.shapePath = path;
+
+    // Hang the mention dict off the overlay so the press handler
+    // can read it back without re-querying the attributed string.
+    objc_setAssociatedObject(overlay, kMentionDataKey, data,
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    [overlay addTarget:self
+                action:@selector(handlePressUp:)
+      forControlEvents:UIControlEventTouchUpInside];
+
+    [textView addSubview:overlay];
+    [_overlays addObject:overlay];
   }
 }
 
 #pragma mark - Press handling
 
-- (void)handlePressDown:(MarkdownPressableOverlayView *)sender {
-  // Highlight every overlay in the same group so a mention that
-  // wraps across two lines highlights as one unit.
-  for (MarkdownPressableOverlayView *overlay in _overlays) {
-    if (overlay != sender && [overlay.groupId isEqualToString:sender.groupId]) {
-      overlay.highlighted = YES;
-    }
-  }
-}
-
 - (void)handlePressUp:(MarkdownPressableOverlayView *)sender {
-  for (MarkdownPressableOverlayView *overlay in _overlays) {
-    if (overlay != sender && [overlay.groupId isEqualToString:sender.groupId]) {
-      overlay.highlighted = NO;
-    }
-  }
-
   if (!_onPress) return;
   NSDictionary *data = objc_getAssociatedObject(sender, kMentionDataKey);
   if ([data isKindOfClass:[NSDictionary class]]) {
