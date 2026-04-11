@@ -6,6 +6,9 @@
 
 static const CGFloat kMentionCornerRadius = 4.0;
 
+// Breathing room around the text glyphs on all sides of the overlay.
+static const CGFloat kMentionPadding = 4.0;
+
 // Associated-object key — any unique pointer works.
 static const void *kMentionDataKey = &kMentionDataKey;
 
@@ -83,11 +86,10 @@ static const void *kMentionDataKey = &kMentionDataKey;
         [layoutManager glyphRangeForCharacterRange:charRange
                              actualCharacterRange:NULL];
 
-    // Walk each line fragment the mention touches. Horizontal and
-    // vertical extent both come from boundingRectForGlyphRange on
-    // the per-line intersection, which is the tight glyph bounding
-    // box (ascender→descender, no leading) — much snugger than the
-    // full line fragment rect.
+    // Per-line rects computed from font metrics — top = baseline -
+    // ascender, bottom = baseline - descender. This gives a tight
+    // hug on the glyphs (no paragraph leading) and stays stable
+    // even when the parent paragraph style bumps lineHeight.
     NSMutableArray<NSValue *> *perLineRects = [NSMutableArray new];
     [layoutManager
         enumerateLineFragmentsForGlyphRange:glyphRange
@@ -100,10 +102,30 @@ static const void *kMentionDataKey = &kMentionDataKey;
           NSIntersectionRange(glyphRange, lineGlyphRange);
       if (intersection.length == 0) return;
 
-      CGRect textBounds =
+      CGRect horizBounds =
           [layoutManager boundingRectForGlyphRange:intersection
                                    inTextContainer:container];
-      CGRect rect = CGRectOffset(textBounds, textOrigin.x, textOrigin.y);
+
+      NSUInteger firstGlyph = intersection.location;
+      NSUInteger firstChar =
+          [layoutManager characterIndexForGlyphAtIndex:firstGlyph];
+      UIFont *font = [attrText attribute:NSFontAttributeName
+                                 atIndex:firstChar
+                          effectiveRange:NULL];
+      if (![font isKindOfClass:[UIFont class]]) {
+        font = [UIFont systemFontOfSize:UIFont.systemFontSize];
+      }
+      CGPoint glyphLoc = [layoutManager locationForGlyphAtIndex:firstGlyph];
+      CGFloat baseline = CGRectGetMinY(lineRect) + glyphLoc.y;
+      CGFloat top = baseline - font.ascender;
+      CGFloat bottom = baseline - font.descender;
+
+      CGRect rect = CGRectMake(CGRectGetMinX(horizBounds),
+                               top,
+                               CGRectGetWidth(horizBounds),
+                               bottom - top);
+      rect = CGRectOffset(rect, textOrigin.x, textOrigin.y);
+      rect = CGRectInset(rect, -kMentionPadding, -kMentionPadding);
       [perLineRects addObject:[NSValue valueWithCGRect:rect]];
     }];
 

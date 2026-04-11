@@ -4,6 +4,9 @@
 
 static const CGFloat kRevealAnimationDuration = 0.25;
 
+// Breathing room around the text glyphs on all sides of the overlay.
+static const CGFloat kSpoilerPadding = 4.0;
+
 @implementation MarkdownSpoilerOverlay {
   __weak UITextView *_textView;
   NSMutableArray<MarkdownPressableOverlayView *> *_overlays;
@@ -96,11 +99,15 @@ static const CGFloat kRevealAnimationDuration = 0.25;
           [layoutManager glyphRangeForCharacterRange:charRange
                                actualCharacterRange:NULL];
 
-      // Walk line fragments touching this chunk. We use
-      // boundingRectForGlyphRange for BOTH horizontal and vertical
-      // extent — it returns the tight glyph bounding box on that
-      // line (ascender→descender, no leading), which hugs the text
-      // much more snugly than the full line fragment rect.
+      // Walk line fragments touching this chunk. For each line we
+      // compute a tight text rect from font metrics (baseline
+      // minus ascender to baseline minus descender), NOT from the
+      // line fragment rect — that includes leading (the paragraph
+      // style's extra line height above the ascender) which left
+      // asymmetric empty space above the text. This is also why
+      // boundingRectForGlyphRange: didn't visibly change anything:
+      // it returns the line's used rect, which still carries the
+      // leading.
       [layoutManager
           enumerateLineFragmentsForGlyphRange:chunkGlyphRange
                                    usingBlock:^(CGRect lineRect,
@@ -112,10 +119,34 @@ static const CGFloat kRevealAnimationDuration = 0.25;
             NSIntersectionRange(chunkGlyphRange, lineGlyphRange);
         if (intersection.length == 0) return;
 
-        CGRect textBounds =
+        // Horizontal: tight glyph extent via the layout manager.
+        CGRect horizBounds =
             [layoutManager boundingRectForGlyphRange:intersection
                                      inTextContainer:container];
-        CGRect rect = CGRectOffset(textBounds, textOrigin.x, textOrigin.y);
+
+        // Vertical: compute from font metrics so we always get
+        // ascender→descender regardless of paragraph line-height.
+        NSUInteger firstGlyph = intersection.location;
+        NSUInteger firstChar =
+            [layoutManager characterIndexForGlyphAtIndex:firstGlyph];
+        UIFont *font = [attrText attribute:NSFontAttributeName
+                                   atIndex:firstChar
+                            effectiveRange:NULL];
+        if (![font isKindOfClass:[UIFont class]]) {
+          font = [UIFont systemFontOfSize:UIFont.systemFontSize];
+        }
+        CGPoint glyphLoc = [layoutManager locationForGlyphAtIndex:firstGlyph];
+        CGFloat baseline = CGRectGetMinY(lineRect) + glyphLoc.y;
+        CGFloat top = baseline - font.ascender;
+        CGFloat bottom = baseline - font.descender; // descender is negative
+
+        CGRect rect = CGRectMake(CGRectGetMinX(horizBounds),
+                                 top,
+                                 CGRectGetWidth(horizBounds),
+                                 bottom - top);
+        rect = CGRectOffset(rect, textOrigin.x, textOrigin.y);
+        // Breathing room on all four sides.
+        rect = CGRectInset(rect, -kSpoilerPadding, -kSpoilerPadding);
         [perLineRects addObject:[NSValue valueWithCGRect:rect]];
       }];
     }
