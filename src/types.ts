@@ -65,12 +65,6 @@ export type MarkdownBlockStyle = MarkdownViewStyle & MarkdownTextStyle
 // --- Markdown Style ---
 
 export interface MarkdownStyle {
-  /** Base style applied as:
-   *  - ViewStyle: outer markdown container (gap between blocks,
-   *    background, padding, borders)
-   *  - TextStyle: default text style inherited by all text */
-  base?: MarkdownBlockStyle
-
   // Block elements (accept both view + text)
   paragraph?: MarkdownBlockStyle
   heading1?: MarkdownBlockStyle

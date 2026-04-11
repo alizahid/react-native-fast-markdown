@@ -1,15 +1,16 @@
 import { useCallback, useMemo, useState } from 'react'
-import { type ViewProps } from 'react-native'
+import { StyleSheet, type StyleProp, type ViewProps } from 'react-native'
 import MarkdownViewNative from './MarkdownNativeComponent'
 import { normalizeMarkdownStyle } from './normalizeStyle'
 import {
   type LinkPressEvent,
+  type MarkdownBlockStyle,
   type MarkdownStyle,
   type MentionPressEvent,
   type TaskListItemPressEvent,
 } from './types'
 
-export interface MarkdownProps extends ViewProps {
+export interface MarkdownProps extends Omit<ViewProps, 'style'> {
   /** Markdown string to render */
   children: string
 
@@ -18,6 +19,11 @@ export interface MarkdownProps extends ViewProps {
 
   /** Custom styles for markdown elements */
   markdownStyle?: MarkdownStyle
+
+  /** Style applied to the markdown container. Accepts both ViewStyle
+   *  (padding, background, borders, gap between blocks) and TextStyle
+   *  (default font, color, lineHeight inherited by all text). */
+  style?: StyleProp<MarkdownBlockStyle>
 
   /** Called when a link is long pressed */
   onLinkLongPress?: (event: LinkPressEvent) => void
@@ -43,9 +49,24 @@ export function Markdown({
   onTaskListItemPress,
   ...viewProps
 }: MarkdownProps) {
+  // Merge the style prop into markdownStyle as the internal `base` key.
+  // The `style` prop is the user-facing way to set default text styles
+  // (color, fontSize, etc.) and outer container styles (padding,
+  // backgroundColor, borders, gap between blocks) for the whole markdown.
+  const effectiveStyle = useMemo(() => {
+    const flatStyle = StyleSheet.flatten(style) ?? {}
+    if (Object.keys(flatStyle).length === 0 && !markdownStyle) {
+      return
+    }
+    return {
+      ...markdownStyle,
+      base: flatStyle,
+    } as MarkdownStyle
+  }, [markdownStyle, style])
+
   const serializedStyle = useMemo(
-    () => normalizeMarkdownStyle(markdownStyle),
-    [markdownStyle],
+    () => normalizeMarkdownStyle(effectiveStyle),
+    [effectiveStyle],
   )
 
   const [height, setHeight] = useState<number | undefined>(undefined)
@@ -63,7 +84,7 @@ export function Markdown({
       customTags={customTags}
       markdown={children}
       markdownStyle={serializedStyle}
-      style={[style, height !== undefined ? { height } : undefined]}
+      style={height === undefined ? undefined : { height }}
       onContentSizeChange={handleContentSizeChange}
       onLinkLongPress={
         onLinkLongPress
