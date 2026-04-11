@@ -125,16 +125,24 @@ export type MentionType = 'user' | 'channel' | 'command'
 /** Payload delivered to `onMentionPress`. `type`, `id` and `name`
  *  come from the tag's canonical attributes; any other attribute set
  *  on the source tag flows through as an extra string field on the
- *  same object. */
-export type MentionPressEvent = {
+ *  same object.
+ *
+ *  The index signature includes `undefined` because `name` is
+ *  optional — TypeScript requires every declared property type to
+ *  be assignable to the index signature's value type, and an
+ *  optional `string` is `string | undefined`. When you read an
+ *  extra prop like `event.foo`, it'll type as `string | undefined`
+ *  which is accurate: the tag may or may not have had that
+ *  attribute. */
+export interface MentionPressEvent {
   /** Which kind of mention was pressed. */
   type: MentionType
   /** The `id` attribute that was on the mention tag. */
   id: string
   /** The `name` attribute, if present (optional for commands). */
   name?: string
-} & {
-  [key: string]: string | MentionType | undefined
+  /** Any other attribute set on the source tag. */
+  [key: string]: string | undefined
 }
 
 
