@@ -18,6 +18,8 @@ Pod::Spec.new do |s|
     "cpp/**/*.{h,hpp,c,cpp}"
   ]
 
+  s.frameworks = "SafariServices"
+
   s.pod_target_xcconfig = {
     "HEADER_SEARCH_PATHS" => "\"$(PODS_TARGET_SRCROOT)/cpp/md4c\" \"$(PODS_TARGET_SRCROOT)/cpp/parser\" \"$(PODS_TARGET_SRCROOT)/cpp/custom\" \"$(PODS_TARGET_SRCROOT)/ios\" \"$(PODS_TARGET_SRCROOT)/ios/internals\" \"$(PODS_TARGET_SRCROOT)/ios/views\" \"$(PODS_TARGET_SRCROOT)/ios/renderer\" \"$(PODS_TARGET_SRCROOT)/ios/styles\"",
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++17"

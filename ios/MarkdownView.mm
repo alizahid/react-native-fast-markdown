@@ -2,6 +2,7 @@
 
 #import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
+#import <SafariServices/SafariServices.h>
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
@@ -385,22 +386,88 @@ using namespace facebook::react;
     shouldInteractWithURL:(NSURL *)URL
                   inRange:(NSRange)characterRange
               interaction:(UITextItemInteraction)interaction {
-  const auto &eventEmitter =
-      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+  if (!_eventEmitter && interaction != UITextItemInteractionPresentActions) {
+    return NO;
+  }
+
+  NSString *scheme = URL.scheme.lowercaseString;
+  BOOL isHttp = [scheme isEqualToString:@"http"] ||
+                [scheme isEqualToString:@"https"];
 
   if (interaction == UITextItemInteractionInvokeDefaultAction) {
+    // Tap — emit onLinkPress so JS can handle (open in-app, log,
+    // override, etc.). Always return NO so UITextView doesn't also
+    // open the URL in Safari behind our back.
+    const auto &eventEmitter =
+        static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
     eventEmitter.onLinkPress({
         .url = std::string([[URL absoluteString] UTF8String]),
         .title = std::string(""),
     });
-  } else if (interaction == UITextItemInteractionPresentActions) {
-    eventEmitter.onLinkLongPress({
-        .url = std::string([[URL absoluteString] UTF8String]),
-        .title = std::string(""),
-    });
+    return NO;
+  }
+
+  if (interaction == UITextItemInteractionPresentActions) {
+    // Long-press — for http(s) URLs show a floating in-app browser
+    // (SFSafariViewController) which comes with its own Copy / Share /
+    // Open in Safari action sheet. For other schemes (custom deeplinks,
+    // etc.) fall back to firing onLinkLongPress so JS can decide.
+    if (isHttp) {
+      [self presentSafariViewControllerForURL:URL];
+      return NO;
+    }
+
+    if (_eventEmitter) {
+      const auto &eventEmitter =
+          static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+      eventEmitter.onLinkLongPress({
+          .url = std::string([[URL absoluteString] UTF8String]),
+          .title = std::string(""),
+      });
+    }
+    return NO;
   }
 
   return NO;
+}
+
+#pragma mark - Floating browser preview
+
+- (void)presentSafariViewControllerForURL:(NSURL *)url {
+  if (!url) return;
+
+  // SFSafariViewController requires http or https.
+  NSString *scheme = url.scheme.lowercaseString;
+  if (![scheme isEqualToString:@"http"] &&
+      ![scheme isEqualToString:@"https"]) {
+    return;
+  }
+
+  UIViewController *host = [self enclosingViewController];
+  if (!host) return;
+
+  SFSafariViewController *safari =
+      [[SFSafariViewController alloc] initWithURL:url];
+  safari.modalPresentationStyle = UIModalPresentationAutomatic;
+  safari.dismissButtonStyle = SFSafariViewControllerDismissButtonStyleDone;
+
+  [host presentViewController:safari animated:YES completion:nil];
+}
+
+- (UIViewController *)enclosingViewController {
+  // Walk the responder chain up to the nearest UIViewController, then
+  // descend through any presented controllers so we present on top.
+  UIResponder *responder = self;
+  while ((responder = [responder nextResponder])) {
+    if ([responder isKindOfClass:[UIViewController class]]) {
+      UIViewController *vc = (UIViewController *)responder;
+      while (vc.presentedViewController) {
+        vc = vc.presentedViewController;
+      }
+      return vc;
+    }
+  }
+  return nil;
 }
 
 @end
