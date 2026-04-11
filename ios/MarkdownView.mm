@@ -432,14 +432,16 @@ using namespace facebook::react;
                 [scheme isEqualToString:@"https"];
   BOOL isMention = [scheme isEqualToString:@"mention"];
 
-  // Mentions — custom URL scheme we attach via NSLinkAttributeName in
-  // CustomTagRenderer. We own taps on these entirely: fire
-  // onMentionPress on tap, suppress the long-press context menu so
-  // users don't see a confusing "Open mention://..." sheet.
+  // Mentions — CustomTagRenderer attaches a sentinel `mention://` URL
+  // via NSLinkAttributeName alongside the real mention data stored
+  // under MarkdownMentionKey. We own taps on these entirely: on tap
+  // read the dict out of the attributed string at the delegate-
+  // supplied characterRange and fire onMentionPress. Long-press is
+  // suppressed so users don't see a "Open mention://..." sheet.
   if (isMention) {
     if (interaction == UITextItemInteractionInvokeDefaultAction &&
         _eventEmitter) {
-      [self emitMentionPressForURL:URL];
+      [self emitMentionPressInTextView:textView characterRange:characterRange];
     }
     return NO;
   }
@@ -485,35 +487,31 @@ using namespace facebook::react;
 
 #pragma mark - Mention press
 
-- (void)emitMentionPressForURL:(NSURL *)url {
-  if (!_eventEmitter || !url) return;
+- (void)emitMentionPressInTextView:(UITextView *)textView
+                    characterRange:(NSRange)characterRange {
+  if (!_eventEmitter) return;
 
-  NSURLComponents *components =
-      [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
-  if (!components) return;
+  NSAttributedString *attrText = textView.attributedText;
+  if (!attrText || characterRange.location >= attrText.length) return;
 
-  NSString *type = components.host ?: @"";
+  // CustomTagRenderer stores the mention data as a plain NSDictionary
+  // under MarkdownMentionKey. No URL parsing — just read it back.
+  id raw = [attrText attribute:MarkdownMentionKey
+                       atIndex:characterRange.location
+                effectiveRange:NULL];
+  if (![raw isKindOfClass:[NSDictionary class]]) return;
 
-  // The id sits on the path as "/<id>". Strip the leading slash.
-  NSString *path = components.path ?: @"";
-  NSString *mentionId =
-      path.length > 1 ? [path substringFromIndex:1] : @"";
-  // Percent decode — URLComponents stores it percent-encoded.
-  mentionId = [mentionId stringByRemovingPercentEncoding] ?: mentionId;
-
-  NSString *name = @"";
-  NSMutableDictionary<NSString *, NSString *> *extras = [NSMutableDictionary new];
-  for (NSURLQueryItem *item in components.queryItems) {
-    NSString *value = item.value ?: @"";
-    if ([item.name isEqualToString:@"name"]) {
-      name = value;
-    } else {
-      extras[item.name] = value;
-    }
-  }
+  NSDictionary *mention = (NSDictionary *)raw;
+  NSString *type = mention[@"type"] ?: @"";
+  NSString *mentionId = mention[@"id"] ?: @"";
+  NSString *name = mention[@"name"] ?: @"";
+  NSDictionary *extras = mention[@"props"];
+  if (![extras isKindOfClass:[NSDictionary class]]) extras = @{};
 
   // Serialize extras as JSON so they can travel through the Fabric
-  // event payload (which only supports primitive fields).
+  // event payload (which only supports primitive fields). The JS
+  // side (Markdown.tsx) parses this back into a Record<string,string>
+  // before invoking the user's onMentionPress callback.
   NSString *propsJson = @"{}";
   NSError *jsonError = nil;
   NSData *data = [NSJSONSerialization dataWithJSONObject:extras

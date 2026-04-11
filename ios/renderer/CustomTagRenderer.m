@@ -7,6 +7,8 @@
 NSString *const MarkdownCustomTagKey = @"MarkdownCustomTag";
 NSString *const MarkdownCustomTagPropsKey = @"MarkdownCustomTagProps";
 NSString *const MarkdownSpoilerRangeKey = @"MarkdownSpoilerRange";
+NSString *const MarkdownMentionKey = @"MarkdownMention";
+NSString *const MarkdownMentionTapURLString = @"mention://tap";
 
 // Built-in mention tags.
 static NSString *const kUserMentionTag = @"UserMention";
@@ -62,24 +64,40 @@ static NSString *const kSpoilerTag = @"Spoiler";
   NSString *mentionId = tagProps[@"id"] ?: @"";
   NSString *mentionName = tagProps[@"name"] ?: @"";
 
-  // Build the tap URL. Host = type, path = /id, query items carry
-  // name + any extra props. textView:shouldInteractWithURL: routes
-  // taps on this scheme to the onMentionPress event.
-  NSURL *tapURL = [self mentionURLForType:type
-                                       id:mentionId
-                                     name:mentionName
-                                tagProps:tagProps];
+  // Everything beyond id/name is an "extra prop" passed through to
+  // onMentionPress.
+  NSMutableDictionary<NSString *, NSString *> *extras =
+      [NSMutableDictionary new];
+  for (NSString *key in tagProps) {
+    if ([key isEqualToString:@"id"] || [key isEqualToString:@"name"]) {
+      continue;
+    }
+    extras[key] = tagProps[key] ?: @"";
+  }
 
-  // Visual attrs (font/color/bg from userMention/channelMention/
-  // commandMention style).
+  // The data that onMentionPress will receive, stored directly on
+  // the attributed string — no URL round-trip needed.
+  NSDictionary *mentionData = @{
+    @"type" : type,
+    @"id" : mentionId,
+    @"name" : mentionName,
+    @"props" : [extras copy],
+  };
+
+  // Visual attrs come from the matching style key
+  // (userMention/channelMention/commandMention).
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
   [StyleAttributes applyStyle:style toAttrs:attrs];
 
   attrs[MarkdownCustomTagKey] = node.tagName;
   attrs[MarkdownCustomTagPropsKey] = tagProps;
-  if (tapURL) {
-    attrs[NSLinkAttributeName] = tapURL;
-  }
+  attrs[MarkdownMentionKey] = mentionData;
+  // NSLinkAttributeName is only used as a tap trigger — its value is
+  // a fixed sentinel. MarkdownView.shouldInteractWithURL keys off the
+  // `mention` scheme and reads the real data from MarkdownMentionKey
+  // at the delegate-supplied character range.
+  attrs[NSLinkAttributeName] =
+      [NSURL URLWithString:MarkdownMentionTapURLString];
 
   // Display the prefix plus the name (or id as a fallback when name
   // is missing — typical for command mentions like `/help` that
@@ -89,32 +107,6 @@ static NSString *const kSpoilerTag = @"Spoiler";
 
   [output appendAttributedString:
       [[NSAttributedString alloc] initWithString:displayText attributes:attrs]];
-}
-
-- (NSURL *)mentionURLForType:(NSString *)type
-                          id:(NSString *)mentionId
-                        name:(NSString *)name
-                    tagProps:(NSDictionary<NSString *, NSString *> *)tagProps {
-  NSURLComponents *components = [[NSURLComponents alloc] init];
-  components.scheme = @"mention";
-  components.host = type;
-  components.path =
-      [@"/" stringByAppendingString:mentionId ?: @""];
-
-  NSMutableArray<NSURLQueryItem *> *items = [NSMutableArray new];
-  if (name.length > 0) {
-    [items addObject:[NSURLQueryItem queryItemWithName:@"name" value:name]];
-  }
-  for (NSString *key in tagProps) {
-    if ([key isEqualToString:@"id"] || [key isEqualToString:@"name"]) {
-      continue;
-    }
-    [items addObject:[NSURLQueryItem queryItemWithName:key
-                                                 value:tagProps[key] ?: @""]];
-  }
-  if (items.count > 0) components.queryItems = items;
-
-  return components.URL;
 }
 
 #pragma mark - Spoiler
