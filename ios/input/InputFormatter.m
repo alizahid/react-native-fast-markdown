@@ -1,6 +1,7 @@
 #import "InputFormatter.h"
 #import "FormattingRange.h"
 #import "FormattingStore.h"
+#import "MarkdownLayoutManager.h"
 #import "StyleConfig.h"
 
 @implementation InputFormatter
@@ -13,19 +14,32 @@
 
   [textStorage beginEditing];
 
-  // 1. Reset to base attributes
-  NSMutableDictionary *baseAttrs = [@{
-    NSFontAttributeName : _baseFont,
-    NSForegroundColorAttributeName : _baseColor,
-  } mutableCopy];
-
-  // Base paragraph style: line height + gap (paragraph spacing)
+  // 1. Reset to base attributes (but preserve MDBlockType if set)
   CGFloat lineHeight = _baseLineHeight > 0
       ? _baseLineHeight
       : _styleConfig.base.lineHeight;
   CGFloat gap = _paragraphSpacing > 0
       ? _paragraphSpacing
       : _styleConfig.base.gap;
+
+  // Collect existing block type attributes before reset
+  NSMutableDictionary<NSNumber *, NSString *> *blockTypes =
+      [NSMutableDictionary new];
+  [textStorage enumerateAttribute:MDBlockTypeAttributeName
+                          inRange:fullRange
+                          options:0
+                       usingBlock:^(NSString *value, NSRange range,
+                                    BOOL *stop) {
+    if (value) {
+      // Store by location — we'll re-apply after reset
+      blockTypes[@(range.location)] = value;
+    }
+  }];
+
+  NSMutableDictionary *baseAttrs = [@{
+    NSFontAttributeName : _baseFont,
+    NSForegroundColorAttributeName : _baseColor,
+  } mutableCopy];
 
   NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
   if (lineHeight > 0) {
@@ -39,29 +53,107 @@
 
   [textStorage setAttributes:baseAttrs range:fullRange];
 
-  // 2. Apply block-level formatting first (sets base font for headings)
+  // Re-apply block type attributes (they were cleared by the
+  // reset but need to persist for UITextView paragraph
+  // continuation and layout manager drawing)
+  [self reapplyBlockTypes:blockTypes
+            toTextStorage:textStorage
+                    store:store];
+
+  // 2. Apply block-level formatting from the store
   for (FormattingRange *r in store.allRanges) {
     if (![FormattingRange isBlockType:r.type]) continue;
     if (NSMaxRange(r.range) > textStorage.length) continue;
-
-    [self applyBlockRange:r toTextStorage:textStorage];
+    [self applyBlockRange:r
+            toTextStorage:textStorage
+               lineHeight:lineHeight
+                      gap:gap];
   }
 
-  // 3. Apply inline formatting on top
+  // 3. Apply block formatting from paragraph attributes (blocks
+  //    that were continued via Enter — they're in the attributed
+  //    string but not in the FormattingStore)
+  [self applyBlockTypesFromAttributes:textStorage
+                           lineHeight:lineHeight
+                                  gap:gap];
+
+  // 4. Apply inline formatting on top
   for (FormattingRange *r in store.allRanges) {
     if (![FormattingRange isInlineType:r.type]) continue;
     if (NSMaxRange(r.range) > textStorage.length) continue;
-
     [self applyInlineRange:r toTextStorage:textStorage];
   }
 
   [textStorage endEditing];
 }
 
+#pragma mark - Block Type Attribute Management
+
+- (void)reapplyBlockTypes:(NSDictionary<NSNumber *, NSString *> *)blockTypes
+            toTextStorage:(NSTextStorage *)textStorage
+                    store:(FormattingStore *)store {
+  // Re-apply saved block type attributes
+  for (NSNumber *locNum in blockTypes) {
+    NSUInteger loc = locNum.unsignedIntegerValue;
+    if (loc >= textStorage.length) continue;
+    NSString *type = blockTypes[locNum];
+
+    // Find the extent of this paragraph
+    NSRange paraRange = [textStorage.string
+        paragraphRangeForRange:NSMakeRange(loc, 0)];
+    [textStorage addAttribute:MDBlockTypeAttributeName
+                        value:type
+                        range:paraRange];
+  }
+
+  // Also set block type attributes from the FormattingStore
+  // (for freshly imported or toggled blocks)
+  for (FormattingRange *r in store.allRanges) {
+    NSString *blockType = nil;
+    if (r.type == FormattingTypeCodeBlock) {
+      blockType = MDBlockTypeCodeBlock;
+    } else if (r.type == FormattingTypeBlockquote) {
+      blockType = MDBlockTypeBlockquote;
+    }
+    if (!blockType) continue;
+    if (NSMaxRange(r.range) > textStorage.length) continue;
+
+    [textStorage addAttribute:MDBlockTypeAttributeName
+                        value:blockType
+                        range:r.range];
+  }
+}
+
+- (void)applyBlockTypesFromAttributes:(NSTextStorage *)textStorage
+                           lineHeight:(CGFloat)lineHeight
+                                  gap:(CGFloat)gap {
+  [textStorage enumerateAttribute:MDBlockTypeAttributeName
+                          inRange:NSMakeRange(0, textStorage.length)
+                          options:0
+                       usingBlock:^(NSString *value, NSRange range,
+                                    BOOL *stop) {
+    if (!value) return;
+
+    if ([value isEqualToString:MDBlockTypeCodeBlock]) {
+      [self applyCodeBlockStyling:range
+                    toTextStorage:textStorage
+                       lineHeight:lineHeight
+                              gap:gap];
+    } else if ([value isEqualToString:MDBlockTypeBlockquote]) {
+      [self applyBlockquoteStyling:range
+                     toTextStorage:textStorage
+                        lineHeight:lineHeight
+                               gap:gap];
+    }
+  }];
+}
+
 #pragma mark - Block Formatting
 
 - (void)applyBlockRange:(FormattingRange *)r
-          toTextStorage:(NSTextStorage *)textStorage {
+          toTextStorage:(NSTextStorage *)textStorage
+             lineHeight:(CGFloat)lineHeight
+                    gap:(CGFloat)gap {
   switch (r.type) {
   case FormattingTypeHeading1:
   case FormattingTypeHeading2:
@@ -90,97 +182,107 @@
   }
 
   case FormattingTypeBlockquote: {
-    CGFloat lineHeight = _styleConfig.base.lineHeight;
-    CGFloat gap = _styleConfig.base.gap;
-    MarkdownElementStyle *style = _styleConfig.blockquote;
-    if (style.color) {
-      [textStorage addAttribute:NSForegroundColorAttributeName
-                          value:style.color
-                          range:r.range];
-    }
-    UIFont *bqFont = [style resolvedFontWithBase:_baseFont];
-    if (bqFont) {
-      [textStorage addAttribute:NSFontAttributeName
-                          value:bqFont
-                          range:r.range];
-    }
-    // Background and border are drawn by BlockDecorationView.
-    // Here we just set indent + spacing so text is positioned
-    // inside the decoration.
-    CGFloat indent = style.borderLeftWidth + style.padding +
-                     style.paddingLeft + style.paddingHorizontal;
-    if (indent <= 0) indent = 16;
-
-    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-    pStyle.firstLineHeadIndent = indent;
-    pStyle.headIndent = indent;
-    if (lineHeight > 0) {
-      pStyle.minimumLineHeight = lineHeight;
-      pStyle.maximumLineHeight = lineHeight;
-    }
-    pStyle.paragraphSpacingBefore = style.padding + style.paddingTop +
-                                    style.paddingVertical;
-    CGFloat bqPadBottom = style.padding + style.paddingBottom +
-                          style.paddingVertical;
-    pStyle.paragraphSpacing = MAX(bqPadBottom, gap);
-    [textStorage addAttribute:NSParagraphStyleAttributeName
-                        value:pStyle
+    [textStorage addAttribute:MDBlockTypeAttributeName
+                        value:MDBlockTypeBlockquote
                         range:r.range];
+    [self applyBlockquoteStyling:r.range
+                   toTextStorage:textStorage
+                      lineHeight:lineHeight
+                             gap:gap];
     break;
   }
 
   case FormattingTypeCodeBlock: {
-    CGFloat lineHeight = _styleConfig.base.lineHeight;
-    CGFloat gap = _styleConfig.base.gap;
-    MarkdownElementStyle *style = _styleConfig.codeBlock;
-    UIFont *codeFont =
-        [style resolvedFontWithBase:_baseFont]
-            ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
-                                          weight:UIFontWeightRegular];
-    [textStorage addAttribute:NSFontAttributeName
-                        value:codeFont
+    [textStorage addAttribute:MDBlockTypeAttributeName
+                        value:MDBlockTypeCodeBlock
                         range:r.range];
-    UIColor *bg = style.backgroundColor
-                      ?: [UIColor colorWithWhite:0.5 alpha:0.1];
-    [textStorage addAttribute:NSBackgroundColorAttributeName
-                        value:bg
-                        range:r.range];
-    if (style.color) {
-      [textStorage addAttribute:NSForegroundColorAttributeName
-                          value:style.color
-                          range:r.range];
-    }
-
-    CGFloat pad = style.padding;
-    {
-      NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-      if (pad > 0) {
-        pStyle.firstLineHeadIndent = pad;
-        pStyle.headIndent = pad;
-        pStyle.tailIndent = -pad;
-        pStyle.paragraphSpacingBefore = pad;
-      }
-      pStyle.paragraphSpacing = MAX(pad, gap);
-      if (lineHeight > 0) {
-        pStyle.minimumLineHeight = lineHeight;
-        pStyle.maximumLineHeight = lineHeight;
-      }
-      [textStorage addAttribute:NSParagraphStyleAttributeName
-                          value:pStyle
-                          range:r.range];
-    }
+    [self applyCodeBlockStyling:r.range
+                  toTextStorage:textStorage
+                     lineHeight:lineHeight
+                            gap:gap];
     break;
   }
 
   case FormattingTypeOrderedList:
-  case FormattingTypeUnorderedList: {
-    // Lists use base styling; bullet color is handled at import.
+  case FormattingTypeUnorderedList:
     break;
-  }
 
   default:
     break;
   }
+}
+
+- (void)applyCodeBlockStyling:(NSRange)range
+                toTextStorage:(NSTextStorage *)textStorage
+                   lineHeight:(CGFloat)lineHeight
+                          gap:(CGFloat)gap {
+  MarkdownElementStyle *style = _styleConfig.codeBlock;
+  UIFont *codeFont =
+      [style resolvedFontWithBase:_baseFont]
+          ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
+                                        weight:UIFontWeightRegular];
+  [textStorage addAttribute:NSFontAttributeName
+                      value:codeFont
+                      range:range];
+  if (style.color) {
+    [textStorage addAttribute:NSForegroundColorAttributeName
+                        value:style.color
+                        range:range];
+  }
+
+  CGFloat pad = style.padding;
+  NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+  if (pad > 0) {
+    pStyle.firstLineHeadIndent = pad;
+    pStyle.headIndent = pad;
+    pStyle.tailIndent = -pad;
+  }
+  if (lineHeight > 0) {
+    pStyle.minimumLineHeight = lineHeight;
+    pStyle.maximumLineHeight = lineHeight;
+  }
+  pStyle.paragraphSpacing = MAX(pad, gap);
+  [textStorage addAttribute:NSParagraphStyleAttributeName
+                      value:pStyle
+                      range:range];
+}
+
+- (void)applyBlockquoteStyling:(NSRange)range
+                 toTextStorage:(NSTextStorage *)textStorage
+                    lineHeight:(CGFloat)lineHeight
+                           gap:(CGFloat)gap {
+  MarkdownElementStyle *style = _styleConfig.blockquote;
+  if (style.color) {
+    [textStorage addAttribute:NSForegroundColorAttributeName
+                        value:style.color
+                        range:range];
+  }
+  UIFont *bqFont = [style resolvedFontWithBase:_baseFont];
+  if (bqFont) {
+    [textStorage addAttribute:NSFontAttributeName
+                        value:bqFont
+                        range:range];
+  }
+
+  CGFloat indent = style.borderLeftWidth + style.padding +
+                   style.paddingLeft + style.paddingHorizontal;
+  if (indent <= 0) indent = 16;
+
+  NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+  pStyle.firstLineHeadIndent = indent;
+  pStyle.headIndent = indent;
+  if (lineHeight > 0) {
+    pStyle.minimumLineHeight = lineHeight;
+    pStyle.maximumLineHeight = lineHeight;
+  }
+  pStyle.paragraphSpacingBefore = style.padding + style.paddingTop +
+                                  style.paddingVertical;
+  CGFloat bqPadBottom = style.padding + style.paddingBottom +
+                        style.paddingVertical;
+  pStyle.paragraphSpacing = MAX(bqPadBottom, gap);
+  [textStorage addAttribute:NSParagraphStyleAttributeName
+                      value:pStyle
+                      range:range];
 }
 
 #pragma mark - Inline Formatting

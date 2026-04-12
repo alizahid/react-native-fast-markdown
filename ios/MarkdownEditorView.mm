@@ -6,11 +6,11 @@
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
-#import "BlockDecorationView.h"
 #import "FormattingRange.h"
 #import "FormattingStore.h"
 #import "InputFormatter.h"
 #import "InputParser.h"
+#import "MarkdownLayoutManager.h"
 #import "MarkdownSerializer.h"
 #import "StyleConfig.h"
 
@@ -28,13 +28,9 @@ using namespace facebook::react;
 
   FormattingStore *_store;
   InputFormatter *_formatter;
-  BlockDecorationView *_decorationView;
+  MarkdownLayoutManager *_layoutManager;
 
-  // Guards against re-entrant formatting during programmatic edits
   BOOL _suppressFormatting;
-
-  // Tracks whether the last keypress was Enter on an empty line
-  // inside a block. A second Enter breaks out.
   BOOL _lastWasEmptyBlockEnter;
 }
 
@@ -49,16 +45,24 @@ using namespace facebook::react;
     _store = [FormattingStore new];
     _formatter = [InputFormatter new];
 
-    _textView = [[UITextView alloc] initWithFrame:self.bounds];
+    // Use TextKit 1 with a custom layout manager for block
+    // decorations (background fills, left borders).
+    _layoutManager = [MarkdownLayoutManager new];
+    NSTextStorage *textStorage = [NSTextStorage new];
+    [textStorage addLayoutManager:_layoutManager];
+    NSTextContainer *textContainer =
+        [[NSTextContainer alloc] initWithSize:CGSizeZero];
+    textContainer.widthTracksTextView = YES;
+    textContainer.heightTracksTextView = NO;
+    [_layoutManager addTextContainer:textContainer];
+
+    _textView = [[UITextView alloc] initWithFrame:self.bounds
+                                    textContainer:textContainer];
     _textView.delegate = self;
     _textView.autocorrectionType = UITextAutocorrectionTypeDefault;
     _textView.scrollEnabled = YES;
     _textView.backgroundColor = [UIColor clearColor];
     [self addSubview:_textView];
-
-    _decorationView = [[BlockDecorationView alloc] initWithFrame:self.bounds];
-    [_textView addSubview:_decorationView];
-    [_textView sendSubviewToBack:_decorationView];
   }
   return self;
 }
@@ -66,9 +70,6 @@ using namespace facebook::react;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _textView.frame = self.bounds;
-  [_decorationView updateDecorationsForTextView:_textView
-                                          store:_store
-                                    styleConfig:_styleConfig];
 }
 
 // ---------------------------------------------------------------
@@ -96,6 +97,7 @@ using namespace facebook::react;
     _formatter.baseColor = _baseColor;
     _formatter.baseLineHeight = _styleConfig.base.lineHeight;
     _formatter.paragraphSpacing = _styleConfig.base.gap;
+    _layoutManager.styleConfig = _styleConfig;
 
     // Re-apply formatting with new styles if we already have content
     if (_textView.text.length > 0) {
@@ -173,8 +175,54 @@ using namespace facebook::react;
 }
 
 - (NSString *)exportMarkdown {
+  // Sync block ranges from paragraph attributes into the store
+  // before export. Blocks continued via Enter are in the
+  // attributed string but may not be in the FormattingStore.
+  [self syncBlockRangesFromAttributes];
+
   return [MarkdownSerializer serializePlainText:_textView.text
                                      withStore:_store];
+}
+
+/// Reads MDBlockTypeAttributeName from the text storage and
+/// ensures the FormattingStore has matching block ranges.
+- (void)syncBlockRangesFromAttributes {
+  NSTextStorage *ts = _textView.textStorage;
+  if (ts.length == 0) return;
+
+  // Remove all existing code block and blockquote ranges
+  NSArray *codeBlocks =
+      [_store rangesOfType:FormattingTypeCodeBlock
+              intersecting:NSMakeRange(0, ts.length)];
+  for (FormattingRange *r in codeBlocks) {
+    [_store removeRangesOfType:FormattingTypeCodeBlock intersecting:r.range];
+  }
+  NSArray *bqRanges =
+      [_store rangesOfType:FormattingTypeBlockquote
+              intersecting:NSMakeRange(0, ts.length)];
+  for (FormattingRange *r in bqRanges) {
+    [_store removeRangesOfType:FormattingTypeBlockquote intersecting:r.range];
+  }
+
+  // Rebuild from paragraph attributes
+  [ts enumerateAttribute:MDBlockTypeAttributeName
+                 inRange:NSMakeRange(0, ts.length)
+                 options:0
+              usingBlock:^(NSString *value, NSRange range, BOOL *stop) {
+    if (!value) return;
+
+    FormattingType fType;
+    if ([value isEqualToString:MDBlockTypeCodeBlock]) {
+      fType = FormattingTypeCodeBlock;
+    } else if ([value isEqualToString:MDBlockTypeBlockquote]) {
+      fType = FormattingTypeBlockquote;
+    } else {
+      return;
+    }
+
+    [self->_store addRange:[FormattingRange rangeWithType:fType
+                                                   range:range]];
+  }];
 }
 
 // ---------------------------------------------------------------
@@ -184,13 +232,6 @@ using namespace facebook::react;
 - (void)applyFormatting {
   if (_suppressFormatting) return;
   [_formatter applyAllFormatting:_store toTextStorage:_textView.textStorage];
-
-  // Update block decorations after layout
-  dispatch_async(dispatch_get_main_queue(), ^{
-    [self->_decorationView updateDecorationsForTextView:self->_textView
-                                                 store:self->_store
-                                           styleConfig:self->_styleConfig];
-  });
 }
 
 - (void)resetTypingAttributes {
@@ -305,41 +346,46 @@ using namespace facebook::react;
 }
 
 - (void)toggleBlockquote {
-  NSRange lineRange = [self currentLineRange];
-  if (lineRange.length == 0) return;
-
-  NSArray *existing = [_store rangesOfType:FormattingTypeBlockquote
-                              intersecting:lineRange];
-
-  if (existing.count > 0) {
-    [_store removeRangesOfType:FormattingTypeBlockquote
-                  intersecting:lineRange];
-  } else {
-    [_store addRange:[FormattingRange rangeWithType:FormattingTypeBlockquote
-                                             range:lineRange]];
-  }
-
-  [self applyFormatting];
-  [self detectAndEmitState];
+  [self toggleBlockType:MDBlockTypeBlockquote
+       formattingType:FormattingTypeBlockquote];
 }
 
 - (void)toggleCodeBlock {
+  [self toggleBlockType:MDBlockTypeCodeBlock
+       formattingType:FormattingTypeCodeBlock];
+}
+
+- (void)toggleBlockType:(NSString *)blockType
+         formattingType:(FormattingType)fType {
   NSRange lineRange = [self currentLineRange];
 
-  NSArray *existing = [_store rangesOfType:FormattingTypeCodeBlock
-                              intersecting:lineRange];
+  // Check if the current paragraph already has this block type
+  BOOL hasBlock = NO;
+  if (lineRange.length > 0) {
+    NSDictionary *attrs =
+        [_textView.textStorage attributesAtIndex:lineRange.location
+                                  effectiveRange:nil];
+    NSString *existing = attrs[MDBlockTypeAttributeName];
+    hasBlock = [existing isEqualToString:blockType];
+  }
 
-  if (existing.count > 0) {
-    [_store removeRangesOfType:FormattingTypeCodeBlock
-                  intersecting:lineRange];
+  if (hasBlock) {
+    // Remove block type from the paragraph
+    NSRange paraRange = [_textView.text
+        paragraphRangeForRange:lineRange];
+    [_textView.textStorage removeAttribute:MDBlockTypeAttributeName
+                                     range:paraRange];
+    [_store removeRangesOfType:fType intersecting:paraRange];
   } else {
-    // Use the full line range, or if empty create a zero-width
-    // range and use pending styles
+    // Set block type on the paragraph
+    NSRange paraRange = [_textView.text
+        paragraphRangeForRange:lineRange];
+    [_textView.textStorage addAttribute:MDBlockTypeAttributeName
+                                  value:blockType
+                                  range:paraRange];
     if (lineRange.length > 0) {
-      [_store addRange:[FormattingRange rangeWithType:FormattingTypeCodeBlock
+      [_store addRange:[FormattingRange rangeWithType:fType
                                                range:lineRange]];
-    } else {
-      [_store.pendingStyles addObject:@(FormattingTypeCodeBlock)];
     }
   }
 
@@ -810,34 +856,28 @@ using namespace facebook::react;
 
 #pragma mark - Block Continuation on Enter
 
-/// Called from shouldChangeTextInRange: when Enter is pressed
-/// inside a code block or blockquote. Pressing Enter on an empty
-/// line twice breaks out (first Enter creates the empty line,
-/// second Enter breaks out — same UX as lists).
+/// Called from shouldChangeTextInRange: when Enter is pressed.
+/// If the cursor is inside a code block or blockquote paragraph,
+/// pressing Enter on an empty line twice breaks out.
 - (BOOL)handleNewlineInBlock:(NSRange)range {
   NSString *text = _textView.text;
   if (text.length == 0) return NO;
+  if (range.location > text.length) return NO;
 
-  // Check if cursor is inside a code block or blockquote
-  FormattingType blockType = FormattingTypeCodeBlock;
-  FormattingRange *blockRange = nil;
+  // Check if the current paragraph has a block type attribute
+  NSUInteger checkIdx = range.location > 0 ? range.location - 1 : 0;
+  if (checkIdx >= text.length) checkIdx = text.length - 1;
 
-  for (FormattingRange *r in _store.allRanges) {
-    if (r.type != FormattingTypeCodeBlock &&
-        r.type != FormattingTypeBlockquote) continue;
-    if (range.location >= r.range.location &&
-        range.location <= NSMaxRange(r.range)) {
-      blockRange = r;
-      blockType = r.type;
-      break;
-    }
-  }
-
-  if (!blockRange) {
+  NSDictionary *attrs =
+      [_textView.textStorage attributesAtIndex:checkIdx
+                                effectiveRange:nil];
+  NSString *blockType = attrs[MDBlockTypeAttributeName];
+  if (!blockType) {
     _lastWasEmptyBlockEnter = NO;
     return NO;
   }
 
+  // Get the current line content
   NSRange lineRange = [text lineRangeForRange:range];
   if (lineRange.length > 0 &&
       [text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
@@ -850,15 +890,14 @@ using namespace facebook::react;
   BOOL lineIsEmpty = trimmed.length == 0;
 
   if (lineIsEmpty && _lastWasEmptyBlockEnter) {
-    // Second Enter on empty line — break out of the block
+    // Second Enter on empty line — break out
     _lastWasEmptyBlockEnter = NO;
 
-    // Delete the empty line and its preceding newline
+    // Delete the empty line and preceding newline
     NSUInteger deleteStart = lineRange.location;
     NSUInteger deleteEnd = NSMaxRange(lineRange);
-    // Include the newline before this empty line
     if (deleteStart > 0 &&
-        [_textView.text characterAtIndex:deleteStart - 1] == '\n') {
+        [text characterAtIndex:deleteStart - 1] == '\n') {
       deleteStart--;
     }
     NSRange deleteRange = NSMakeRange(deleteStart, deleteEnd - deleteStart);
@@ -870,24 +909,16 @@ using namespace facebook::react;
              insertedLength:0];
     _suppressFormatting = NO;
 
-    // Trim the block range to end before the deleted region
-    NSRange oldRange = blockRange.range;
-    NSUInteger newEnd = deleteStart;
-    // Trim any trailing newline from the block
-    if (newEnd > 0 && newEnd <= _textView.text.length &&
-        [_textView.text characterAtIndex:newEnd - 1] == '\n') {
-      newEnd--;
-    }
-
-    [_store removeRangesOfType:blockType intersecting:oldRange];
-    if (newEnd > oldRange.location) {
-      [_store addRange:[FormattingRange
-                          rangeWithType:blockType
-                                  range:NSMakeRange(oldRange.location,
-                                                     newEnd - oldRange.location)]];
-    }
-
+    // Remove the block attribute from the cursor position onward
+    // so new text doesn't inherit the block style
     _textView.selectedRange = NSMakeRange(deleteStart, 0);
+
+    // Clear block type from typing attributes
+    NSMutableDictionary *typingAttrs =
+        [_textView.typingAttributes mutableCopy];
+    [typingAttrs removeObjectForKey:MDBlockTypeAttributeName];
+    _textView.typingAttributes = typingAttrs;
+
     [self applyFormatting];
     [self resetTypingAttributes];
     [self emitMarkdownChange];
@@ -895,8 +926,6 @@ using namespace facebook::react;
   }
 
   if (lineIsEmpty) {
-    // First Enter on empty line — mark it, let the newline go
-    // through normally so adjustForEditAt expands the block
     _lastWasEmptyBlockEnter = YES;
   } else {
     _lastWasEmptyBlockEnter = NO;
@@ -1189,39 +1218,12 @@ using namespace facebook::react;
   NSUInteger deleted = range.length;
   NSUInteger inserted = text.length;
 
-  // For block types, check if the cursor is at the end boundary
-  // BEFORE adjusting. adjustForEditAt treats rEnd <= location as
-  // "entirely before the edit" (correct for inline styles per the
-  // enriched pattern), but for blocks the user expects to stay
-  // inside the block when typing at its end. We record which
-  // block types need expansion, then merge after the adjust.
-  //
-  // This code only runs when NOT breaking out — handleNewlineInBlock
-  // and handleNewlineInList both return before we get here.
-  NSMutableArray<FormattingRange *> *blockBoundaryRanges = nil;
-  if (inserted > 0) {
-    for (FormattingRange *r in _store.allRanges) {
-      if (![FormattingRange isBlockType:r.type]) continue;
-      if (range.location == NSMaxRange(r.range)) {
-        if (!blockBoundaryRanges) blockBoundaryRanges = [NSMutableArray new];
-        [blockBoundaryRanges addObject:r];
-      }
-    }
-  }
-
+  // Block continuation is handled natively by UITextView's
+  // paragraph attribute propagation (MDBlockTypeAttributeName).
+  // The FormattingStore only needs adjustment for inline ranges.
   [_store adjustForEditAt:range.location
             deletedLength:deleted
            insertedLength:inserted];
-
-  // Expand block ranges that had the cursor at their boundary
-  if (blockBoundaryRanges) {
-    for (FormattingRange *r in blockBoundaryRanges) {
-      // After adjustForEditAt, the range wasn't expanded (case 1).
-      // Extend it to include the inserted text.
-      r.range = NSMakeRange(r.range.location,
-                             r.range.length + inserted);
-    }
-  }
 
   // Apply pending styles to the inserted text
   if (inserted > 0) {
