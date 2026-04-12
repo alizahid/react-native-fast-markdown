@@ -154,6 +154,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Special
 @property (nonatomic, strong) MarkdownElementStyle *spoiler;
+@property (nonatomic, strong) MarkdownElementStyle *superscript;
 
 + (instancetype)fromJSON:(NSString *)json;
 

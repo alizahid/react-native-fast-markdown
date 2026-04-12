@@ -7,6 +7,107 @@
 
 namespace markdown {
 
+// ---------------------------------------------------------------------------
+// Reddit-style syntax pre-processor
+// ---------------------------------------------------------------------------
+// Runs a single O(n) pass over the raw markdown BEFORE md4c parses it,
+// converting two non-standard Reddit extensions into HTML custom tags
+// that the existing custom-tag pipeline already handles:
+//
+//   >!spoiler text!<   →  <Spoiler>spoiler text</Spoiler>
+//   ^word              →  <Superscript>word</Superscript>
+//   ^(text with spaces)→  <Superscript>text with spaces</Superscript>
+//
+// The replacement is skipped inside backtick code spans and fenced
+// code blocks so `>!literal!<` in code stays literal.
+
+static std::string preprocessRedditSyntax(const std::string &input) {
+  std::string out;
+  out.reserve(input.size());
+
+  const size_t len = input.size();
+  size_t i = 0;
+  bool inFence = false;
+  bool inCode = false;
+
+  while (i < len) {
+    // ---- fenced code blocks (``` … ```) ----
+    if (!inCode && i + 2 < len &&
+        input[i] == '`' && input[i + 1] == '`' && input[i + 2] == '`') {
+      inFence = !inFence;
+      out += "```";
+      i += 3;
+      // consume the rest of the opening/closing fence line
+      while (i < len && input[i] != '\n') { out += input[i++]; }
+      continue;
+    }
+
+    // ---- inline code (`…`) ----
+    if (!inFence && input[i] == '`') {
+      inCode = !inCode;
+      out += '`';
+      ++i;
+      continue;
+    }
+
+    // skip everything inside code
+    if (inFence || inCode) {
+      out += input[i++];
+      continue;
+    }
+
+    // ---- Reddit spoiler: >!text!< ----
+    if (input[i] == '>' && i + 2 < len && input[i + 1] == '!') {
+      size_t end = input.find("!<", i + 2);
+      if (end != std::string::npos && end > i + 2) {
+        out += "<Spoiler>";
+        out.append(input, i + 2, end - (i + 2));
+        out += "</Spoiler>";
+        i = end + 2;
+        continue;
+      }
+    }
+
+    // ---- Reddit superscript: ^(text) or ^word ----
+    if (input[i] == '^' && i + 1 < len) {
+      char next = input[i + 1];
+
+      if (next == '(') {
+        // ^(text with spaces)
+        size_t close = input.find(')', i + 2);
+        if (close != std::string::npos && close > i + 2) {
+          out += "<Superscript>";
+          out.append(input, i + 2, close - (i + 2));
+          out += "</Superscript>";
+          i = close + 1;
+          continue;
+        }
+      } else if (!std::isspace(static_cast<unsigned char>(next))) {
+        // ^word — runs until whitespace
+        size_t start = i + 1;
+        size_t end = start;
+        while (end < len &&
+               !std::isspace(static_cast<unsigned char>(input[end]))) {
+          ++end;
+        }
+        if (end > start) {
+          out += "<Superscript>";
+          out.append(input, start, end - start);
+          out += "</Superscript>";
+          i = end;
+          continue;
+        }
+      }
+    }
+
+    out += input[i++];
+  }
+
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+
 std::string MarkdownParser::attributeToString(const void *attrPtr) {
   if (!attrPtr)
     return "";
@@ -405,6 +506,10 @@ ASTNode MarkdownParser::parse(const std::string &markdown,
   if (options.enableLatexMath)
     flags |= MD_FLAG_LATEXMATHSPANS;
 
+  // Pre-process Reddit-style syntax (>!spoiler!< and ^superscript)
+  // into HTML custom tags before md4c sees the text.
+  std::string processed = preprocessRedditSyntax(markdown);
+
   // We need HTML callbacks for custom tags — don't disable HTML
   // flags &= ~MD_FLAG_NOHTML;
 
@@ -438,7 +543,7 @@ ASTNode MarkdownParser::parse(const std::string &markdown,
   parser.debug_log = nullptr;
   parser.syntax = nullptr;
 
-  md_parse(markdown.c_str(), static_cast<MD_SIZE>(markdown.size()), &parser,
+  md_parse(processed.c_str(), static_cast<MD_SIZE>(processed.size()), &parser,
            &ctx);
 
   // Flush any remaining HTML

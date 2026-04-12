@@ -227,6 +227,7 @@
   config.mentionChannel = [self elementStyleFromDict:dict[@"mentionChannel"]];
   config.mentionCommand = [self elementStyleFromDict:dict[@"mentionCommand"]];
   config.spoiler = [self elementStyleFromDict:dict[@"spoiler"]];
+  config.superscript = [self elementStyleFromDict:dict[@"superscript"]];
 
   return config;
 }

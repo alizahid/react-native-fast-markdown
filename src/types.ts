@@ -237,6 +237,14 @@ export type MarkdownEmphasisStyle = MarkdownInlineTextStyle
  *  `textDecorationStyle`. */
 export type MarkdownStrikethroughStyle = MarkdownInlineTextStyle
 
+/** Superscript span (Reddit `^word` / `^(text with spaces)` syntax).
+ *  Full inline text surface. The renderer activates the font's
+ *  native superscript variant via Core Text's kCTSuperscriptAttributeName
+ *  — if the font ships dedicated superscript glyphs they're used,
+ *  otherwise Core Text falls back to automatic scaling + baseline
+ *  shifting. Set `fontFamily` or `fontSize` to override. */
+export type MarkdownSuperscriptStyle = MarkdownInlineTextStyle
+
 /** Spoiler overlay. Only `backgroundColor` (the overlay fill) and
  *  `borderRadius` (the overlay corner radius) are read — the
  *  spoiler is drawn as a single coloured shape on top of its text
@@ -293,6 +301,7 @@ export interface MarkdownStyle {
 
   // Special
   spoiler?: MarkdownSpoilerStyle
+  superscript?: MarkdownSuperscriptStyle
 }
 
 // --- Event Types ---

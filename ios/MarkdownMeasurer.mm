@@ -388,6 +388,7 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   options.customTags.insert("ChannelMention");
   options.customTags.insert("CommandMention");
   options.customTags.insert("Spoiler");
+  options.customTags.insert("Superscript");
   for (NSString *tag in customTags) {
     options.customTags.insert(std::string([tag UTF8String]));
   }

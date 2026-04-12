@@ -27,6 +27,7 @@ export type {
   MarkdownStrikethroughStyle,
   MarkdownStrongStyle,
   MarkdownStyle,
+  MarkdownSuperscriptStyle,
   MarkdownTableCellStyle,
   MarkdownTableRowStyle,
   MarkdownTableStyle,

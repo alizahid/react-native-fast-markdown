@@ -4,6 +4,8 @@
 #import "StyleAttributes.h"
 #import "StyleConfig.h"
 
+#import <CoreText/CoreText.h>
+
 NSString *const MarkdownCustomTagKey = @"MarkdownCustomTag";
 NSString *const MarkdownCustomTagPropsKey = @"MarkdownCustomTagProps";
 NSString *const MarkdownSpoilerRangeKey = @"MarkdownSpoilerRange";
@@ -16,6 +18,7 @@ static NSString *const kChannelMentionTag = @"ChannelMention";
 static NSString *const kCommandMentionTag = @"CommandMention";
 
 static NSString *const kSpoilerTag = @"Spoiler";
+static NSString *const kSuperscriptTag = @"Superscript";
 
 @implementation CustomTagRenderer
 
@@ -47,6 +50,8 @@ static NSString *const kSpoilerTag = @"Spoiler";
                     context:context];
   } else if ([tag isEqualToString:kSpoilerTag]) {
     [self renderSpoiler:node into:output context:context];
+  } else if ([tag isEqualToString:kSuperscriptTag]) {
+    [self renderSuperscript:node into:output context:context];
   } else {
     [self renderGenericTag:node into:output context:context];
   }
@@ -120,6 +125,32 @@ static NSString *const kSpoilerTag = @"Spoiler";
   NSString *spoilerId = [[NSUUID UUID] UUIDString];
   attrs[MarkdownSpoilerRangeKey] = spoilerId;
   attrs[MarkdownCustomTagKey] = kSpoilerTag;
+
+  [context pushAttributes:attrs];
+  [context renderChildren:node into:output];
+  [context popAttributes];
+}
+
+#pragma mark - Superscript
+
+- (void)renderSuperscript:(ASTNodeWrapper *)node
+                     into:(NSMutableAttributedString *)output
+                  context:(RenderContext *)context {
+  MarkdownElementStyle *style = context.styleConfig.superscript;
+  NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
+
+  // Apply user style first — color, font family, etc.
+  [StyleAttributes applyStyle:style toAttrs:attrs];
+
+  // Use kCTSuperscriptAttributeName to activate the font's native
+  // superscript variant (OpenType `sups` feature). If the font
+  // doesn't have dedicated superscript glyphs, Core Text
+  // automatically falls back to scaling + baseline-shifting, so
+  // this works universally — but looks best with fonts that ship
+  // a proper superscript variant.
+  attrs[(NSString *)kCTSuperscriptAttributeName] = @1;
+
+  attrs[MarkdownCustomTagKey] = kSuperscriptTag;
 
   [context pushAttributes:attrs];
   [context renderChildren:node into:output];
