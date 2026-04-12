@@ -107,9 +107,22 @@ function normalizeColorValues(
   const result: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(style)) {
-    if (typeof value === 'string' && key.toLowerCase().includes('color')) {
-      result[key] = processColor(value)
-    } else if (
+    // Anything whose key contains "color" runs through processColor
+    // regardless of the value's type. Strings become an argb int,
+    // plain numbers pass through, and PlatformColor /
+    // DynamicColorIOS objects are normalized into the dict shape
+    // the native side knows how to parse. Critically, we do NOT
+    // recurse into these objects — PlatformColor('label') is
+    // `{ semantic: ['label'] }`, which isn't a nested style block
+    // and would otherwise get broken apart by the object-recurse
+    // branch below.
+    if (key.toLowerCase().includes('color')) {
+      if (value == null) continue
+      result[key] = processColor(value as Parameters<typeof processColor>[0])
+      continue
+    }
+
+    if (
       typeof value === 'object' &&
       value !== null &&
       !Array.isArray(value)

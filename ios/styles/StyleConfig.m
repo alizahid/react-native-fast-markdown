@@ -1,5 +1,7 @@
 #import "StyleConfig.h"
 
+#import <React/RCTConvert.h>
+
 @implementation MarkdownElementStyle
 
 #pragma mark - Font resolution
@@ -305,31 +307,19 @@
 + (UIColor *)colorFromValue:(id)value {
   if (!value || [value isKindOfClass:[NSNull class]]) return nil;
 
-  if ([value isKindOfClass:[NSNumber class]]) {
-    uint32_t argb = [value unsignedIntValue];
-    CGFloat a = ((argb >> 24) & 0xFF) / 255.0;
-    CGFloat r = ((argb >> 16) & 0xFF) / 255.0;
-    CGFloat g = ((argb >> 8) & 0xFF) / 255.0;
-    CGFloat b = (argb & 0xFF) / 255.0;
-    return [UIColor colorWithRed:r green:g blue:b alpha:a];
-  }
-
-  if ([value isKindOfClass:[NSString class]]) {
-    NSString *hex = value;
-    if ([hex hasPrefix:@"#"]) {
-      hex = [hex substringFromIndex:1];
-    }
-    if (hex.length == 6) {
-      unsigned int rgb;
-      [[NSScanner scannerWithString:hex] scanHexInt:&rgb];
-      return [UIColor colorWithRed:((rgb >> 16) & 0xFF) / 255.0
-                             green:((rgb >> 8) & 0xFF) / 255.0
-                              blue:(rgb & 0xFF) / 255.0
-                             alpha:1.0];
-    }
-  }
-
-  return nil;
+  // Delegate to React Native's own color converter. It handles
+  // every shape processColor can emit:
+  //   - NSNumber  : argb int from hex / rgb() / named strings
+  //   - NSString  : hex / named / rgb(a) / hsl(a) fallback
+  //   - NSDictionary with `semantic` key : PlatformColor('name')
+  //     resolves via `colorNamed:` and iOS system color accessors
+  //     like +labelColor, +systemRedColor, etc.
+  //   - NSDictionary with `dynamic` key  : DynamicColorIOS({ light,
+  //     dark, … }) becomes a UIColor that resolves per trait
+  //     collection at draw time.
+  // Rolling our own hex parser here missed both PlatformColor
+  // dicts and anything beyond 6-char hex.
+  return [RCTConvert UIColor:value];
 }
 
 - (MarkdownElementStyle *)styleForHeadingLevel:(NSInteger)level {
