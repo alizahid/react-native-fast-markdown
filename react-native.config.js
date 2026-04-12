@@ -7,7 +7,7 @@ module.exports = {
         packageInstance: 'new MarkdownPackage()',
         componentDescriptors: [
           'MarkdownViewComponentDescriptor',
-          'MarkdownInputViewComponentDescriptor',
+          'MarkdownEditorViewComponentDescriptor',
         ],
         cmakeListsPath: 'src/main/jni/CMakeLists.txt',
       },

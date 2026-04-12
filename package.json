@@ -72,7 +72,7 @@
     "ios": {
       "componentProvider": {
         "MarkdownView": "MarkdownView",
-        "MarkdownInputView": "MarkdownInputView"
+        "MarkdownEditorView": "MarkdownEditorView"
       }
     }
   },
