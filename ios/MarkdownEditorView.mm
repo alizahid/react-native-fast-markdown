@@ -235,6 +235,22 @@ using namespace facebook::react;
 }
 
 - (void)resetTypingAttributes {
+  // If the cursor is inside a block, inherit the block's styling
+  // for new characters. Otherwise use base attributes.
+  NSUInteger idx = _textView.selectedRange.location;
+  if (idx > 0) idx--;
+  if (idx >= _textView.textStorage.length && _textView.textStorage.length > 0) {
+    idx = _textView.textStorage.length - 1;
+  }
+
+  NSDictionary *currentAttrs = nil;
+  if (_textView.textStorage.length > 0) {
+    currentAttrs = [_textView.textStorage attributesAtIndex:idx
+                                             effectiveRange:nil];
+  }
+
+  NSString *blockType = currentAttrs[MDBlockTypeAttributeName];
+
   NSMutableDictionary *attrs = [@{
     NSFontAttributeName : _baseFont ?: [UIFont systemFontOfSize:16],
     NSForegroundColorAttributeName : _baseColor ?: [UIColor labelColor],
@@ -242,6 +258,28 @@ using namespace facebook::react;
 
   CGFloat lineHeight = _styleConfig.base.lineHeight;
   CGFloat gap = _styleConfig.base.gap;
+
+  if ([blockType isEqualToString:MDBlockTypeCodeBlock]) {
+    MarkdownElementStyle *style = _styleConfig.codeBlock;
+    UIFont *codeFont =
+        [style resolvedFontWithBase:_baseFont]
+            ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
+                                          weight:UIFontWeightRegular];
+    attrs[NSFontAttributeName] = codeFont;
+    if (style.color) {
+      attrs[NSForegroundColorAttributeName] = style.color;
+    }
+    attrs[MDBlockTypeAttributeName] = MDBlockTypeCodeBlock;
+  } else if ([blockType isEqualToString:MDBlockTypeBlockquote]) {
+    MarkdownElementStyle *style = _styleConfig.blockquote;
+    if (style.color) {
+      attrs[NSForegroundColorAttributeName] = style.color;
+    }
+    UIFont *bqFont = [style resolvedFontWithBase:_baseFont];
+    if (bqFont) attrs[NSFontAttributeName] = bqFont;
+    attrs[MDBlockTypeAttributeName] = MDBlockTypeBlockquote;
+  }
+
   if (lineHeight > 0 || gap > 0) {
     NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
     if (lineHeight > 0) {

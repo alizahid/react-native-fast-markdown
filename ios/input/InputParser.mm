@@ -75,7 +75,7 @@
 
   case MDNodeTypeParagraph: {
     if (ctx.needsNewline) {
-      [ctx.text appendString:@"\n"];
+      [ctx.text appendString:@"\n\n"];
     }
     NSUInteger start = ctx.text.length;
     for (ASTNodeWrapper *child in node.children) {
@@ -89,7 +89,7 @@
 
   case MDNodeTypeHeading: {
     if (ctx.needsNewline) {
-      [ctx.text appendString:@"\n"];
+      [ctx.text appendString:@"\n\n"];
     }
     NSUInteger start = ctx.text.length;
     FormattingType hType =
@@ -109,7 +109,7 @@
 
   case MDNodeTypeBlockquote: {
     if (ctx.needsNewline) {
-      [ctx.text appendString:@"\n"];
+      [ctx.text appendString:@"\n\n"];
     }
     NSUInteger start = ctx.text.length;
     for (ASTNodeWrapper *child in node.children) {
@@ -175,7 +175,7 @@
 
   case MDNodeTypeCodeBlock: {
     if (ctx.needsNewline) {
-      [ctx.text appendString:@"\n"];
+      [ctx.text appendString:@"\n\n"];
     }
     NSUInteger start = ctx.text.length;
     // Code block content is in the children (text nodes)
@@ -199,7 +199,7 @@
 
   case MDNodeTypeThematicBreak: {
     if (ctx.needsNewline) {
-      [ctx.text appendString:@"\n"];
+      [ctx.text appendString:@"\n\n"];
     }
     [ctx.text appendString:@"\u2500\u2500\u2500\u2500\u2500\u2500\u2500"];
     ctx.needsNewline = YES;
