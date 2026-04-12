@@ -25,6 +25,7 @@ export function useMarkdownEditor() {
     [],
   )
   const toggleCode = useCallback(() => ref.current?.toggleCode(), [])
+  const toggleCodeBlock = useCallback(() => ref.current?.toggleCodeBlock(), [])
   const toggleHeading = useCallback(
     (level: number) => ref.current?.toggleHeading(level),
     [],
@@ -68,6 +69,7 @@ export function useMarkdownEditor() {
     toggleItalic,
     toggleStrikethrough,
     toggleCode,
+    toggleCodeBlock,
     toggleHeading,
     toggleOrderedList,
     toggleUnorderedList,

@@ -132,7 +132,7 @@ export function EditorScreen() {
             onPress={editor.toggleOrderedList}
           />
           <ToolbarButton label="BQ" onPress={editor.toggleBlockquote} />
-          <ToolbarButton label="```" onPress={editor.toggleCode} />
+          <ToolbarButton label="```" onPress={editor.toggleCodeBlock} />
           <ToolbarButton
             active={styleState.link !== null}
             label="Link"
@@ -153,6 +153,8 @@ export function EditorScreen() {
         <Text style={styles.label}>EDITOR</Text>
         <View style={styles.editorCard}>
           <MarkdownEditor
+            autoCapitalize="none"
+            autoCorrect={false}
             autoFocus
             defaultValue={initialMarkdown}
             onChangeMarkdown={setMarkdown}

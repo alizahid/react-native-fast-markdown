@@ -83,6 +83,9 @@ interface NativeCommands {
   ) => void
   toggleBold: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
   toggleCode: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
+  toggleCodeBlock: (
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
+  ) => void
   toggleHeading: (
     viewRef: React.ElementRef<MarkdownEditorViewComponent>,
     level: Int32,
@@ -109,6 +112,7 @@ export const Commands = codegenNativeCommands<NativeCommands>({
     'toggleItalic',
     'toggleStrikethrough',
     'toggleCode',
+    'toggleCodeBlock',
     'toggleHeading',
     'toggleOrderedList',
     'toggleUnorderedList',

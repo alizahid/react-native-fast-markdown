@@ -394,6 +394,7 @@ export interface MarkdownEditorHandle {
   // Formatting toggles
   toggleBold(): void
   toggleCode(): void
+  toggleCodeBlock(): void
 
   // Block formatting
   toggleHeading(level: number): void

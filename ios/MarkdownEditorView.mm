@@ -292,6 +292,30 @@ using namespace facebook::react;
   [self detectAndEmitState];
 }
 
+- (void)toggleCodeBlock {
+  NSRange lineRange = [self currentLineRange];
+
+  NSArray *existing = [_store rangesOfType:FormattingTypeCodeBlock
+                              intersecting:lineRange];
+
+  if (existing.count > 0) {
+    [_store removeRangesOfType:FormattingTypeCodeBlock
+                  intersecting:lineRange];
+  } else {
+    // Use the full line range, or if empty create a zero-width
+    // range and use pending styles
+    if (lineRange.length > 0) {
+      [_store addRange:[FormattingRange rangeWithType:FormattingTypeCodeBlock
+                                               range:lineRange]];
+    } else {
+      [_store.pendingStyles addObject:@(FormattingTypeCodeBlock)];
+    }
+  }
+
+  [self applyFormatting];
+  [self detectAndEmitState];
+}
+
 - (void)toggleList:(FormattingType)listType {
   NSRange lineRange = [self currentLineRange];
 
@@ -920,6 +944,8 @@ using namespace facebook::react;
     [self toggleInlineType:FormattingTypeStrikethrough];
   } else if ([commandName isEqualToString:@"toggleCode"]) {
     [self toggleInlineType:FormattingTypeCode];
+  } else if ([commandName isEqualToString:@"toggleCodeBlock"]) {
+    [self toggleCodeBlock];
   } else if ([commandName isEqualToString:@"toggleHeading"]) {
     [self toggleHeading:[args[0] integerValue]];
   } else if ([commandName isEqualToString:@"toggleOrderedList"]) {
