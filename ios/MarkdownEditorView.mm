@@ -243,8 +243,7 @@ using namespace facebook::react;
 
 /// Incremental re-style — only the dirty ranges collected from
 /// NSTextStorageDelegate. Block attributes outside these ranges
-/// are never touched, so UITextView's paragraph propagation
-/// stays intact.
+/// are never touched.
 - (void)applyDirtyFormatting {
   if (_suppressFormatting) return;
   if (_dirtyRanges.count == 0) return;
@@ -260,11 +259,21 @@ using namespace facebook::react;
     if (NSMaxRange(r) > ts.length) {
       r.length = ts.length - r.location;
     }
-    // Expand to full paragraph boundaries
-    NSRange paraRange = [ts.string paragraphRangeForRange:r];
-    [dirtyChars addIndexesInRange:paraRange];
+    if (r.location < ts.length) {
+      NSRange paraRange = [ts.string paragraphRangeForRange:r];
+      [dirtyChars addIndexesInRange:paraRange];
+    }
   }
   [_dirtyRanges removeAllObjects];
+
+  // Propagate block attributes: if a dirty paragraph doesn't
+  // have MDBlockTypeAttributeName but the preceding paragraph
+  // does, extend the block attribute. This handles Enter inside
+  // a code block — UITextView creates a new paragraph that may
+  // not have the attribute yet.
+  [dirtyChars enumerateRangesUsingBlock:^(NSRange range, BOOL *stop) {
+    [self propagateBlockAttributeInRange:range textStorage:ts];
+  }];
 
   // Re-style each contiguous dirty region
   [dirtyChars enumerateRangesUsingBlock:^(NSRange range, BOOL *stop) {
@@ -272,6 +281,38 @@ using namespace facebook::react;
                                       store:self->_store
                               toTextStorage:ts];
   }];
+}
+
+/// If the paragraph before `range` has a block attribute and
+/// paragraphs within `range` don't, extend the attribute.
+- (void)propagateBlockAttributeInRange:(NSRange)range
+                           textStorage:(NSTextStorage *)ts {
+  if (range.location == 0) return;
+
+  // Check the character just before this range
+  NSUInteger prevIdx = range.location - 1;
+  NSDictionary *prevAttrs = [ts attributesAtIndex:prevIdx
+                                   effectiveRange:nil];
+  NSString *prevBlock = prevAttrs[MDBlockTypeAttributeName];
+  if (!prevBlock) return;
+
+  // Walk paragraphs in the range and extend the attribute
+  NSString *text = ts.string;
+  NSUInteger pos = range.location;
+  while (pos < NSMaxRange(range) && pos < text.length) {
+    NSRange paraRange = [text paragraphRangeForRange:NSMakeRange(pos, 0)];
+
+    // Check if this paragraph already has the attribute
+    NSDictionary *attrs = [ts attributesAtIndex:paraRange.location
+                                 effectiveRange:nil];
+    if (![attrs[MDBlockTypeAttributeName] isEqualToString:prevBlock]) {
+      [ts addAttribute:MDBlockTypeAttributeName
+                 value:prevBlock
+                 range:paraRange];
+    }
+
+    pos = NSMaxRange(paraRange);
+  }
 }
 
 - (void)resetTypingAttributes {
