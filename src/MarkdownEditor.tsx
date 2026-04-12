@@ -1,5 +1,5 @@
 import React, { forwardRef, useCallback, useMemo } from 'react'
-import { type ColorValue, type ViewProps } from 'react-native'
+import { type ColorValue, StyleSheet, type ViewProps } from 'react-native'
 import MarkdownEditorViewNative, {
   Commands,
 } from './MarkdownEditorNativeComponent'
@@ -107,9 +107,34 @@ export const MarkdownEditor = forwardRef<
   const nativeRef =
     React.useRef<React.ElementRef<typeof MarkdownEditorViewNative>>(null)
 
+  // Merge the style prop into styles as the `base` key — same
+  // pattern as the Markdown renderer so both components share
+  // identical default text styling (color, fontSize, lineHeight)
+  // and outer container styles (padding, gap).
+  const { style, ...restViewProps } = viewProps
+  const effectiveStyle = useMemo(() => {
+    const flatStyle = StyleSheet.flatten([
+      {
+        color: 'rgb(16, 15, 15)',
+        fontSize: 14,
+        lineHeight: 20,
+      },
+      style,
+    ])
+
+    if (Object.keys(flatStyle).length === 0 && !markdownStyles) {
+      return
+    }
+
+    return {
+      ...markdownStyles,
+      base: flatStyle,
+    } as MarkdownStyle
+  }, [markdownStyles, style])
+
   const serializedStyles = useMemo(
-    () => normalizeMarkdownStyle(markdownStyles),
-    [markdownStyles],
+    () => normalizeMarkdownStyle(effectiveStyle),
+    [effectiveStyle],
   )
 
   // Expose imperative handle
@@ -254,7 +279,7 @@ export const MarkdownEditor = forwardRef<
 
   return (
     <MarkdownEditorViewNative
-      {...viewProps}
+      {...restViewProps}
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}
