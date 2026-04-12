@@ -62,6 +62,9 @@ const defaultStyle: MarkdownStyle = {
   link: {
     color: colors.link,
   },
+  image: {
+    borderRadius: 6,
+  },
   blockquote: {
     backgroundColor: colors.background,
     padding: 6,

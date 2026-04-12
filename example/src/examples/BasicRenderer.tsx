@@ -6,6 +6,12 @@ const basicMarkdown = `\
 
 This is a **bold** statement with *italic* emphasis and some ~~strikethrough~~ text.
 
+## Reddit stuff
+
+>!spoilers!<
+
+^superscript or ^(superscript with space)
+
 ## Links & Images
 
 Here's a [link to GitHub](https://github.com) and an autolink: https://example.com
@@ -67,6 +73,9 @@ export function BasicRendererScreen() {
   return (
     <ScrollView contentContainerStyle={styles.content} style={styles.container}>
       <Markdown
+        onImagePress={(event) => {
+          Alert.alert('Image', JSON.stringify(event, null, 2))
+        }}
         onLinkPress={(event) => {
           Alert.alert('Link pressed', event.url)
         }}
