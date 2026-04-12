@@ -12,13 +12,12 @@ I think <UserMention id="u_sarah" name="Sarah" /> and <UserMention id="u_james" 
 const spoilersMarkdown = `\
 ## Spoilers
 
-The movie ends with <Spoiler>the hero 😅 saving the world the hero 😅 saving the world the hero 😅 saving the world the hero 😅 saving the world</Spoiler> which was unexpected.
+The movie ends with <Spoiler>the hero saving the world</Spoiler> which was unexpected.
 
 Here's a bigger spoiler:
 
 <Spoiler>
-The entire plot twist is that the narrator was unreliable the whole time.
-None of the events actually happened as described.
+The entire plot twist is that the narrator was unreliable the whole time. None of the events actually happened as described.
 </Spoiler>
 `
 

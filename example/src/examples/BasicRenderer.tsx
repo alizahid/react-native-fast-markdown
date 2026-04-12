@@ -10,7 +10,17 @@ This is a **bold** statement with *italic* emphasis and some ~~strikethrough~~ t
 
 Here's a [link to GitHub](https://github.com) and an autolink: https://example.com
 
+Large image
+
+![A placeholder image](https://picsum.photos/2000/2000)
+
+Medium image
+
 ![A placeholder image](https://picsum.photos/600/300)
+
+Small image
+
+![A placeholder image](https://picsum.photos/100/100)
 
 ## Code
 
