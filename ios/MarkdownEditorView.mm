@@ -6,6 +6,7 @@
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
+#import "BlockDecorationView.h"
 #import "FormattingRange.h"
 #import "FormattingStore.h"
 #import "InputFormatter.h"
@@ -27,6 +28,7 @@ using namespace facebook::react;
 
   FormattingStore *_store;
   InputFormatter *_formatter;
+  BlockDecorationView *_decorationView;
 
   // Guards against re-entrant formatting during programmatic edits
   BOOL _suppressFormatting;
@@ -49,6 +51,10 @@ using namespace facebook::react;
     _textView.scrollEnabled = YES;
     _textView.backgroundColor = [UIColor clearColor];
     [self addSubview:_textView];
+
+    _decorationView = [[BlockDecorationView alloc] initWithFrame:self.bounds];
+    [_textView addSubview:_decorationView];
+    [_textView sendSubviewToBack:_decorationView];
   }
   return self;
 }
@@ -56,6 +62,9 @@ using namespace facebook::react;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _textView.frame = self.bounds;
+  [_decorationView updateDecorationsForTextView:_textView
+                                          store:_store
+                                    styleConfig:_styleConfig];
 }
 
 // ---------------------------------------------------------------
@@ -160,6 +169,13 @@ using namespace facebook::react;
 - (void)applyFormatting {
   if (_suppressFormatting) return;
   [_formatter applyAllFormatting:_store toTextStorage:_textView.textStorage];
+
+  // Update block decorations after layout
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self->_decorationView updateDecorationsForTextView:self->_textView
+                                                 store:self->_store
+                                           styleConfig:self->_styleConfig];
+  });
 }
 
 - (void)resetTypingAttributes {

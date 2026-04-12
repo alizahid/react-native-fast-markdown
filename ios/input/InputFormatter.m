@@ -83,15 +83,9 @@
                           value:bqFont
                           range:r.range];
     }
-    if (style.backgroundColor) {
-      [textStorage addAttribute:NSBackgroundColorAttributeName
-                          value:style.backgroundColor
-                          range:r.range];
-    }
-
-    // Use borderLeftWidth + padding as indent to approximate the
-    // block view's left border. The actual border line is drawn
-    // by the layout manager.
+    // Background and border are drawn by BlockDecorationView.
+    // Here we just set indent + spacing so text is positioned
+    // inside the decoration.
     CGFloat indent = style.borderLeftWidth + style.padding +
                      style.paddingLeft + style.paddingHorizontal;
     if (indent <= 0) indent = 16;
