@@ -744,7 +744,9 @@ using namespace facebook::react;
     [_store.pendingStyles addObject:@(type)];
   }
 
-  [self applyFullFormatting];
+  // Mark the line as dirty for re-styling
+  [_dirtyRanges addObject:[NSValue valueWithRange:newLineRange]];
+  [self applyDirtyFormatting];
 
   // Set typing attributes for blockquotes so the paragraph indent
   // is visible immediately, even on an empty line
@@ -832,7 +834,9 @@ using namespace facebook::react;
         _textView.selectedRange =
             NSMakeRange(searchPos + content.length, 0);
 
-        [self applyFullFormatting];
+        NSRange codeLineRange = [self lineRangeAt:searchPos];
+        [_dirtyRanges addObject:[NSValue valueWithRange:codeLineRange]];
+        [self applyDirtyFormatting];
         [self emitMarkdownChange];
         return;
       }
@@ -1034,7 +1038,9 @@ using namespace facebook::react;
     }
   }
 
-  if (changed) [self applyFullFormatting];
+  // Don't call applyFullFormatting here — the dirty range
+  // formatting in textViewDidChange handles re-styling. Calling
+  // full formatting would wipe block attributes.
 }
 
 // ---------------------------------------------------------------
