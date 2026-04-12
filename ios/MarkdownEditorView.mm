@@ -259,6 +259,12 @@ using namespace facebook::react;
   CGFloat lineHeight = _styleConfig.base.lineHeight;
   CGFloat gap = _styleConfig.base.gap;
 
+  NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+  if (lineHeight > 0) {
+    pStyle.minimumLineHeight = lineHeight;
+    pStyle.maximumLineHeight = lineHeight;
+  }
+
   if ([blockType isEqualToString:MDBlockTypeCodeBlock]) {
     MarkdownElementStyle *style = _styleConfig.codeBlock;
     UIFont *codeFont =
@@ -270,6 +276,14 @@ using namespace facebook::react;
       attrs[NSForegroundColorAttributeName] = style.color;
     }
     attrs[MDBlockTypeAttributeName] = MDBlockTypeCodeBlock;
+    // No paragraph spacing inside code blocks
+    pStyle.paragraphSpacing = 0;
+    CGFloat pad = style.padding;
+    if (pad > 0) {
+      pStyle.firstLineHeadIndent = pad;
+      pStyle.headIndent = pad;
+      pStyle.tailIndent = -pad;
+    }
   } else if ([blockType isEqualToString:MDBlockTypeBlockquote]) {
     MarkdownElementStyle *style = _styleConfig.blockquote;
     if (style.color) {
@@ -278,19 +292,14 @@ using namespace facebook::react;
     UIFont *bqFont = [style resolvedFontWithBase:_baseFont];
     if (bqFont) attrs[NSFontAttributeName] = bqFont;
     attrs[MDBlockTypeAttributeName] = MDBlockTypeBlockquote;
-  }
-
-  if (lineHeight > 0 || gap > 0) {
-    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-    if (lineHeight > 0) {
-      pStyle.minimumLineHeight = lineHeight;
-      pStyle.maximumLineHeight = lineHeight;
-    }
+    pStyle.paragraphSpacing = gap;
+  } else {
     if (gap > 0) {
       pStyle.paragraphSpacing = gap;
     }
-    attrs[NSParagraphStyleAttributeName] = pStyle;
   }
+
+  attrs[NSParagraphStyleAttributeName] = pStyle;
 
   _textView.typingAttributes = attrs;
 }

@@ -189,6 +189,9 @@
                         range:range];
   }
 
+  // Code blocks use tight line spacing internally — no paragraph
+  // spacing between lines within the block. The padding is only
+  // visual (drawn by the layout manager).
   CGFloat pad = style.padding;
   NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
   if (pad > 0) {
@@ -200,7 +203,8 @@
     pStyle.minimumLineHeight = lineHeight;
     pStyle.maximumLineHeight = lineHeight;
   }
-  pStyle.paragraphSpacing = MAX(pad, gap);
+  // No paragraphSpacing — lines inside code blocks are tight
+  pStyle.paragraphSpacing = 0;
   [textStorage addAttribute:NSParagraphStyleAttributeName
                       value:pStyle
                       range:range];
