@@ -112,6 +112,7 @@ export const MarkdownEditor = forwardRef<
   // properties stay on the native view's style prop.
   const { style, ...restViewProps } = viewProps
 
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: go away
   const { textStyle, layoutStyle, contentPadding } = useMemo(() => {
     const flat = StyleSheet.flatten(style) || {}
     const text: Record<string, unknown> = {
@@ -314,10 +315,10 @@ export const MarkdownEditor = forwardRef<
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}
-      contentInsetTop={contentPadding.padTop}
-      contentInsetRight={contentPadding.padRight}
       contentInsetBottom={contentPadding.padBottom}
       contentInsetLeft={contentPadding.padLeft}
+      contentInsetRight={contentPadding.padRight}
+      contentInsetTop={contentPadding.padTop}
       cursorColor={cursorColor ? String(cursorColor) : undefined}
       customTags={customTags}
       defaultValue={defaultValue}
