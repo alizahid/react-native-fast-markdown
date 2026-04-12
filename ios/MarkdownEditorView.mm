@@ -29,6 +29,11 @@ using namespace facebook::react;
   InputFormatter *_formatter;
 
   BOOL _suppressFormatting;
+
+  // Mention tracking
+  NSSet<NSString *> *_mentionTriggers;
+  NSString *_activeMentionTrigger;  // nil when not in a mention
+  NSUInteger _mentionStartPos;     // position after the trigger char
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -101,6 +106,13 @@ using namespace facebook::react;
   }
 
   _textView.editable = newProps.editable;
+
+  // Mention triggers
+  NSMutableSet<NSString *> *triggers = [NSMutableSet new];
+  for (const auto &t : newProps.mentionTriggers) {
+    [triggers addObject:[NSString stringWithUTF8String:t.c_str()]];
+  }
+  _mentionTriggers = [triggers copy];
 
   // Content inset (padding from style prop)
   _textView.textContainerInset = UIEdgeInsetsMake(
@@ -863,6 +875,209 @@ using namespace facebook::react;
 }
 
 // ---------------------------------------------------------------
+#pragma mark - Mentions
+// ---------------------------------------------------------------
+
+/// Called from textViewDidChange to detect mention triggers.
+- (void)detectMentionTriggers {
+  if (_mentionTriggers.count == 0) return;
+
+  NSString *text = _textView.text;
+  NSRange cursor = _textView.selectedRange;
+  if (cursor.location == 0 || text.length == 0) {
+    if (_activeMentionTrigger) [self endMention];
+    return;
+  }
+
+  // If we're in an active mention, update the query
+  if (_activeMentionTrigger) {
+    // Check the mention is still valid (cursor after trigger,
+    // no spaces/newlines in query)
+    if (cursor.location < _mentionStartPos) {
+      [self endMention];
+      return;
+    }
+
+    NSRange queryRange = NSMakeRange(_mentionStartPos,
+                                      cursor.location - _mentionStartPos);
+    if (NSMaxRange(queryRange) > text.length) {
+      [self endMention];
+      return;
+    }
+
+    NSString *query = [text substringWithRange:queryRange];
+
+    // End mention if query contains newline
+    if ([query rangeOfString:@"\n"].location != NSNotFound) {
+      [self endMention];
+      return;
+    }
+
+    [self emitMentionChange:_activeMentionTrigger query:query];
+    return;
+  }
+
+  // Check if the character just typed is a trigger
+  unichar lastChar = [text characterAtIndex:cursor.location - 1];
+  NSString *charStr = [NSString stringWithCharacters:&lastChar length:1];
+
+  if (![_mentionTriggers containsObject:charStr]) return;
+
+  // Only trigger at the start of a word (beginning of text,
+  // or preceded by whitespace)
+  if (cursor.location >= 2) {
+    unichar prev = [text characterAtIndex:cursor.location - 2];
+    if (prev != ' ' && prev != '\n' && prev != '\t') return;
+  }
+
+  // Start a new mention
+  _activeMentionTrigger = charStr;
+  _mentionStartPos = cursor.location; // position after the trigger char
+
+  [self emitMentionStart:charStr];
+}
+
+- (void)endMention {
+  if (!_activeMentionTrigger) return;
+
+  NSString *trigger = _activeMentionTrigger;
+  _activeMentionTrigger = nil;
+  _mentionStartPos = 0;
+
+  [self emitMentionEnd:trigger];
+}
+
+/// Replaces the trigger char + query with a formatted mention.
+- (void)insertMentionWithTrigger:(NSString *)trigger
+                           label:(NSString *)label
+                       propsJSON:(NSString *)propsJSON {
+  if (!_activeMentionTrigger ||
+      ![_activeMentionTrigger isEqualToString:trigger]) {
+    // Not in an active mention for this trigger — just insert
+    // the label at cursor
+    _suppressFormatting = YES;
+    [_textView.textStorage replaceCharactersInRange:_textView.selectedRange
+                                         withString:label];
+    _suppressFormatting = NO;
+    [self applyFullFormatting];
+    return;
+  }
+
+  // Calculate the range to replace (trigger char + query)
+  NSUInteger triggerPos = _mentionStartPos - 1; // the trigger char
+  NSUInteger cursorPos = _textView.selectedRange.location;
+  NSRange replaceRange = NSMakeRange(triggerPos, cursorPos - triggerPos);
+
+  // Map trigger to mention tag name
+  NSString *tagName;
+  if ([trigger isEqualToString:@"@"]) {
+    tagName = @"UserMention";
+  } else if ([trigger isEqualToString:@"#"]) {
+    tagName = @"ChannelMention";
+  } else if ([trigger isEqualToString:@"/"]) {
+    tagName = @"CommandMention";
+  } else {
+    tagName = @"UserMention"; // default
+  }
+
+  // Build the custom tag text: <TagName id="..." name="..." />
+  NSData *data = [propsJSON dataUsingEncoding:NSUTF8StringEncoding];
+  NSDictionary *props =
+      [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] ?: @{};
+
+  NSMutableString *tagStr = [NSMutableString stringWithFormat:@"<%@", tagName];
+  // Ensure name is set from label if not in props
+  NSMutableDictionary *allProps = [props mutableCopy];
+  if (!allProps[@"name"]) {
+    allProps[@"name"] = label;
+  }
+  for (NSString *key in allProps) {
+    [tagStr appendFormat:@" %@=\"%@\"", key, allProps[key]];
+  }
+  [tagStr appendString:@" />"];
+
+  // Replace the trigger + query with just the label visually,
+  // but store the full tag in the FormattingStore for export
+  _suppressFormatting = YES;
+  [_textView.textStorage replaceCharactersInRange:replaceRange
+                                       withString:label];
+  [_store adjustForEditAt:replaceRange.location
+            deletedLength:replaceRange.length
+           insertedLength:label.length];
+  _suppressFormatting = NO;
+
+  // Determine mention type for styling
+  FormattingType mentionFType = FormattingTypeLink; // reuse link styling
+  // Store the tag text as metadata on a custom attribute
+  NSRange mentionRange = NSMakeRange(replaceRange.location, label.length);
+
+  // Apply mention styling (use the appropriate mention style)
+  MarkdownElementStyle *mentionStyle;
+  if ([trigger isEqualToString:@"@"]) {
+    mentionStyle = _styleConfig.mentionUser;
+  } else if ([trigger isEqualToString:@"#"]) {
+    mentionStyle = _styleConfig.mentionChannel;
+  } else if ([trigger isEqualToString:@"/"]) {
+    mentionStyle = _styleConfig.mentionCommand;
+  }
+
+  if (mentionStyle) {
+    if (mentionStyle.color) {
+      [_textView.textStorage addAttribute:NSForegroundColorAttributeName
+                                    value:mentionStyle.color
+                                    range:mentionRange];
+    }
+    UIFont *mFont = [mentionStyle resolvedFontWithBase:_baseFont];
+    if (mFont) {
+      [_textView.textStorage addAttribute:NSFontAttributeName
+                                    value:mFont
+                                    range:mentionRange];
+    }
+  }
+
+  // Store the mention tag for markdown export
+  [_textView.textStorage addAttribute:@"MDMentionTag"
+                                value:tagStr
+                                range:mentionRange];
+
+  // End the mention
+  _activeMentionTrigger = nil;
+  _mentionStartPos = 0;
+
+  _textView.selectedRange = NSMakeRange(mentionRange.location + label.length, 0);
+  [self applyFullFormatting];
+  [self emitMarkdownChange];
+}
+
+#pragma mark - Mention Events
+
+- (void)emitMentionStart:(NSString *)trigger {
+  if (!_eventEmitter) return;
+  const auto &emitter =
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
+  emitter.onMentionStart(
+      {.trigger = std::string([trigger UTF8String])});
+}
+
+- (void)emitMentionChange:(NSString *)trigger query:(NSString *)query {
+  if (!_eventEmitter) return;
+  const auto &emitter =
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
+  emitter.onMentionChange({
+      .trigger = std::string([trigger UTF8String]),
+      .query = std::string([query UTF8String]),
+  });
+}
+
+- (void)emitMentionEnd:(NSString *)trigger {
+  if (!_eventEmitter) return;
+  const auto &emitter =
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
+  emitter.onMentionEnd(
+      {.trigger = std::string([trigger UTF8String])});
+}
+
+// ---------------------------------------------------------------
 #pragma mark - Native Commands
 // ---------------------------------------------------------------
 
@@ -899,7 +1114,10 @@ using namespace facebook::react;
   } else if ([commandName isEqualToString:@"removeLink"]) {
     [self removeLink];
   } else if ([commandName isEqualToString:@"insertMention"]) {
-    // TODO
+    NSString *trigger = args[0];
+    NSString *label = args[1];
+    NSString *propsJSON = args.count > 2 ? args[2] : @"{}";
+    [self insertMentionWithTrigger:trigger label:label propsJSON:propsJSON];
   } else if ([commandName isEqualToString:@"insertSpoiler"]) {
     // TODO
   } else if ([commandName isEqualToString:@"insertCustomTag"]) {
@@ -1028,6 +1246,7 @@ using namespace facebook::react;
   if (_suppressFormatting) return;
 
   [self detectAutoFormatting];
+  [self detectMentionTriggers];
   [self applyFullFormatting];
   [self resetTypingAttributes];
   [self emitMarkdownChange];
@@ -1038,6 +1257,15 @@ using namespace facebook::react;
 
   // Clear pending styles on cursor move (they're ephemeral)
   [_store clearPending];
+
+  // End active mention if cursor moved away from the mention area
+  if (_activeMentionTrigger) {
+    NSUInteger cursorPos = textView.selectedRange.location;
+    if (cursorPos < _mentionStartPos - 1 ||
+        textView.selectedRange.length > 0) {
+      [self endMention];
+    }
+  }
 
   [self detectAndEmitState];
 

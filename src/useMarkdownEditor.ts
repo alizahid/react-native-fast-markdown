@@ -43,7 +43,8 @@ export function useMarkdownEditor() {
   )
   const removeLink = useCallback(() => ref.current?.removeLink(), [])
   const insertMention = useCallback(
-    (user: string) => ref.current?.insertMention(user),
+    (trigger: string, label: string, props: Record<string, string>) =>
+      ref.current?.insertMention(trigger, label, props),
     [],
   )
   const insertSpoiler = useCallback(() => ref.current?.insertSpoiler(), [])

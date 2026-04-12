@@ -383,8 +383,16 @@ export interface MarkdownEditorHandle {
   // Links
   insertLink(url: string, text?: string): void
 
-  // Custom
-  insertMention(user: string): void
+  // Mentions — inserts a mention matching the renderer's custom tag
+  // format (e.g. <UserMention id="u_james" name="James" />).
+  // trigger: the character that started the mention (@, #, /)
+  // label: display text (e.g. "James")
+  // props: { id, name, ...extra } — matches MentionPressEvent
+  insertMention(
+    trigger: string,
+    label: string,
+    props: Record<string, string>,
+  ): void
   insertSpoiler(): void
   removeLink(): void
   setSelection(start: number, end: number): void

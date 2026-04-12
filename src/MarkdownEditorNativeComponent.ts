@@ -22,6 +22,7 @@ export interface MarkdownEditorViewNativeProps extends ViewProps {
   customTags?: ReadonlyArray<string>
   defaultValue?: string
   editable?: boolean
+  mentionTriggers?: ReadonlyArray<string>
   multiline?: boolean
   onChangeMarkdown?: DirectEventHandler<Readonly<{ markdown: string }>>
   onChangeSelection?: DirectEventHandler<
@@ -44,7 +45,11 @@ export interface MarkdownEditorViewNativeProps extends ViewProps {
   onEditorBlur?: DirectEventHandler<Readonly<{ focused: boolean }>>
   onEditorFocus?: DirectEventHandler<Readonly<{ focused: boolean }>>
   onLinkDetected?: DirectEventHandler<Readonly<{ url: string }>>
-  onMentionQuery?: DirectEventHandler<Readonly<{ query: string }>>
+  onMentionChange?: DirectEventHandler<
+    Readonly<{ trigger: string; query: string }>
+  >
+  onMentionEnd?: DirectEventHandler<Readonly<{ trigger: string }>>
+  onMentionStart?: DirectEventHandler<Readonly<{ trigger: string }>>
   placeholder?: string
   placeholderTextColor?: string
   scrollEnabled?: boolean
@@ -69,7 +74,9 @@ interface NativeCommands {
   ) => void
   insertMention: (
     viewRef: React.ElementRef<MarkdownEditorViewComponent>,
-    user: string,
+    trigger: string,
+    label: string,
+    propsJson: string,
   ) => void
   insertSpoiler: (
     viewRef: React.ElementRef<MarkdownEditorViewComponent>,

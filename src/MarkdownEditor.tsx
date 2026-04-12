@@ -55,8 +55,17 @@ export interface MarkdownEditorProps extends ViewProps {
   /** Called when a URL is detected in text */
   onLinkDetected?: (url: string) => void
 
-  /** Called when user triggers a mention query (e.g. types @) */
-  onMentionQuery?: (query: string) => void
+  /** Trigger characters that activate mention detection (e.g. ['@', '#', '/']) */
+  mentionTriggers?: Array<string>
+
+  /** Called when user types a trigger character — show suggestions */
+  onMentionStart?: (trigger: string) => void
+
+  /** Called on each keystroke after a trigger — update suggestions */
+  onMentionChange?: (event: { trigger: string; query: string }) => void
+
+  /** Called when mention is cancelled — hide suggestions */
+  onMentionEnd?: (trigger: string) => void
 
   /** Placeholder text */
   placeholder?: string
@@ -97,7 +106,10 @@ export const MarkdownEditor = forwardRef<
     onChangeSelection,
     onChangeState,
     onLinkDetected,
-    onMentionQuery,
+    mentionTriggers,
+    onMentionStart,
+    onMentionChange,
+    onMentionEnd,
     onFocus,
     onBlur,
     ...viewProps
@@ -248,9 +260,18 @@ export const MarkdownEditor = forwardRef<
           Commands.removeLink(nativeRef.current)
         }
       },
-      insertMention(user: string) {
+      insertMention(
+        trigger: string,
+        label: string,
+        props: Record<string, string>,
+      ) {
         if (nativeRef.current) {
-          Commands.insertMention(nativeRef.current, user)
+          Commands.insertMention(
+            nativeRef.current,
+            trigger,
+            label,
+            JSON.stringify(props),
+          )
         }
       },
       insertSpoiler() {
@@ -337,8 +358,25 @@ export const MarkdownEditor = forwardRef<
       onLinkDetected={
         onLinkDetected ? (e) => onLinkDetected(e.nativeEvent.url) : undefined
       }
-      onMentionQuery={
-        onMentionQuery ? (e) => onMentionQuery(e.nativeEvent.query) : undefined
+      mentionTriggers={mentionTriggers}
+      onMentionStart={
+        onMentionStart
+          ? (e) => onMentionStart(e.nativeEvent.trigger)
+          : undefined
+      }
+      onMentionChange={
+        onMentionChange
+          ? (e) =>
+              onMentionChange({
+                trigger: e.nativeEvent.trigger,
+                query: e.nativeEvent.query,
+              })
+          : undefined
+      }
+      onMentionEnd={
+        onMentionEnd
+          ? (e) => onMentionEnd(e.nativeEvent.trigger)
+          : undefined
       }
       placeholder={placeholder}
       placeholderTextColor={
