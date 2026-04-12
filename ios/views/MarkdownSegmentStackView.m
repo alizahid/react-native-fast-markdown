@@ -1,7 +1,26 @@
 #import "MarkdownSegmentStackView.h"
 
+#import "MarkdownBlockView.h"
+
 @implementation MarkdownSegmentStackView {
   NSMutableArray<UIView *> *_segments;
+}
+
+/// Returns the width to allocate for `segment` given the stack's
+/// available width. Most blocks get stretched to the full width so
+/// the column layout is consistent. Image blocks — which set
+/// `huggingContent` — instead get their preferred width from
+/// sizeThatFits, clamped to the available width.
+static CGFloat SegmentWidth(UIView *segment, CGFloat availableWidth) {
+  if ([segment isKindOfClass:[MarkdownBlockView class]] &&
+      ((MarkdownBlockView *)segment).huggingContent) {
+    CGSize preferred =
+        [segment sizeThatFits:CGSizeMake(availableWidth, CGFLOAT_MAX)];
+    if (preferred.width > 0 && preferred.width < availableWidth) {
+      return preferred.width;
+    }
+  }
+  return availableWidth;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -38,7 +57,8 @@
 
   for (UIView *segment in _segments) {
     if (segment.hidden) continue;
-    CGSize segSize = [segment sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+    CGFloat segW = SegmentWidth(segment, width);
+    CGSize segSize = [segment sizeThatFits:CGSizeMake(segW, CGFLOAT_MAX)];
     totalHeight += segSize.height;
     visibleCount++;
   }
@@ -61,9 +81,10 @@
 
   for (UIView *segment in _segments) {
     if (segment.hidden) continue;
-    CGSize segSize = [segment sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
+    CGFloat segW = SegmentWidth(segment, width);
+    CGSize segSize = [segment sizeThatFits:CGSizeMake(segW, CGFLOAT_MAX)];
     if (!first) y += _spacing;
-    segment.frame = CGRectMake(0, y, width, segSize.height);
+    segment.frame = CGRectMake(0, y, segW, segSize.height);
     y += segSize.height;
     first = NO;
   }

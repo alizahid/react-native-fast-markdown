@@ -322,6 +322,10 @@ using namespace facebook::react;
 
   MarkdownBlockView *blockView =
       [[MarkdownBlockView alloc] initWithStyle:imageStyle];
+  // Hug the image's natural width so the block sizes to the image
+  // instead of stretching across the whole row. Everything in
+  // imageStyle (bg, border, radius) then wraps the image tightly.
+  blockView.huggingContent = YES;
   MarkdownImageView *imageView =
       [[MarkdownImageView alloc] initWithURL:url
                                     propSize:propSize

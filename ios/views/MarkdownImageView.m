@@ -4,10 +4,10 @@
 #import "MarkdownPressableOverlayView.h"
 
 // Breathing room around the image on all sides, matching the 2px
-// padding the mention/spoiler overlays use around their text.
-// The overlay fills a rect that extends kImagePadding beyond the
-// image on every side, so the press highlight has a visible gap
-// between its edge and the image content.
+// padding the mention/spoiler overlays use around their text. The
+// image view fills the outer bounds and the press overlay is
+// inset by this much on every side, so the tap highlight shows a
+// visible dark frame around the image content.
 static const CGFloat kImagePadding = 2.0;
 
 // Process-wide image cache of decoded UIImages. Separate from
@@ -48,25 +48,31 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
     _fallbackWidth = fallbackWidth > 0 ? fallbackWidth : 0;
     _fallbackHeight = fallbackHeight > 0 ? fallbackHeight : 200;
 
+    // Pure layout container — no background, no clipping, no
+    // corner radius. All visual styling (background, border,
+    // radius) comes from the enclosing MarkdownBlockView so the
+    // user's `image: { ... }` styles apply untouched.
     self.backgroundColor = [UIColor clearColor];
-    self.clipsToBounds = NO;
 
     _imageView = [[UIImageView alloc] initWithFrame:CGRectZero];
     // ScaleAspectFill (CSS object-fit: cover) so the image always
-    // fills the rect reserved for it. The sizeThatFits cascade
-    // already aims for natural aspect ratio whenever we know it,
-    // so the crop is only a few pixels when the supplied
-    // dimensions and the actual bytes don't line up exactly.
+    // fills the rect reserved for it. The block's sizeThatFits
+    // cascade already aims for the natural aspect ratio whenever
+    // we know it, so cropping is at most a few pixels when the
+    // declared dimensions don't exactly match the image bytes.
     _imageView.contentMode = UIViewContentModeScaleAspectFill;
     _imageView.clipsToBounds = YES;
-    _imageView.backgroundColor = [UIColor colorWithWhite:0.92 alpha:1.0];
+    _imageView.backgroundColor = [UIColor clearColor];
     [self addSubview:_imageView];
 
-    // Pressable overlay for tap handling. Transparent when idle,
-    // subtle dark tint on press. Added AFTER the image view so it
-    // sits in front and receives touches. The overlay extends
-    // kImagePadding beyond the image on every side to give the
-    // press highlight breathing room, matching mentions/spoilers.
+    // Press overlay is a sibling of the image view inside this
+    // pure-layout wrapper. The wrapper has no background, border
+    // or corner radius of its own — all visual styling comes
+    // from the enclosing MarkdownBlockView — so the overlay
+    // can't hijack any style applied to the image. It sits above
+    // the image at the full wrapper bounds, while the image is
+    // inset by kImagePadding, giving the press highlight a 2px
+    // breather around the image content.
     _pressOverlay =
         [[MarkdownPressableOverlayView alloc] initWithFrame:CGRectZero];
     _pressOverlay.normalColor = [UIColor clearColor];
@@ -106,51 +112,21 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
   return CGSizeMake(w, h);
 }
 
-/// Returns the rect (in local coordinates) that the image
-/// overlay should occupy. The actual UIImageView sits inset by
-/// kImagePadding inside this rect. When a natural size is known
-/// the box matches that aspect ratio (scaled down to fit the
-/// bounds if needed, never scaled up). When no natural size is
-/// known the box covers the full bounds so the fallback
-/// reservation still gets a proper overlay.
-- (CGRect)imageBoxForBounds:(CGRect)bounds {
-  CGFloat availableWidth = bounds.size.width;
-  CGFloat availableHeight = bounds.size.height;
-  if (availableWidth <= 0 || availableHeight <= 0) {
-    return CGRectZero;
-  }
-
-  CGSize natural = [self bestKnownNaturalSize];
-  if (natural.width > 0 && natural.height > 0) {
-    CGFloat boxW = natural.width + kImagePadding * 2;
-    CGFloat boxH = natural.height + kImagePadding * 2;
-    if (boxW > availableWidth) {
-      CGFloat scale = availableWidth / boxW;
-      boxW = availableWidth;
-      boxH = ceil(boxH * scale);
-    }
-    return CGRectMake(0, 0, boxW, boxH);
-  }
-
-  // No natural size — spread across the full bounds we were
-  // given. The overlay's breathing room still comes from the
-  // inset we apply to the image view in layoutSubviews.
-  return CGRectMake(0, 0, availableWidth, availableHeight);
-}
-
 - (CGSize)sizeThatFits:(CGSize)size {
   CGFloat availableWidth = size.width > 0 ? size.width : _fallbackWidth;
   CGSize natural = [self bestKnownNaturalSize];
 
-  // Nothing known — use the raw fallback dimensions directly.
+  // Nothing known — use the raw fallback dimensions directly so
+  // the enclosing block still reserves sensible space.
   if (natural.width <= 0 || natural.height <= 0 || availableWidth <= 0) {
     CGFloat w = _fallbackWidth > 0 ? _fallbackWidth : availableWidth;
     return CGSizeMake(w, _fallbackHeight);
   }
 
-  // With a natural size, mirror imageBoxForBounds: — total box is
-  // natural + 2*padding, scaled down proportionally if wider than
-  // the available space. Return that as the preferred size.
+  // Natural + 2*padding on both axes. When the box is wider than
+  // the available width, scale both dimensions down proportionally
+  // so it still fits. Never scale up — tiny images keep their
+  // natural size.
   CGFloat boxW = natural.width + kImagePadding * 2;
   CGFloat boxH = natural.height + kImagePadding * 2;
   if (boxW > availableWidth) {
@@ -164,15 +140,15 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
 - (void)layoutSubviews {
   [super layoutSubviews];
 
-  // MarkdownSegmentStackView stretches every block to the full
-  // container width, so bounds.width may be larger than the
-  // natural image size. We manually pick a box that matches the
-  // image's natural aspect ratio (left-aligned) and lay the
-  // overlay + image view out inside it — not across the full
-  // stretched bounds.
-  CGRect box = [self imageBoxForBounds:self.bounds];
-  _pressOverlay.frame = box;
-  _imageView.frame = CGRectInset(box, kImagePadding, kImagePadding);
+  // Bounds are natural + 2*padding on each axis (sized by the
+  // enclosing MarkdownBlockView's hug logic). The image view
+  // sits inset by kImagePadding so the natural image occupies
+  // the center; the press overlay covers the full bounds, so
+  // when pressed the tint paints a 2px frame around the image
+  // — matching mention/spoiler breathing room.
+  _imageView.frame =
+      CGRectInset(self.bounds, kImagePadding, kImagePadding);
+  _pressOverlay.frame = self.bounds;
 }
 
 #pragma mark - Loading
