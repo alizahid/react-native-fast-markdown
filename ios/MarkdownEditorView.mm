@@ -16,7 +16,7 @@
 
 using namespace facebook::react;
 
-@interface MarkdownEditorView () <UITextViewDelegate>
+@interface MarkdownEditorView () <UITextViewDelegate, NSTextStorageDelegate>
 @end
 
 @implementation MarkdownEditorView {
@@ -29,6 +29,10 @@ using namespace facebook::react;
   FormattingStore *_store;
   InputFormatter *_formatter;
   MarkdownLayoutManager *_layoutManager;
+
+  // Dirty ranges collected from NSTextStorageDelegate. Only
+  // these ranges are reset + re-styled on each text change.
+  NSMutableArray<NSValue *> *_dirtyRanges;
 
   BOOL _suppressFormatting;
 }
@@ -58,10 +62,13 @@ using namespace facebook::react;
     _textView = [[UITextView alloc] initWithFrame:self.bounds
                                     textContainer:textContainer];
     _textView.delegate = self;
+    _textView.textStorage.delegate = self;
     _textView.autocorrectionType = UITextAutocorrectionTypeDefault;
     _textView.scrollEnabled = YES;
     _textView.backgroundColor = [UIColor clearColor];
     [self addSubview:_textView];
+
+    _dirtyRanges = [NSMutableArray new];
   }
   return self;
 }
@@ -100,7 +107,7 @@ using namespace facebook::react;
 
     // Re-apply formatting with new styles if we already have content
     if (_textView.text.length > 0) {
-      [self applyFormatting];
+      [self applyFullFormatting];
     }
   }
 
@@ -169,7 +176,7 @@ using namespace facebook::react;
   _formatter.baseFont = _baseFont;
   _formatter.baseColor = _baseColor;
 
-  [self applyFormatting];
+  [self applyFullFormatting];
   [self resetTypingAttributes];
 }
 
@@ -228,39 +235,43 @@ using namespace facebook::react;
 #pragma mark - Formatting Application
 // ---------------------------------------------------------------
 
-- (void)applyFormatting {
+/// Full re-style — used for import and style prop changes.
+- (void)applyFullFormatting {
   if (_suppressFormatting) return;
   [_formatter applyAllFormatting:_store toTextStorage:_textView.textStorage];
 }
 
-/// Walks every paragraph in the text storage. If a paragraph has
-/// MDBlockTypeAttributeName on its first character but NOT on all
-/// characters (e.g. a new line was added by pressing Enter), the
-/// attribute is extended to cover the full paragraph.
-- (void)ensureBlockAttributeCoverage {
+/// Incremental re-style — only the dirty ranges collected from
+/// NSTextStorageDelegate. Block attributes outside these ranges
+/// are never touched, so UITextView's paragraph propagation
+/// stays intact.
+- (void)applyDirtyFormatting {
+  if (_suppressFormatting) return;
+  if (_dirtyRanges.count == 0) return;
+
   NSTextStorage *ts = _textView.textStorage;
   if (ts.length == 0) return;
 
-  NSString *text = ts.string;
-  NSUInteger pos = 0;
-
-  while (pos < text.length) {
-    NSRange paraRange = [text paragraphRangeForRange:NSMakeRange(pos, 0)];
-
-    // Check the first character of the paragraph
-    NSDictionary *firstAttrs = [ts attributesAtIndex:paraRange.location
-                                      effectiveRange:nil];
-    NSString *blockType = firstAttrs[MDBlockTypeAttributeName];
-
-    if (blockType) {
-      // Ensure the full paragraph has this attribute
-      [ts addAttribute:MDBlockTypeAttributeName
-                 value:blockType
-                 range:paraRange];
+  // Merge and expand dirty ranges to paragraph boundaries
+  NSMutableIndexSet *dirtyChars = [NSMutableIndexSet new];
+  for (NSValue *v in _dirtyRanges) {
+    NSRange r = v.rangeValue;
+    if (r.location > ts.length) continue;
+    if (NSMaxRange(r) > ts.length) {
+      r.length = ts.length - r.location;
     }
-
-    pos = NSMaxRange(paraRange);
+    // Expand to full paragraph boundaries
+    NSRange paraRange = [ts.string paragraphRangeForRange:r];
+    [dirtyChars addIndexesInRange:paraRange];
   }
+  [_dirtyRanges removeAllObjects];
+
+  // Re-style each contiguous dirty region
+  [dirtyChars enumerateRangesUsingBlock:^(NSRange range, BOOL *stop) {
+    [self->_formatter applyFormattingInRange:range
+                                      store:self->_store
+                              toTextStorage:ts];
+  }];
 }
 
 - (void)resetTypingAttributes {
@@ -370,7 +381,7 @@ using namespace facebook::react;
       [_store addRange:[FormattingRange rangeWithType:type range:range]];
     }
 
-    [self applyFormatting];
+    [self applyFullFormatting];
   }
 
   [self detectAndEmitState];
@@ -417,7 +428,7 @@ using namespace facebook::react;
     [_store addRange:[FormattingRange rangeWithType:hType range:lineRange]];
   }
 
-  [self applyFormatting];
+  [self applyFullFormatting];
   [self detectAndEmitState];
 }
 
@@ -475,7 +486,7 @@ using namespace facebook::react;
     _textView.typingAttributes = typingAttrs;
   }
 
-  [self applyFormatting];
+  [self applyFullFormatting];
   [self resetTypingAttributes];
   [self detectAndEmitState];
 }
@@ -541,7 +552,7 @@ using namespace facebook::react;
                                              range:lineRange]];
   }
 
-  [self applyFormatting];
+  [self applyFullFormatting];
   [self detectAndEmitState];
   [self emitMarkdownChange];
 }
@@ -733,7 +744,7 @@ using namespace facebook::react;
     [_store.pendingStyles addObject:@(type)];
   }
 
-  [self applyFormatting];
+  [self applyFullFormatting];
 
   // Set typing attributes for blockquotes so the paragraph indent
   // is visible immediately, even on an empty line
@@ -821,7 +832,7 @@ using namespace facebook::react;
         _textView.selectedRange =
             NSMakeRange(searchPos + content.length, 0);
 
-        [self applyFormatting];
+        [self applyFullFormatting];
         [self emitMarkdownChange];
         return;
       }
@@ -889,7 +900,7 @@ using namespace facebook::react;
     [_store removeRangesOfType:listType intersecting:lineRange];
     _suppressFormatting = NO;
 
-    [self applyFormatting];
+    [self applyFullFormatting];
     [self emitMarkdownChange];
     return YES;
   }
@@ -935,7 +946,7 @@ using namespace facebook::react;
                                              range:newLineRange]];
   }
 
-  [self applyFormatting];
+  [self applyFullFormatting];
   [self resetTypingAttributes];
   [self emitMarkdownChange];
   return YES;
@@ -1023,7 +1034,7 @@ using namespace facebook::react;
     }
   }
 
-  if (changed) [self applyFormatting];
+  if (changed) [self applyFullFormatting];
 }
 
 // ---------------------------------------------------------------
@@ -1063,7 +1074,7 @@ using namespace facebook::react;
                                             range:linkRange
                                               url:url]];
 
-  [self applyFormatting];
+  [self applyFullFormatting];
   [self emitMarkdownChange];
 }
 
@@ -1077,7 +1088,7 @@ using namespace facebook::react;
         idx >= r.range.location &&
         idx < NSMaxRange(r.range)) {
       [_store removeRangesOfType:FormattingTypeLink intersecting:r.range];
-      [self applyFormatting];
+      [self applyFullFormatting];
       [self emitMarkdownChange];
       return;
     }
@@ -1249,19 +1260,47 @@ using namespace facebook::react;
   return YES;
 }
 
+// ---------------------------------------------------------------
+#pragma mark - NSTextStorageDelegate
+// ---------------------------------------------------------------
+
+- (void)textStorage:(NSTextStorage *)textStorage
+    didProcessEditing:(NSTextStorageEditActions)editedMask
+                range:(NSRange)editedRange
+       changeInLength:(NSInteger)delta {
+  if (_suppressFormatting) return;
+  if (!(editedMask & NSTextStorageEditedCharacters)) return;
+
+  // Shift existing dirty ranges to account for the edit
+  NSMutableArray *shifted = [NSMutableArray new];
+  for (NSValue *v in _dirtyRanges) {
+    NSRange r = v.rangeValue;
+    if (NSMaxRange(r) <= editedRange.location) {
+      // Before the edit — no change
+      [shifted addObject:v];
+    } else if (r.location >= editedRange.location) {
+      // After the edit — shift
+      NSInteger newLoc = (NSInteger)r.location + delta;
+      if (newLoc >= 0) {
+        [shifted addObject:[NSValue valueWithRange:
+            NSMakeRange((NSUInteger)newLoc, r.length)]];
+      }
+    }
+    // Overlapping ranges are dropped — the editedRange replaces them
+  }
+  [shifted addObject:[NSValue valueWithRange:editedRange]];
+  _dirtyRanges = shifted;
+}
+
+// ---------------------------------------------------------------
+#pragma mark - UITextViewDelegate
+// ---------------------------------------------------------------
+
 - (void)textViewDidChange:(UITextView *)textView {
   if (_suppressFormatting) return;
 
   [self detectAutoFormatting];
-
-  // Ensure block type attributes cover entire paragraphs.
-  // UITextView may not propagate custom attributes fully when
-  // text is split across paragraphs (Enter key), so we
-  // explicitly extend block attributes to cover any newly
-  // created paragraph that should be part of the block.
-  [self ensureBlockAttributeCoverage];
-
-  [self applyFormatting];
+  [self applyDirtyFormatting];
   [self resetTypingAttributes];
   [self emitMarkdownChange];
 }

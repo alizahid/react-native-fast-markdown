@@ -13,11 +13,19 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) CGFloat baseLineHeight;
 @property (nonatomic) CGFloat paragraphSpacing;
 
-/// Re-applies all formatting from the store to the text storage.
-/// Resets everything to base attributes first, then layers on
-/// block and inline formatting.
+/// Full re-style: resets everything to base attributes, then
+/// layers on block and inline formatting. Used for import and
+/// style prop changes.
 - (void)applyAllFormatting:(FormattingStore *)store
              toTextStorage:(NSTextStorage *)textStorage;
+
+/// Incremental re-style: resets only the given range to base
+/// attributes (preserving MDBlockType), then re-applies block
+/// and inline formatting that intersect the range. Used for
+/// per-keystroke updates from dirty ranges.
+- (void)applyFormattingInRange:(NSRange)dirtyRange
+                         store:(FormattingStore *)store
+                 toTextStorage:(NSTextStorage *)textStorage;
 
 @end
 

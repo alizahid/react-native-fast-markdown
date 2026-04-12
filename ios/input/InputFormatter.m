@@ -83,6 +83,100 @@
   [textStorage endEditing];
 }
 
+- (void)applyFormattingInRange:(NSRange)dirtyRange
+                         store:(FormattingStore *)store
+                 toTextStorage:(NSTextStorage *)textStorage {
+  if (textStorage.length == 0) return;
+
+  // Clamp to text storage bounds
+  if (dirtyRange.location >= textStorage.length) return;
+  if (NSMaxRange(dirtyRange) > textStorage.length) {
+    dirtyRange.length = textStorage.length - dirtyRange.location;
+  }
+  if (dirtyRange.length == 0) return;
+
+  CGFloat lineHeight = _baseLineHeight > 0
+      ? _baseLineHeight
+      : _styleConfig.base.lineHeight;
+  CGFloat gap = _paragraphSpacing > 0
+      ? _paragraphSpacing
+      : _styleConfig.base.gap;
+
+  [textStorage beginEditing];
+
+  // 1. Reset ONLY the dirty range to base attributes, but
+  //    preserve MDBlockTypeAttributeName so paragraph propagation
+  //    stays intact.
+  NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
+  if (lineHeight > 0) {
+    basePStyle.minimumLineHeight = lineHeight;
+    basePStyle.maximumLineHeight = lineHeight;
+  }
+  if (gap > 0) {
+    basePStyle.paragraphSpacing = gap;
+  }
+
+  [textStorage addAttribute:NSFontAttributeName
+                       value:_baseFont
+                       range:dirtyRange];
+  [textStorage addAttribute:NSForegroundColorAttributeName
+                       value:_baseColor
+                       range:dirtyRange];
+  [textStorage addAttribute:NSParagraphStyleAttributeName
+                       value:basePStyle
+                       range:dirtyRange];
+  [textStorage removeAttribute:NSBackgroundColorAttributeName
+                         range:dirtyRange];
+  [textStorage removeAttribute:NSStrikethroughStyleAttributeName
+                         range:dirtyRange];
+  [textStorage removeAttribute:NSStrikethroughColorAttributeName
+                         range:dirtyRange];
+
+  // 2. Re-apply block formatting that intersects the dirty range
+  for (FormattingRange *r in store.allRanges) {
+    if (![FormattingRange isBlockType:r.type]) continue;
+    NSRange intersection = NSIntersectionRange(r.range, dirtyRange);
+    if (intersection.length == 0) continue;
+    if (NSMaxRange(r.range) > textStorage.length) continue;
+    [self applyBlockRange:r
+            toTextStorage:textStorage
+               lineHeight:lineHeight
+                      gap:gap];
+  }
+
+  // 3. Re-apply block formatting from paragraph attributes
+  //    (blocks continued via Enter that aren't in the store)
+  [textStorage enumerateAttribute:MDBlockTypeAttributeName
+                          inRange:dirtyRange
+                          options:0
+                       usingBlock:^(NSString *value, NSRange range,
+                                    BOOL *stop) {
+    if (!value) return;
+    if ([value isEqualToString:MDBlockTypeCodeBlock]) {
+      [self applyCodeBlockStyling:range
+                    toTextStorage:textStorage
+                       lineHeight:lineHeight
+                              gap:gap];
+    } else if ([value isEqualToString:MDBlockTypeBlockquote]) {
+      [self applyBlockquoteStyling:range
+                     toTextStorage:textStorage
+                        lineHeight:lineHeight
+                               gap:gap];
+    }
+  }];
+
+  // 4. Re-apply inline formatting that intersects the dirty range
+  for (FormattingRange *r in store.allRanges) {
+    if (![FormattingRange isInlineType:r.type]) continue;
+    NSRange intersection = NSIntersectionRange(r.range, dirtyRange);
+    if (intersection.length == 0) continue;
+    if (NSMaxRange(r.range) > textStorage.length) continue;
+    [self applyInlineRange:r toTextStorage:textStorage];
+  }
+
+  [textStorage endEditing];
+}
+
 - (void)applyBlockTypesFromAttributes:(NSTextStorage *)textStorage
                            lineHeight:(CGFloat)lineHeight
                                   gap:(CGFloat)gap {
