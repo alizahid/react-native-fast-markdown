@@ -517,56 +517,59 @@ using namespace facebook::react;
     hasBlock = [attrs[MDBlockTypeAttributeName] isEqualToString:blockType];
   }
 
-  NSLog(@"[MD]   paraRange={%lu,%lu} hasBlock=%d",
-        (unsigned long)paraRange.location,
-        (unsigned long)paraRange.length,
-        hasBlock);
-
   if (hasBlock) {
-    // Remove block type
+    // Remove block type from the full paragraph
     [_textView.textStorage removeAttribute:MDBlockTypeAttributeName
                                      range:paraRange];
     [_store removeRangesOfType:fType intersecting:paraRange];
-    NSLog(@"[MD]   REMOVED block");
+
+    [self applyFullFormatting];
+    [self resetTypingAttributes];
   } else {
-    // Set block type on the paragraph
+    // Set block type on the full paragraph (including \n)
     if (paraRange.length > 0) {
       [_textView.textStorage addAttribute:MDBlockTypeAttributeName
                                     value:blockType
                                     range:paraRange];
-      NSLog(@"[MD]   SET block on range {%lu,%lu}",
-            (unsigned long)paraRange.location,
-            (unsigned long)paraRange.length);
-    } else {
-      NSLog(@"[MD]   paraRange.length==0, only setting typingAttrs");
     }
 
-    // Also set it in typing attributes
+    [self applyFullFormatting];
+
+    // Set typing attributes WITH the block type AFTER
+    // applyFullFormatting — resetTypingAttributes would check
+    // the cursor position and should now find the attribute,
+    // but we force it to be safe.
+    [self resetTypingAttributes];
+
+    // Force the block type into typing attributes regardless
+    // (handles empty lines where paraRange.length == 0)
     NSMutableDictionary *typingAttrs =
         [_textView.typingAttributes mutableCopy];
     typingAttrs[MDBlockTypeAttributeName] = blockType;
+
+    // Also set the correct font/paragraph for code blocks
+    if ([blockType isEqualToString:MDBlockTypeCodeBlock]) {
+      MarkdownElementStyle *style = _styleConfig.codeBlock;
+      UIFont *codeFont =
+          [style resolvedFontWithBase:_baseFont]
+              ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
+                                            weight:UIFontWeightRegular];
+      typingAttrs[NSFontAttributeName] = codeFont;
+      if (style.color) {
+        typingAttrs[NSForegroundColorAttributeName] = style.color;
+      }
+      NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+      pStyle.paragraphSpacing = 0;
+      CGFloat pad = style.padding;
+      if (pad > 0) {
+        pStyle.firstLineHeadIndent = pad;
+        pStyle.headIndent = pad;
+      }
+      typingAttrs[NSParagraphStyleAttributeName] = pStyle;
+    }
+
     _textView.typingAttributes = typingAttrs;
   }
-
-  // Verify the attribute was set
-  if (paraRange.length > 0 && paraRange.location < _textView.textStorage.length) {
-    NSDictionary *check = [_textView.textStorage attributesAtIndex:paraRange.location
-                                                    effectiveRange:nil];
-    NSLog(@"[MD]   VERIFY after set: MDBlockType=%@", check[MDBlockTypeAttributeName]);
-  }
-
-  [self applyFullFormatting];
-
-  // Verify after applyFullFormatting
-  if (paraRange.length > 0 && paraRange.location < _textView.textStorage.length) {
-    NSDictionary *check = [_textView.textStorage attributesAtIndex:paraRange.location
-                                                    effectiveRange:nil];
-    NSLog(@"[MD]   VERIFY after applyFull: MDBlockType=%@", check[MDBlockTypeAttributeName]);
-  }
-
-  [self resetTypingAttributes];
-  NSLog(@"[MD]   VERIFY typingAttrs: MDBlockType=%@",
-        _textView.typingAttributes[MDBlockTypeAttributeName]);
 
   [self detectAndEmitState];
 }
