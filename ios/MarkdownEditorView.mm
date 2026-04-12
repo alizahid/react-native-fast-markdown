@@ -233,6 +233,36 @@ using namespace facebook::react;
   [_formatter applyAllFormatting:_store toTextStorage:_textView.textStorage];
 }
 
+/// Walks every paragraph in the text storage. If a paragraph has
+/// MDBlockTypeAttributeName on its first character but NOT on all
+/// characters (e.g. a new line was added by pressing Enter), the
+/// attribute is extended to cover the full paragraph.
+- (void)ensureBlockAttributeCoverage {
+  NSTextStorage *ts = _textView.textStorage;
+  if (ts.length == 0) return;
+
+  NSString *text = ts.string;
+  NSUInteger pos = 0;
+
+  while (pos < text.length) {
+    NSRange paraRange = [text paragraphRangeForRange:NSMakeRange(pos, 0)];
+
+    // Check the first character of the paragraph
+    NSDictionary *firstAttrs = [ts attributesAtIndex:paraRange.location
+                                      effectiveRange:nil];
+    NSString *blockType = firstAttrs[MDBlockTypeAttributeName];
+
+    if (blockType) {
+      // Ensure the full paragraph has this attribute
+      [ts addAttribute:MDBlockTypeAttributeName
+                 value:blockType
+                 range:paraRange];
+    }
+
+    pos = NSMaxRange(paraRange);
+  }
+}
+
 - (void)resetTypingAttributes {
   // If the cursor is inside a block, inherit the block's styling
   // for new characters. Otherwise use base attributes.
@@ -1223,6 +1253,14 @@ using namespace facebook::react;
   if (_suppressFormatting) return;
 
   [self detectAutoFormatting];
+
+  // Ensure block type attributes cover entire paragraphs.
+  // UITextView may not propagate custom attributes fully when
+  // text is split across paragraphs (Enter key), so we
+  // explicitly extend block attributes to cover any newly
+  // created paragraph that should be part of the block.
+  [self ensureBlockAttributeCoverage];
+
   [self applyFormatting];
   [self resetTypingAttributes];
   [self emitMarkdownChange];
