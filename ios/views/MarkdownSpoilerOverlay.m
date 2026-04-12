@@ -5,7 +5,7 @@
 static const CGFloat kRevealAnimationDuration = 0.25;
 
 // Breathing room around the text glyphs on all sides of the overlay.
-static const CGFloat kSpoilerPadding = 4.0;
+static const CGFloat kSpoilerPadding = 2.0;
 
 @implementation MarkdownSpoilerOverlay {
   __weak UITextView *_textView;

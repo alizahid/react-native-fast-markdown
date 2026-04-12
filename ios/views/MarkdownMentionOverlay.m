@@ -7,7 +7,7 @@
 static const CGFloat kMentionCornerRadius = 4.0;
 
 // Breathing room around the text glyphs on all sides of the overlay.
-static const CGFloat kMentionPadding = 4.0;
+static const CGFloat kMentionPadding = 2.0;
 
 // Associated-object key — any unique pointer works.
 static const void *kMentionDataKey = &kMentionDataKey;
