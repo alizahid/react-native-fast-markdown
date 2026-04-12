@@ -74,30 +74,6 @@ export function EditorScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.editorContent}
-        keyboardDismissMode="interactive"
-        style={styles.editorContainer}
-      >
-        <Text style={styles.label}>EDITOR</Text>
-        <View style={styles.editorCard}>
-          <MarkdownEditor
-            autoFocus
-            defaultValue={initialMarkdown}
-            onChangeMarkdown={setMarkdown}
-            onChangeState={handleChangeState}
-            placeholder="Type some markdown..."
-            ref={editor.ref}
-            style={styles.input}
-          />
-        </View>
-
-        <Text style={styles.label}>PREVIEW</Text>
-        <View style={styles.previewCard}>
-          <Text style={styles.previewText}>{markdown}</Text>
-        </View>
-      </ScrollView>
-
       <View style={styles.toolbar}>
         <ScrollView
           contentContainerStyle={styles.toolbarContent}
@@ -121,7 +97,7 @@ export function EditorScreen() {
           />
           <ToolbarButton
             active={styleState.code}
-            label="<>"
+            label="`"
             onPress={editor.toggleCode}
           />
 
@@ -156,6 +132,7 @@ export function EditorScreen() {
             onPress={editor.toggleOrderedList}
           />
           <ToolbarButton label="BQ" onPress={editor.toggleBlockquote} />
+          <ToolbarButton label="```" onPress={editor.toggleCode} />
           <ToolbarButton
             active={styleState.link !== null}
             label="Link"
@@ -164,13 +141,33 @@ export function EditorScreen() {
 
           <View style={styles.toolbarSep} />
 
-          <ToolbarButton
-            label="@"
-            onPress={() => editor.insertMention('Ali')}
-          />
           <ToolbarButton label="Show MD" onPress={handleShowMarkdown} />
         </ScrollView>
       </View>
+
+      <ScrollView
+        contentContainerStyle={styles.editorContent}
+        keyboardDismissMode="interactive"
+        style={styles.editorContainer}
+      >
+        <Text style={styles.label}>EDITOR</Text>
+        <View style={styles.editorCard}>
+          <MarkdownEditor
+            autoFocus
+            defaultValue={initialMarkdown}
+            onChangeMarkdown={setMarkdown}
+            onChangeState={handleChangeState}
+            placeholder="Type some markdown..."
+            ref={editor.ref}
+            style={styles.input}
+          />
+        </View>
+
+        <Text style={styles.label}>PREVIEW</Text>
+        <View style={styles.previewCard}>
+          <Text style={styles.previewText}>{markdown}</Text>
+        </View>
+      </ScrollView>
     </View>
   )
 }
@@ -179,6 +176,38 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f2f2f7',
+  },
+  toolbar: {
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e5e5',
+  },
+  toolbarContent: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  toolbarSep: {
+    width: 1,
+    backgroundColor: '#e5e5e5',
+    marginHorizontal: 4,
+  },
+  toolbarBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f2f2f7',
+  },
+  toolbarBtnActive: {
+    backgroundColor: '#007aff',
+  },
+  toolbarBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  toolbarBtnTextActive: {
+    color: '#fff',
   },
   editorContainer: {
     flex: 1,
@@ -226,38 +255,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Menlo',
     color: '#555',
     lineHeight: 20,
-  },
-  toolbar: {
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e5e5e5',
-    paddingBottom: 34, // safe area
-  },
-  toolbarContent: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    gap: 6,
-  },
-  toolbarSep: {
-    width: 1,
-    backgroundColor: '#e5e5e5',
-    marginHorizontal: 4,
-  },
-  toolbarBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: '#f2f2f7',
-  },
-  toolbarBtnActive: {
-    backgroundColor: '#007aff',
-  },
-  toolbarBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-  },
-  toolbarBtnTextActive: {
-    color: '#fff',
   },
 })
