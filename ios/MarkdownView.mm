@@ -43,6 +43,12 @@ using namespace facebook::react;
   NSArray<NSString *> *_customTags;
   StyleConfig *_styleConfig;
 
+  // URL → NSValue(CGSize) of dimensions supplied via the `images`
+  // prop. Authoritative — passed to each MarkdownImageView at
+  // construction time so its sizeThatFits and layoutSubviews
+  // reserve the right rect before the actual bytes arrive.
+  NSDictionary<NSString *, NSValue *> *_propImageSizes;
+
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
 
@@ -111,19 +117,31 @@ using namespace facebook::react;
     [customTags addObject:[NSString stringWithUTF8String:tag.c_str()]];
   }
 
-  // MarkdownViewShadowNode::measureContent seeds
-  // MarkdownImageSizeCache from newViewProps.images on the shadow
-  // thread before the measurer runs, so by the time updateProps:
-  // is called here the cache is already populated. No need to
-  // seed again — addImageSegment will read the same entries when
-  // it creates the image views.
+  // Build the per-view prop-image-sizes dict from the `images`
+  // prop. Stored on the instance so addImageSegment can look up
+  // a URL's authoritative dimensions and hand them to
+  // MarkdownImageView at construction time. Rebuilt on every
+  // updateProps: so live-edited dimensions (or URLs dropped from
+  // the prop altogether) are reflected in the next render pass.
+  NSMutableDictionary<NSString *, NSValue *> *propImageSizes =
+      [NSMutableDictionary new];
+  for (const auto &img : newViewProps.images) {
+    if (img.url.empty()) continue;
+    if (img.width <= 0 || img.height <= 0) continue;
+    NSString *urlKey = [NSString stringWithUTF8String:img.url.c_str()];
+    propImageSizes[urlKey] =
+        [NSValue valueWithCGSize:CGSizeMake(img.width, img.height)];
+  }
 
   BOOL markdownChanged = ![markdown isEqualToString:_currentMarkdown ?: @""];
   BOOL styleChanged = ![styleJSON isEqualToString:_currentStyleJSON ?: @""];
+  BOOL imagesChanged =
+      ![(_propImageSizes ?: @{}) isEqualToDictionary:propImageSizes];
 
   _currentMarkdown = markdown;
   _currentStyleJSON = styleJSON;
   _customTags = customTags;
+  _propImageSizes = [propImageSizes copy];
 
   if (styleChanged) {
     _styleConfig = [StyleConfig fromJSON:styleJSON];
@@ -135,7 +153,7 @@ using namespace facebook::react;
     _stackView.spacing = _styleConfig.base.gap;
   }
 
-  if (markdownChanged || styleChanged) {
+  if (markdownChanged || styleChanged || imagesChanged) {
     [self renderMarkdown];
   }
 
@@ -292,10 +310,21 @@ using namespace facebook::react;
   CGFloat fallbackHeight =
       imageStyle.height > 0 ? imageStyle.height : kDefaultImageHeight;
 
+  // Look up the authoritative size for this URL from the props
+  // we captured in updateProps:. CGSizeZero when the caller
+  // didn't declare dimensions — MarkdownImageView falls back to
+  // the discovered cache in that case.
+  CGSize propSize = CGSizeZero;
+  if (urlString.length > 0) {
+    NSValue *propValue = _propImageSizes[urlString];
+    if (propValue) propSize = [propValue CGSizeValue];
+  }
+
   MarkdownBlockView *blockView =
       [[MarkdownBlockView alloc] initWithStyle:imageStyle];
   MarkdownImageView *imageView =
       [[MarkdownImageView alloc] initWithURL:url
+                                    propSize:propSize
                                 fallbackWidth:fallbackWidth
                                fallbackHeight:fallbackHeight];
 

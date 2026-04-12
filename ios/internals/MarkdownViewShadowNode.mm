@@ -4,7 +4,6 @@
 #include <react/renderer/core/LayoutConstraints.h>
 #include <react/renderer/core/LayoutContext.h>
 
-#import "MarkdownImageSizeCache.h"
 #import "MarkdownMeasurer.h"
 
 namespace facebook::react {
@@ -30,30 +29,27 @@ Size MarkdownViewShadowNode::measureContent(
     [customTags addObject:[NSString stringWithUTF8String:tag.c_str()]];
   }
 
-  // Seed the shared image size cache from the `images` prop BEFORE
-  // calling the measurer. updateProps: on the component view runs
-  // on the main thread after the shadow commit — if we rely on
-  // that, measureContent on the first render doesn't see the
-  // user-supplied dimensions and reserves the default height
-  // instead. Seeding from here runs on the shadow thread and
-  // happens before the measurer reads the cache.
-  //
-  // setPropSize:forURLString: writes into the authoritative tier
-  // of the cache so downloaded natural sizes never overwrite
-  // prop-supplied dimensions, and short-circuits when the value
-  // is unchanged so repeated seeding doesn't create a re-measure
-  // loop.
-  MarkdownImageSizeCache *sizeCache = [MarkdownImageSizeCache sharedCache];
+  // Build the URL → size dictionary from the `images` prop and
+  // pass it to the measurer as an explicit parameter. Keeping the
+  // prop sizes out of any process-wide cache means they're per
+  // measurement (so two MarkdownViews declaring different sizes
+  // for the same URL don't step on each other), reactive (when
+  // the prop changes the cache key changes and we re-measure),
+  // and can be dropped by simply omitting the URL from the prop.
+  NSMutableDictionary<NSString *, NSValue *> *propImageSizes =
+      [NSMutableDictionary new];
   for (const auto &img : props.images) {
     if (img.url.empty()) continue;
+    if (img.width <= 0 || img.height <= 0) continue;
     NSString *urlKey = [NSString stringWithUTF8String:img.url.c_str()];
-    [sizeCache setPropSize:CGSizeMake(img.width, img.height)
-              forURLString:urlKey];
+    propImageSizes[urlKey] =
+        [NSValue valueWithCGSize:CGSizeMake(img.width, img.height)];
   }
 
   CGSize size = [MarkdownMeasurer measureMarkdown:markdown
                                        stylesJSON:stylesJSON
                                        customTags:customTags
+                                   propImageSizes:propImageSizes
                                             width:maxWidth];
 
   return layoutConstraints.clamp({

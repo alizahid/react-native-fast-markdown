@@ -9,18 +9,19 @@ NS_ASSUME_NONNULL_BEGIN
 ///
 /// The view's sizeThatFits: reports a size derived from whichever
 /// of these is known first:
-///   1. The entry in the shared MarkdownImageSizeCache for this
-///      URL — populated either by a previous download, by a
-///      caller pre-seeding it from the `images` prop, or by the
-///      in-progress download this view just finished.
-///   2. Otherwise, a fallback width/height supplied at init.
+///   1. `propSize` — dimensions supplied by the caller via the
+///      `images` prop on <Markdown>. Authoritative.
+///   2. The entry in the shared MarkdownImageSizeCache — populated
+///      by a download that has already completed.
+///   3. Otherwise, the fallback width/height supplied at init.
 ///
-/// On tap (via an overlay MarkdownPressableOverlayView) it
-/// invokes `onPress` with the URL and the best-known natural
-/// size at the time of the tap.
+/// On tap (via an overlay MarkdownPressableOverlayView) it invokes
+/// `onPress` with the URL and the best-known natural size at the
+/// time of the tap.
 @interface MarkdownImageView : UIView
 
 - (instancetype)initWithURL:(nullable NSURL *)url
+                   propSize:(CGSize)propSize
               fallbackWidth:(CGFloat)fallbackWidth
              fallbackHeight:(CGFloat)fallbackHeight;
 
@@ -28,8 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, readonly) UIImageView *imageView;
 
 /// Invoked when the user taps the image. `size` is the best-
-/// known natural size at the time of the tap — from the shared
-/// MarkdownImageSizeCache if set, otherwise the fallback size.
+/// known natural size at the time of the tap.
 @property (nonatomic, copy, nullable)
     void (^onPress)(NSURL *url, CGSize size);
 

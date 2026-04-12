@@ -13,6 +13,11 @@
 // the same height for a block image before its URL has loaded.
 static const CGFloat kMeasurerDefaultImageHeight = 200.0;
 
+// Must match kImagePadding in MarkdownImageView.m — the block
+// image size reserved at measurement time includes the 2px
+// breathing room the press overlay wraps around the image.
+static const CGFloat kMeasurerImagePadding = 2.0;
+
 static NSCache<NSString *, NSValue *> *sMeasureCache(void) {
   static dispatch_once_t once;
   static NSCache<NSString *, NSValue *> *cache;
@@ -23,14 +28,32 @@ static NSCache<NSString *, NSValue *> *sMeasureCache(void) {
   return cache;
 }
 
+static NSString *MakePropImageSizesKey(
+    NSDictionary<NSString *, NSValue *> *propImageSizes) {
+  if (propImageSizes.count == 0) return @"";
+  // Sort URLs for a deterministic key so two prop maps with the
+  // same contents (regardless of insertion order) hash identically.
+  NSArray<NSString *> *urls =
+      [propImageSizes.allKeys sortedArrayUsingSelector:@selector(compare:)];
+  NSMutableString *key = [NSMutableString new];
+  for (NSString *url in urls) {
+    CGSize size = [propImageSizes[url] CGSizeValue];
+    [key appendFormat:@"%@:%.1fx%.1f|", url, size.width, size.height];
+  }
+  return key;
+}
+
 static NSString *MakeCacheKey(NSString *markdown,
                               NSString *stylesJSON,
                               NSArray<NSString *> *customTags,
+                              NSDictionary<NSString *, NSValue *> *propImageSizes,
                               CGFloat width) {
   NSString *tagsKey = [customTags componentsJoinedByString:@","] ?: @"";
-  return [NSString stringWithFormat:@"%.1f|%@|%@|%@",
+  NSString *imgKey = MakePropImageSizesKey(propImageSizes);
+  return [NSString stringWithFormat:@"%.1f|%@|%@|%@|%@",
                                     width,
                                     tagsKey,
+                                    imgKey,
                                     stylesJSON ?: @"",
                                     markdown ?: @""];
 }
@@ -124,6 +147,7 @@ static CGSize MeasureAttributedString(NSAttributedString *text,
 static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
                                     StyleConfig *styleConfig,
                                     NSArray<NSString *> *customTags,
+                                    NSDictionary<NSString *, NSValue *> *propImageSizes,
                                     CGFloat innerWidth,
                                     NSDictionary *inheritedAttrs) {
   MDNodeType type = node.nodeType;
@@ -132,13 +156,15 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   // only whitespace around it) get a dedicated image segment on the
   // runtime side, so the measurer needs to reserve the same height.
   //
-  // Prefer the natural size cached in MarkdownImageSizeCache: it's
-  // populated either by a previous download or by the caller
-  // pre-seeding it from the `images` prop on <Markdown>. Fall back
-  // to styleConfig.image.height (user override) and finally the
-  // default. When we have a natural size we scale it proportionally
-  // to the available inner width — never scaling up, so tiny images
-  // stay small.
+  // Prefer the per-view prop size (authoritative, supplied by the
+  // caller via the `images` prop). Fall back to the discovered
+  // shared cache populated by completed downloads. Finally fall
+  // back to the style's width/height override or the default
+  // reservation. When we have a natural size we scale it
+  // proportionally to the available inner width — never scaling
+  // up, so tiny images stay small. Add kMeasurerImagePadding on
+  // both axes to match the overlay breathing room
+  // MarkdownImageView reserves around the image content.
   if (ASTNodeWrapper *imageChild = ImageOnlyParagraphChild(node)) {
     MarkdownElementStyle *imageStyle = styleConfig.image;
 
@@ -149,15 +175,29 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
                            borders.left - borders.right - margin.left -
                            margin.right;
 
-    CGSize natural = [[MarkdownImageSizeCache sharedCache]
-        sizeForURLString:imageChild.imageSrc];
+    NSString *urlKey = imageChild.imageSrc ?: @"";
+    CGSize natural = CGSizeZero;
+    NSValue *propValue = urlKey.length > 0 ? propImageSizes[urlKey] : nil;
+    if (propValue) {
+      natural = [propValue CGSizeValue];
+    } else {
+      natural = [[MarkdownImageSizeCache sharedCache]
+          sizeForURLString:urlKey];
+    }
 
     CGSize contentSize;
     if (natural.width > 0 && natural.height > 0 && contentWidth > 0) {
-      CGFloat scale =
-          contentWidth < natural.width ? contentWidth / natural.width : 1.0;
-      contentSize = CGSizeMake(natural.width * scale,
-                               natural.height * scale);
+      // Box = naturalSize + 2*padding on both axes so the visible
+      // image area matches the declared natural size and the 2px
+      // overlay breather wraps around it.
+      CGFloat boxW = natural.width + kMeasurerImagePadding * 2;
+      CGFloat boxH = natural.height + kMeasurerImagePadding * 2;
+      if (boxW > contentWidth) {
+        CGFloat scale = contentWidth / boxW;
+        boxW = contentWidth;
+        boxH = boxH * scale;
+      }
+      contentSize = CGSizeMake(boxW, boxH);
     } else {
       CGFloat h = imageStyle.height > 0 ? imageStyle.height
                                          : kMeasurerDefaultImageHeight;
@@ -195,7 +235,8 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
     NSInteger visibleChildren = 0;
     for (ASTNodeWrapper *child in node.children) {
       CGFloat h = MeasureSegmentHeight(child, styleConfig, customTags,
-                                       childInnerWidth, childAttrsFrozen);
+                                       propImageSizes, childInnerWidth,
+                                       childAttrsFrozen);
       if (h > 0) {
         totalChildren += h;
         visibleChildren++;
@@ -320,12 +361,14 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
 + (CGSize)measureMarkdown:(NSString *)markdown
                stylesJSON:(NSString *)stylesJSON
                customTags:(NSArray<NSString *> *)customTags
+           propImageSizes:(NSDictionary<NSString *, NSValue *> *)propImageSizes
                     width:(CGFloat)width {
   if (!markdown || markdown.length == 0 || width <= 0) {
     return CGSizeZero;
   }
 
-  NSString *key = MakeCacheKey(markdown, stylesJSON, customTags, width);
+  NSString *key =
+      MakeCacheKey(markdown, stylesJSON, customTags, propImageSizes, width);
   NSValue *cached = [sMeasureCache() objectForKey:key];
   if (cached) {
     return [cached CGSizeValue];
@@ -363,7 +406,7 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   NSInteger segmentCount = 0;
   for (ASTNodeWrapper *child in rootWrapper.children) {
     CGFloat h = MeasureSegmentHeight(child, styleConfig, customTags,
-                                     innerWidth, nil);
+                                     propImageSizes, innerWidth, nil);
     if (h > 0) {
       totalHeight += h;
       segmentCount++;

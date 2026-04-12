@@ -2,44 +2,35 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// Posted whenever a new URL → size mapping is stored, or an
-/// existing one changes. MarkdownView observes this to force a
-/// Yoga re-measure of itself so the newly-known natural size of
-/// an image replaces the default reservation in layout.
+/// Posted whenever a downloaded image's natural size is stored.
+/// MarkdownView observes this to force a Yoga re-measure so newly
+/// discovered dimensions replace any default space reservation.
 extern NSString *const MarkdownImageSizeCacheDidUpdateNotification;
 
-/// Process-wide cache of image natural sizes keyed by URL string.
+/// Process-wide cache of image natural sizes discovered when a
+/// download completes. Written by MarkdownImageView and read as a
+/// fallback whenever the caller hasn't supplied dimensions via the
+/// `images` prop.
 ///
-/// Holds two tiers: an authoritative tier populated from the
-/// `images` prop on <Markdown> and a discovered tier populated when
-/// a download completes. Authoritative entries always win — the
-/// prop represents the caller's explicit intent about layout, so
-/// discovered entries never overwrite them. This keeps layout
-/// stable when the user supplies dimensions even if the actual
-/// image bytes have slightly different natural dimensions.
+/// Authoritative sizes from the `images` prop are NOT stored here
+/// — they're threaded through the shadow node's measureContent
+/// and the view's createImageView: path as explicit parameters so
+/// they update live when the prop changes (and so two MarkdownViews
+/// declaring different dimensions for the same URL don't step on
+/// each other).
 ///
-/// Thread-safe — backed by NSCache instances.
+/// Thread-safe — backed by an NSCache.
 @interface MarkdownImageSizeCache : NSObject
 
 + (instancetype)sharedCache;
 
-/// Returns the best-known natural size for `url`. Checks the
-/// authoritative tier first and falls back to the discovered
-/// tier; returns CGSizeZero when neither has an entry.
+/// Returns the discovered natural size for `url`, or CGSizeZero if
+/// no download has completed yet.
 - (CGSize)sizeForURLString:(NSString *)url;
 
-/// Stores `size` for `url` in the authoritative tier. Called from
-/// the shadow thread in MarkdownViewShadowNode::measureContent to
-/// seed sizes from the `images` prop before the measurer runs.
-/// Posts the did-update notification only when the stored value
-/// changes.
-- (void)setPropSize:(CGSize)size forURLString:(NSString *)url;
-
-/// Stores `size` for `url` in the discovered tier. Called from
-/// MarkdownImageView after a download completes. Returns without
-/// storing (and without posting a notification) when an
-/// authoritative entry already exists for `url` — prop-supplied
-/// dimensions are the source of truth.
+/// Stores `size` for `url` in the discovered tier. Posts
+/// MarkdownImageSizeCacheDidUpdateNotification on the main thread
+/// only when the stored value actually changes.
 - (void)setSize:(CGSize)size forURLString:(NSString *)url;
 
 @end
