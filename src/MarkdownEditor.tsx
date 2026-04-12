@@ -14,6 +14,12 @@ export interface MarkdownEditorProps extends ViewProps {
   /** Auto-capitalize behavior */
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'
 
+  /** Whether to show auto-complete suggestions */
+  autoComplete?: boolean
+
+  /** Whether to auto-correct text */
+  autoCorrect?: boolean
+
   /** Whether to auto-focus on mount */
   autoFocus?: boolean
 
@@ -84,6 +90,8 @@ export const MarkdownEditor = forwardRef<
     editable = true,
     multiline = true,
     autoFocus = false,
+    autoComplete = true,
+    autoCorrect = true,
     scrollEnabled = true,
     autoCapitalize = 'sentences',
     cursorColor,
@@ -247,6 +255,8 @@ export const MarkdownEditor = forwardRef<
     <MarkdownEditorViewNative
       {...viewProps}
       autoCapitalize={autoCapitalize}
+      autoComplete={autoComplete}
+      autoCorrect={autoCorrect}
       autoFocus={autoFocus}
       cursorColor={cursorColor ? String(cursorColor) : undefined}
       customTags={customTags}

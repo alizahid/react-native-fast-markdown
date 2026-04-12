@@ -100,6 +100,12 @@ using namespace facebook::react;
   }
 
   _textView.editable = newProps.editable;
+  _textView.autocorrectionType = newProps.autoCorrect
+      ? UITextAutocorrectionTypeYes
+      : UITextAutocorrectionTypeNo;
+  _textView.spellCheckingType = newProps.autoCorrect
+      ? UITextSpellCheckingTypeYes
+      : UITextSpellCheckingTypeNo;
 
   if (!oldProps && newProps.autoFocus) {
     dispatch_async(dispatch_get_main_queue(), ^{
