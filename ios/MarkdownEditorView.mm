@@ -444,11 +444,11 @@ using namespace facebook::react;
                      lineStart:(NSUInteger)lineStart
                       lineText:(NSString *)line
                           type:(FormattingType)type {
-  // Remember content offset relative to prefix end
   NSUInteger cursorPos = _textView.selectedRange.location;
+  NSString *contentAfterPrefix = [line substringFromIndex:prefix.length];
   NSUInteger contentOffset = cursorPos - lineStart - prefix.length;
 
-  // Delete the prefix from text
+  // Delete the prefix
   _suppressFormatting = YES;
   [_textView.textStorage deleteCharactersInRange:
       NSMakeRange(lineStart, prefix.length)];
@@ -457,7 +457,7 @@ using namespace facebook::react;
            insertedLength:0];
   _suppressFormatting = NO;
 
-  // For lists, insert a visual bullet
+  // For lists, insert a visual bullet to replace the prefix
   NSUInteger bulletLen = 0;
   if (type == FormattingTypeUnorderedList ||
       type == FormattingTypeOrderedList) {
@@ -473,16 +473,38 @@ using namespace facebook::react;
     _suppressFormatting = NO;
   }
 
-  // Apply formatting to the current line
+  // Create the formatting range if the line has content.
+  // If the line is empty after prefix removal (e.g. user typed
+  // just "> "), use pending styles so the next character typed
+  // picks up the formatting.
   NSRange newLineRange = [self lineRangeAt:lineStart];
   if (newLineRange.length > 0) {
     [_store addRange:[FormattingRange rangeWithType:type
                                              range:newLineRange]];
+  } else if (contentAfterPrefix.length == 0) {
+    // Empty line — defer formatting to pending styles
+    [_store.pendingStyles addObject:@(type)];
   }
 
   [self applyFormatting];
 
-  // Restore cursor position after the bullet + content offset
+  // Set typing attributes for blockquotes so the paragraph indent
+  // is visible immediately, even on an empty line
+  if (type == FormattingTypeBlockquote) {
+    NSMutableDictionary *attrs = [_textView.typingAttributes mutableCopy];
+    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+    pStyle.firstLineHeadIndent = 16;
+    pStyle.headIndent = 16;
+    attrs[NSParagraphStyleAttributeName] = pStyle;
+
+    MarkdownElementStyle *bqStyle = _styleConfig.blockquote;
+    if (bqStyle.color) {
+      attrs[NSForegroundColorAttributeName] = bqStyle.color;
+    }
+    _textView.typingAttributes = attrs;
+  }
+
+  // Restore cursor
   NSUInteger newCursor = lineStart + bulletLen + contentOffset;
   if (newCursor > _textView.text.length) {
     newCursor = _textView.text.length;
