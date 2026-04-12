@@ -171,8 +171,33 @@ using namespace facebook::react;
 }
 
 - (NSString *)exportMarkdown {
-  return [MarkdownSerializer serializePlainText:_textView.text
-                                     withStore:_store];
+  // First serialize normally
+  NSString *serialized = [MarkdownSerializer serializePlainText:_textView.text
+                                                     withStore:_store];
+
+  // Then replace mention labels with their tag text.
+  // Build a mapping of label → tag from the text storage.
+  NSTextStorage *ts = _textView.textStorage;
+  NSMutableArray<NSDictionary *> *mentions = [NSMutableArray new];
+  [ts enumerateAttribute:@"MDMentionTag"
+                 inRange:NSMakeRange(0, ts.length)
+                 options:0
+              usingBlock:^(NSString *tag, NSRange range, BOOL *stop) {
+    if (!tag) return;
+    NSString *label = [ts.string substringWithRange:range];
+    [mentions addObject:@{@"label" : label, @"tag" : tag}];
+  }];
+
+  // Replace each mention label in the serialized output
+  NSMutableString *result = [serialized mutableCopy];
+  for (NSDictionary *m in mentions) {
+    NSRange found = [result rangeOfString:m[@"label"]];
+    if (found.location != NSNotFound) {
+      [result replaceCharactersInRange:found withString:m[@"tag"]];
+    }
+  }
+
+  return [result copy];
 }
 
 // ---------------------------------------------------------------
