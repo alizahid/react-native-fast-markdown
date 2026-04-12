@@ -826,7 +826,7 @@ using namespace facebook::react;
     if (r.type != FormattingTypeCodeBlock &&
         r.type != FormattingTypeBlockquote) continue;
     if (range.location >= r.range.location &&
-        range.location < NSMaxRange(r.range)) {
+        range.location <= NSMaxRange(r.range)) {
       blockRange = r;
       blockType = r.type;
       break;
@@ -1189,16 +1189,39 @@ using namespace facebook::react;
   NSUInteger deleted = range.length;
   NSUInteger inserted = text.length;
 
-  // Adjust all existing ranges for this edit.
-  // adjustForEditAt expands ranges when the edit is strictly
-  // inside them (case 3) but NOT at the boundary — this is the
-  // enriched pattern where boundary behavior is controlled by
-  // pending styles. For block types this means typing at the END
-  // of a code block doesn't auto-expand it; the user stays in
-  // the block only while the cursor is inside the range.
+  // For block types, check if the cursor is at the end boundary
+  // BEFORE adjusting. adjustForEditAt treats rEnd <= location as
+  // "entirely before the edit" (correct for inline styles per the
+  // enriched pattern), but for blocks the user expects to stay
+  // inside the block when typing at its end. We record which
+  // block types need expansion, then merge after the adjust.
+  //
+  // This code only runs when NOT breaking out — handleNewlineInBlock
+  // and handleNewlineInList both return before we get here.
+  NSMutableArray<FormattingRange *> *blockBoundaryRanges = nil;
+  if (inserted > 0) {
+    for (FormattingRange *r in _store.allRanges) {
+      if (![FormattingRange isBlockType:r.type]) continue;
+      if (range.location == NSMaxRange(r.range)) {
+        if (!blockBoundaryRanges) blockBoundaryRanges = [NSMutableArray new];
+        [blockBoundaryRanges addObject:r];
+      }
+    }
+  }
+
   [_store adjustForEditAt:range.location
             deletedLength:deleted
            insertedLength:inserted];
+
+  // Expand block ranges that had the cursor at their boundary
+  if (blockBoundaryRanges) {
+    for (FormattingRange *r in blockBoundaryRanges) {
+      // After adjustForEditAt, the range wasn't expanded (case 1).
+      // Extend it to include the inserted text.
+      r.range = NSMakeRange(r.range.location,
+                             r.range.length + inserted);
+    }
+  }
 
   // Apply pending styles to the inserted text
   if (inserted > 0) {
