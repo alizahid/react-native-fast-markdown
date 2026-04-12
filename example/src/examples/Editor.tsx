@@ -1,6 +1,7 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   Alert,
+  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,6 +19,25 @@ const initialMarkdown = `\
 
 Try selecting text and using the toolbar below.
 `
+
+const mockUsers = [
+  { id: 'u_james', name: 'James' },
+  { id: 'u_sarah', name: 'Sarah' },
+  { id: 'u_alex', name: 'Alex' },
+  { id: 'u_emma', name: 'Emma' },
+]
+
+const mockChannels = [
+  { id: 'c_general', name: 'general' },
+  { id: 'c_random', name: 'random' },
+  { id: 'c_dev', name: 'dev' },
+]
+
+const mockCommands = [
+  { id: 'deploy', name: 'deploy' },
+  { id: 'status', name: 'status' },
+  { id: 'help', name: 'help' },
+]
 
 function ToolbarButton({
   label,
@@ -55,6 +75,10 @@ export function EditorScreen() {
   })
   const [markdown, setMarkdown] = useState(initialMarkdown)
 
+  // Mention state
+  const [mentionTrigger, setMentionTrigger] = useState<string | null>(null)
+  const [mentionQuery, setMentionQuery] = useState('')
+
   const handleChangeState = useCallback((state: EditorStyleState) => {
     setStyleState(state)
   }, [])
@@ -71,6 +95,36 @@ export function EditorScreen() {
     const md = await editor.getMarkdown()
     Alert.alert('Markdown Output', md || '(empty)')
   }, [editor])
+
+  // Mention suggestions
+  const suggestions = useMemo(() => {
+    if (!mentionTrigger) return []
+
+    const query = mentionQuery.toLowerCase()
+    let items: Array<{ id: string; name: string }> = []
+
+    if (mentionTrigger === '@') items = mockUsers
+    else if (mentionTrigger === '#') items = mockChannels
+    else if (mentionTrigger === '/') items = mockCommands
+
+    if (query.length === 0) return items
+
+    return items.filter((item) => item.name.toLowerCase().includes(query))
+  }, [mentionTrigger, mentionQuery])
+
+  const handleSelectMention = useCallback(
+    (item: { id: string; name: string }) => {
+      if (!mentionTrigger) return
+
+      editor.insertMention(mentionTrigger, item.name, {
+        id: item.id,
+        name: item.name,
+      })
+      setMentionTrigger(null)
+      setMentionQuery('')
+    },
+    [editor, mentionTrigger],
+  )
 
   return (
     <View style={styles.container}>
@@ -155,12 +209,46 @@ export function EditorScreen() {
             autoCorrect={false}
             autoFocus
             defaultValue={initialMarkdown}
+            mentionTriggers={['@', '#', '/']}
             onChangeMarkdown={setMarkdown}
             onChangeState={handleChangeState}
+            onMentionChange={({ trigger, query }) => {
+              setMentionTrigger(trigger)
+              setMentionQuery(query)
+            }}
+            onMentionEnd={() => {
+              setMentionTrigger(null)
+              setMentionQuery('')
+            }}
+            onMentionStart={(trigger) => {
+              setMentionTrigger(trigger)
+              setMentionQuery('')
+            }}
             placeholder="Type some markdown..."
             ref={editor.ref}
             style={styles.input}
           />
+
+          {mentionTrigger && suggestions.length > 0 && (
+            <View style={styles.suggestionsContainer}>
+              <FlatList
+                data={suggestions}
+                keyExtractor={(item) => item.id}
+                keyboardShouldPersistTaps="always"
+                renderItem={({ item }) => (
+                  <Pressable
+                    onPress={() => handleSelectMention(item)}
+                    style={styles.suggestionItem}
+                  >
+                    <Text style={styles.suggestionTrigger}>
+                      {mentionTrigger}
+                    </Text>
+                    <Text style={styles.suggestionText}>{item.name}</Text>
+                  </Pressable>
+                )}
+              />
+            </View>
+          )}
         </View>
 
         <Text style={styles.label}>PREVIEW</Text>
@@ -237,6 +325,27 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 180,
     padding: 16,
+  },
+  suggestionsContainer: {
+    borderTopWidth: 1,
+    borderTopColor: '#e5e5e5',
+    maxHeight: 160,
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 4,
+  },
+  suggestionTrigger: {
+    fontSize: 14,
+    color: '#999',
+  },
+  suggestionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
   },
   previewCard: {
     backgroundColor: '#fff',
