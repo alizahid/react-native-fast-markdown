@@ -112,20 +112,6 @@ export const MarkdownEditor = forwardRef<
   // properties stay on the native view's style prop.
   const { style, ...restViewProps } = viewProps
 
-  const textPropNames = new Set([
-    'color',
-    'fontFamily',
-    'fontSize',
-    'fontStyle',
-    'fontWeight',
-    'letterSpacing',
-    'lineHeight',
-    'textAlign',
-    'textDecorationColor',
-    'textDecorationLine',
-    'textDecorationStyle',
-  ])
-
   const { textStyle, layoutStyle } = useMemo(() => {
     const flat = StyleSheet.flatten(style) || {}
     const text: Record<string, unknown> = {
@@ -301,7 +287,6 @@ export const MarkdownEditor = forwardRef<
   return (
     <MarkdownEditorViewNative
       {...restViewProps}
-      style={layoutStyle}
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}
@@ -343,7 +328,22 @@ export const MarkdownEditor = forwardRef<
       ref={nativeRef}
       scrollEnabled={scrollEnabled}
       selectionColor={selectionColor ? String(selectionColor) : undefined}
+      style={layoutStyle}
       styles={serializedStyles}
     />
   )
 })
+
+const textPropNames = new Set([
+  'color',
+  'fontFamily',
+  'fontSize',
+  'fontStyle',
+  'fontWeight',
+  'letterSpacing',
+  'lineHeight',
+  'textAlign',
+  'textDecorationColor',
+  'textDecorationLine',
+  'textDecorationStyle',
+])

@@ -67,7 +67,9 @@ interface NativeCommands {
     viewRef: React.ElementRef<MarkdownEditorViewComponent>,
     user: string,
   ) => void
-  insertSpoiler: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
+  insertSpoiler: (
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
+  ) => void
   removeLink: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
   setSelection: (
     viewRef: React.ElementRef<MarkdownEditorViewComponent>,
