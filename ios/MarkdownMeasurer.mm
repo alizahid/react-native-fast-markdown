@@ -2,6 +2,7 @@
 
 #import "ASTNodeWrapper.h"
 #import "MarkdownImageSizeCache.h"
+#import "MarkdownImageView.h"
 #import "MarkdownParser.hpp"
 #import "MarkdownTableView.h"
 #import "RenderContext.h"
@@ -182,14 +183,15 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
 
     CGSize contentSize;
     if (natural.width > 0 && natural.height > 0 && contentWidth > 0) {
-      CGFloat w = natural.width;
-      CGFloat h = natural.height;
-      if (w > contentWidth) {
-        CGFloat scale = contentWidth / w;
-        w = contentWidth;
-        h = h * scale;
-      }
-      contentSize = CGSizeMake(w, h);
+      // Delegate to the same sizing helper MarkdownImageView uses
+      // so the reserved block height matches the rendered one
+      // exactly, including maxWidth / maxHeight / objectFit.
+      contentSize =
+          [MarkdownImageView blockSizeForNaturalSize:natural
+                                      availableWidth:contentWidth
+                                            maxWidth:imageStyle.maxWidth
+                                           maxHeight:imageStyle.maxHeight
+                                           objectFit:imageStyle.objectFit];
     } else {
       CGFloat h = imageStyle.height > 0 ? imageStyle.height
                                          : kMeasurerDefaultImageHeight;

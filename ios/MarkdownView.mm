@@ -330,7 +330,10 @@ using namespace facebook::react;
       [[MarkdownImageView alloc] initWithURL:url
                                     propSize:propSize
                                 fallbackWidth:fallbackWidth
-                               fallbackHeight:fallbackHeight];
+                               fallbackHeight:fallbackHeight
+                                    maxWidth:imageStyle.maxWidth
+                                   maxHeight:imageStyle.maxHeight
+                                   objectFit:imageStyle.objectFit];
 
   __weak __typeof(self) weakSelf = self;
   imageView.onPress = ^(NSURL *pressedURL, CGSize size) {

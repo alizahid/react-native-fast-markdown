@@ -8,6 +8,7 @@ export type {
   LinkPressEvent,
   MarkdownBlockStyle,
   MarkdownImageData,
+  MarkdownImageStyle,
   MarkdownInputHandle,
   MarkdownStyle,
   MarkdownTextStyle,

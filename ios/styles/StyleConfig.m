@@ -253,6 +253,9 @@
   if (dict[@"gap"]) style.gap = [dict[@"gap"] doubleValue];
   if (dict[@"width"]) style.width = [dict[@"width"] doubleValue];
   if (dict[@"height"]) style.height = [dict[@"height"] doubleValue];
+  if (dict[@"maxWidth"]) style.maxWidth = [dict[@"maxWidth"] doubleValue];
+  if (dict[@"maxHeight"]) style.maxHeight = [dict[@"maxHeight"] doubleValue];
+  if (dict[@"objectFit"]) style.objectFit = dict[@"objectFit"];
 
   // Margin
   if (dict[@"margin"]) style.margin = [dict[@"margin"] doubleValue];

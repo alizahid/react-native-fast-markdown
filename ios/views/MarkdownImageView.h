@@ -23,7 +23,24 @@ NS_ASSUME_NONNULL_BEGIN
 - (instancetype)initWithURL:(nullable NSURL *)url
                    propSize:(CGSize)propSize
               fallbackWidth:(CGFloat)fallbackWidth
-             fallbackHeight:(CGFloat)fallbackHeight;
+             fallbackHeight:(CGFloat)fallbackHeight
+                   maxWidth:(CGFloat)maxWidth
+                  maxHeight:(CGFloat)maxHeight
+                  objectFit:(nullable NSString *)objectFit;
+
+/// Returns the block size for an image given its natural size,
+/// the available container width, and the style's max-width /
+/// max-height / object-fit constraints. Shared between the view's
+/// sizeThatFits: and MarkdownMeasurer so the reserved height and
+/// the actual rendered size agree.
+///
+/// `objectFit` may be @"contain" (default when nil), @"cover", or
+/// any other value (treated as contain).
++ (CGSize)blockSizeForNaturalSize:(CGSize)natural
+                   availableWidth:(CGFloat)availableWidth
+                         maxWidth:(CGFloat)maxWidth
+                        maxHeight:(CGFloat)maxHeight
+                        objectFit:(nullable NSString *)objectFit;
 
 /// Exposed so callers can tweak contentMode / tintColor / etc.
 @property (nonatomic, strong, readonly) UIImageView *imageView;

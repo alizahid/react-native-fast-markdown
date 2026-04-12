@@ -33,6 +33,8 @@ export type MarkdownViewStyle = Pick<
   | 'marginRight'
   | 'marginTop'
   | 'marginVertical'
+  | 'maxHeight'
+  | 'maxWidth'
   | 'padding'
   | 'paddingBottom'
   | 'paddingHorizontal'
@@ -65,6 +67,20 @@ export type MarkdownTextStyle = Pick<
  *  and TextStyle (for the text inside). */
 export type MarkdownBlockStyle = MarkdownViewStyle & MarkdownTextStyle
 
+/** Image block style: ViewStyle plus `objectFit` which controls how
+ *  the image fills the reserved rect when `maxWidth` / `maxHeight`
+ *  produce a box whose aspect ratio differs from the image's
+ *  natural aspect ratio.
+ *
+ *  - `contain`: the block shrinks to the image's natural aspect
+ *    ratio fitted within (maxWidth, maxHeight). No cropping, no
+ *    empty space. Default.
+ *  - `cover`: the block is sized to (maxWidth, maxHeight) exactly
+ *    and the image is scaled to fill, cropping whatever overflows. */
+export type MarkdownImageStyle = MarkdownViewStyle & {
+  objectFit?: 'contain' | 'cover'
+}
+
 // --- Markdown Style ---
 
 // biome-ignore assist/source/useSortedInterfaceMembers: go away
@@ -84,7 +100,7 @@ export interface MarkdownStyle {
 
   // Block elements with no text content
   thematicBreak?: MarkdownViewStyle
-  image?: MarkdownViewStyle
+  image?: MarkdownImageStyle
 
   // Tables
   table?: MarkdownViewStyle

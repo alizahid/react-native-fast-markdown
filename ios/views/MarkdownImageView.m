@@ -25,6 +25,9 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
   CGSize _propSize;
   CGFloat _fallbackWidth;
   CGFloat _fallbackHeight;
+  CGFloat _maxWidth;
+  CGFloat _maxHeight;
+  NSString *_objectFit;
   NSURLSessionDataTask *_task;
   MarkdownPressableOverlayView *_pressOverlay;
 }
@@ -32,7 +35,10 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
 - (instancetype)initWithURL:(NSURL *)url
                    propSize:(CGSize)propSize
               fallbackWidth:(CGFloat)fallbackWidth
-             fallbackHeight:(CGFloat)fallbackHeight {
+             fallbackHeight:(CGFloat)fallbackHeight
+                   maxWidth:(CGFloat)maxWidth
+                  maxHeight:(CGFloat)maxHeight
+                  objectFit:(NSString *)objectFit {
   self = [super initWithFrame:CGRectZero];
   if (self) {
     _url = url;
@@ -40,6 +46,9 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
         (propSize.width > 0 && propSize.height > 0) ? propSize : CGSizeZero;
     _fallbackWidth = fallbackWidth > 0 ? fallbackWidth : 0;
     _fallbackHeight = fallbackHeight > 0 ? fallbackHeight : 200;
+    _maxWidth = maxWidth > 0 ? maxWidth : 0;
+    _maxHeight = maxHeight > 0 ? maxHeight : 0;
+    _objectFit = [objectFit copy];
 
     // Pure layout container — no background, no clipping, no
     // corner radius. All visual styling (background, border,
@@ -48,12 +57,15 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
     self.backgroundColor = [UIColor clearColor];
 
     _imageView = [[UIImageView alloc] initWithFrame:CGRectZero];
-    // ScaleAspectFill (CSS object-fit: cover) so the image always
-    // fills the rect reserved for it. The block's sizeThatFits
-    // cascade already aims for the natural aspect ratio whenever
-    // we know it, so cropping is at most a few pixels when the
-    // declared dimensions don't exactly match the image bytes.
-    _imageView.contentMode = UIViewContentModeScaleAspectFill;
+    // Match the content mode to the caller's objectFit choice.
+    // Only "cover" produces cropping — everything else (nil,
+    // "contain", unknown) preserves the full image. The block
+    // sizeThatFits cascade already sizes the block to match the
+    // desired aspect ratio, so for the default case there's
+    // nothing to crop or letterbox either way.
+    _imageView.contentMode = [_objectFit isEqualToString:@"cover"]
+                                 ? UIViewContentModeScaleAspectFill
+                                 : UIViewContentModeScaleAspectFit;
     _imageView.clipsToBounds = YES;
     _imageView.backgroundColor = [UIColor clearColor];
     [self addSubview:_imageView];
@@ -103,6 +115,52 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
   return CGSizeMake(w, h);
 }
 
++ (CGSize)blockSizeForNaturalSize:(CGSize)natural
+                   availableWidth:(CGFloat)availableWidth
+                         maxWidth:(CGFloat)maxWidth
+                        maxHeight:(CGFloat)maxHeight
+                        objectFit:(NSString *)objectFit {
+  if (natural.width <= 0 || natural.height <= 0) return CGSizeZero;
+
+  // With `cover` and BOTH max constraints set the block is sized
+  // to the max box exactly — the image inside is scaled to fill
+  // via UIViewContentModeScaleAspectFill, cropping whatever
+  // overflows. With only one max constraint (or with `contain`
+  // / nil objectFit) the block keeps the natural aspect ratio
+  // scaled to fit within whichever constraints are present.
+  BOOL cover = [objectFit isEqualToString:@"cover"];
+  CGFloat w;
+  CGFloat h;
+  if (cover && maxWidth > 0 && maxHeight > 0) {
+    w = maxWidth;
+    h = maxHeight;
+  } else {
+    w = natural.width;
+    h = natural.height;
+    CGFloat scale = 1.0;
+    if (maxWidth > 0 && w > maxWidth) {
+      scale = MIN(scale, maxWidth / w);
+    }
+    if (maxHeight > 0 && h > maxHeight) {
+      scale = MIN(scale, maxHeight / h);
+    }
+    w *= scale;
+    h *= scale;
+  }
+
+  // Always clamp to the container's available width — that's a
+  // hard layout constraint, not a style preference. Preserves
+  // the current aspect ratio (which may already differ from the
+  // natural one thanks to `cover`).
+  if (availableWidth > 0 && w > availableWidth) {
+    CGFloat s = availableWidth / w;
+    w *= s;
+    h *= s;
+  }
+
+  return CGSizeMake(ceil(w), ceil(h));
+}
+
 - (CGSize)sizeThatFits:(CGSize)size {
   CGFloat availableWidth = size.width > 0 ? size.width : _fallbackWidth;
   CGSize natural = [self bestKnownNaturalSize];
@@ -114,19 +172,11 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
     return CGSizeMake(w, _fallbackHeight);
   }
 
-  // Return the natural size, scaled proportionally down only if
-  // wider than the available space. Never scale up — tiny
-  // images keep their natural size. No extra padding: the image
-  // sits flush inside the block's content box so user-supplied
-  // borders / corner radii wrap the image tightly.
-  CGFloat w = natural.width;
-  CGFloat h = natural.height;
-  if (w > availableWidth) {
-    CGFloat scale = availableWidth / w;
-    w = availableWidth;
-    h = h * scale;
-  }
-  return CGSizeMake(ceil(w), ceil(h));
+  return [MarkdownImageView blockSizeForNaturalSize:natural
+                                     availableWidth:availableWidth
+                                           maxWidth:_maxWidth
+                                          maxHeight:_maxHeight
+                                          objectFit:_objectFit];
 }
 
 - (void)layoutSubviews {

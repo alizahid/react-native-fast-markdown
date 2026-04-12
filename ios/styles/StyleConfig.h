@@ -24,8 +24,17 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Layout
 @property (nonatomic, assign) CGFloat gap;
-@property (nonatomic, assign) CGFloat width;   // 0 = unset
-@property (nonatomic, assign) CGFloat height;  // 0 = unset
+@property (nonatomic, assign) CGFloat width;      // 0 = unset
+@property (nonatomic, assign) CGFloat height;     // 0 = unset
+@property (nonatomic, assign) CGFloat maxWidth;   // 0 = unset
+@property (nonatomic, assign) CGFloat maxHeight;  // 0 = unset
+
+// Image-specific. Only meaningful on styleConfig.image; ignored
+// elsewhere. "contain" (default) shrinks the block to the image's
+// natural aspect ratio fitted within (maxWidth, maxHeight).
+// "cover" sizes the block to (maxWidth, maxHeight) exactly and
+// crops the image to fill.
+@property (nonatomic, copy, nullable) NSString *objectFit;
 
 // Margin
 @property (nonatomic, assign) CGFloat margin;
