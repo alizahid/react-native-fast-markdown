@@ -72,7 +72,6 @@ class MarkdownRenderer(private val context: Context) {
             ASTNode.EMPHASIS -> renderEmphasis(node, builder, ctx)
             ASTNode.STRONG -> renderStrong(node, builder, ctx)
             ASTNode.STRIKETHROUGH -> renderStrikethrough(node, builder, ctx)
-            ASTNode.UNDERLINE -> renderUnderline(node, builder, ctx)
             ASTNode.LINK -> renderLink(node, builder, ctx)
             ASTNode.IMAGE -> renderImage(node, builder, ctx)
             ASTNode.CUSTOM_TAG -> renderCustomTag(node, builder, ctx)
@@ -215,12 +214,6 @@ class MarkdownRenderer(private val context: Context) {
         val start = builder.length
         renderChildren(node, builder, ctx)
         builder.setSpan(StrikethroughSpan(), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
-
-    private fun renderUnderline(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
-        val start = builder.length
-        renderChildren(node, builder, ctx)
-        builder.setSpan(UnderlineSpan(), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
     private fun renderLink(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {

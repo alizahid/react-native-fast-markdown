@@ -24,7 +24,6 @@ export function useMarkdownInput() {
     () => ref.current?.toggleStrikethrough(),
     [],
   )
-  const toggleUnderline = useCallback(() => ref.current?.toggleUnderline(), [])
   const toggleCode = useCallback(() => ref.current?.toggleCode(), [])
   const toggleHeading = useCallback(
     (level: number) => ref.current?.toggleHeading(level),
@@ -68,7 +67,6 @@ export function useMarkdownInput() {
     toggleBold,
     toggleItalic,
     toggleStrikethrough,
-    toggleUnderline,
     toggleCode,
     toggleHeading,
     toggleOrderedList,

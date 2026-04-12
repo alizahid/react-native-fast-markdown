@@ -50,8 +50,7 @@ data class ASTNode(
         const val LINK = 21
         const val IMAGE = 22
         const val HTML_INLINE = 23
-        const val UNDERLINE = 24
-        const val CUSTOM_TAG = 25
+        const val CUSTOM_TAG = 24
 
         fun fromJSON(json: JSONObject): ASTNode {
             val childrenArray = json.optJSONArray("children")
@@ -108,11 +107,10 @@ object ParserBridge {
         tables: Boolean = true,
         strikethrough: Boolean = true,
         taskLists: Boolean = true,
-        autolinks: Boolean = true,
-        underline: Boolean = false
+        autolinks: Boolean = true
     ): ASTNode {
         val tagsStr = customTags.joinToString(",")
-        val json = nativeParse(markdown, tagsStr, tables, strikethrough, taskLists, autolinks, underline)
+        val json = nativeParse(markdown, tagsStr, tables, strikethrough, taskLists, autolinks)
         return ASTNode.fromJSON(JSONObject(json))
     }
 
@@ -122,7 +120,6 @@ object ParserBridge {
         tables: Boolean,
         strikethrough: Boolean,
         taskLists: Boolean,
-        autolinks: Boolean,
-        underline: Boolean
+        autolinks: Boolean
     ): String
 }

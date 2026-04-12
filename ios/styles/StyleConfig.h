@@ -144,7 +144,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) MarkdownElementStyle *strong;
 @property (nonatomic, strong) MarkdownElementStyle *emphasis;
 @property (nonatomic, strong) MarkdownElementStyle *strikethrough;
-@property (nonatomic, strong) MarkdownElementStyle *underline;
 @property (nonatomic, strong) MarkdownElementStyle *code;
 @property (nonatomic, strong) MarkdownElementStyle *link;
 

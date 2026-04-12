@@ -31,7 +31,6 @@ export type {
   MarkdownTableRowStyle,
   MarkdownTableStyle,
   MarkdownThematicBreakStyle,
-  MarkdownUnderlineStyle,
   MentionPressEvent,
   MentionType,
   TaskListItemPressEvent,

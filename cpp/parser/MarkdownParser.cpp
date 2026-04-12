@@ -233,9 +233,6 @@ int MarkdownParser::onEnterSpan(int spanType, void *detail, void *userdata) {
   case MD_SPAN_DEL:
     type = NodeType::Strikethrough;
     break;
-  case MD_SPAN_U:
-    type = NodeType::Underline;
-    break;
   default:
     type = NodeType::HtmlInline;
     break;
@@ -405,8 +402,6 @@ ASTNode MarkdownParser::parse(const std::string &markdown,
     flags |= MD_FLAG_TASKLISTS;
   if (options.enableAutolinks)
     flags |= MD_FLAG_PERMISSIVEAUTOLINKS;
-  if (options.enableUnderline)
-    flags |= MD_FLAG_UNDERLINE;
   if (options.enableLatexMath)
     flags |= MD_FLAG_LATEXMATHSPANS;
 

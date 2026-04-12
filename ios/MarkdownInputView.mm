@@ -27,7 +27,6 @@ using namespace facebook::react;
   BOOL _isBold;
   BOOL _isItalic;
   BOOL _isStrikethrough;
-  BOOL _isUnderline;
   BOOL _isCode;
 }
 
@@ -119,8 +118,6 @@ using namespace facebook::react;
     [self toggleFormatting:@"*"];
   } else if ([commandName isEqualToString:@"toggleStrikethrough"]) {
     [self toggleFormatting:@"~~"];
-  } else if ([commandName isEqualToString:@"toggleUnderline"]) {
-    [self toggleFormatting:@"__"];
   } else if ([commandName isEqualToString:@"toggleCode"]) {
     [self toggleFormatting:@"`"];
   } else if ([commandName isEqualToString:@"toggleHeading"]) {
@@ -376,7 +373,6 @@ using namespace facebook::react;
       .bold = _isBold,
       .italic = _isItalic,
       .strikethrough = _isStrikethrough,
-      .underline = _isUnderline,
       .code = _isCode,
       .linkUrl = std::string(""),
       .heading = 0,

@@ -48,7 +48,6 @@ export function EditorScreen() {
     bold: false,
     italic: false,
     strikethrough: false,
-    underline: false,
     code: false,
     link: null,
     heading: null,
@@ -119,11 +118,6 @@ export function EditorScreen() {
             active={styleState.strikethrough}
             label="S"
             onPress={editor.toggleStrikethrough}
-          />
-          <ToolbarButton
-            active={styleState.underline}
-            label="U"
-            onPress={editor.toggleUnderline}
           />
           <ToolbarButton
             active={styleState.code}

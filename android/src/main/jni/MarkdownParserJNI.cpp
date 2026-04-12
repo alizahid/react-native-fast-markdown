@@ -112,8 +112,7 @@ Java_com_markdown_parser_ParserBridge_nativeParse(JNIEnv *env, jobject,
                                                   jboolean tables,
                                                   jboolean strikethrough,
                                                   jboolean taskLists,
-                                                  jboolean autolinks,
-                                                  jboolean underline) {
+                                                  jboolean autolinks) {
   const char *markdownChars = env->GetStringUTFChars(jMarkdown, nullptr);
   std::string markdown(markdownChars);
   env->ReleaseStringUTFChars(jMarkdown, markdownChars);
@@ -123,7 +122,6 @@ Java_com_markdown_parser_ParserBridge_nativeParse(JNIEnv *env, jobject,
   options.enableStrikethrough = strikethrough;
   options.enableTaskLists = taskLists;
   options.enableAutolinks = autolinks;
-  options.enableUnderline = underline;
 
   // Parse custom tags
   if (jCustomTags) {

@@ -232,12 +232,6 @@ export type MarkdownEmphasisStyle = MarkdownInlineTextStyle
  *  `textDecorationStyle`. */
 export type MarkdownStrikethroughStyle = MarkdownInlineTextStyle
 
-/** Underline span. Full inline text surface. The underline is drawn
- *  automatically; its color falls back through `textDecorationColor`
- *  → `color` → default, and its pattern (single / double / dotted
- *  / dashed) is picked from `textDecorationStyle`. */
-export type MarkdownUnderlineStyle = MarkdownInlineTextStyle
-
 /** Spoiler overlay. Only `backgroundColor` (the overlay fill) and
  *  `borderRadius` (the overlay corner radius) are read — the
  *  spoiler is drawn as a single coloured shape on top of its text
@@ -285,13 +279,12 @@ export interface MarkdownStyle {
   mentionChannel?: MarkdownMentionStyle
   mentionCommand?: MarkdownMentionStyle
 
-  // Inline emphasis. Bold / italic / strike / underline traits are
-  // applied by default; set `fontWeight`, `fontStyle` or
-  // `textDecorationLine` explicitly to override.
+  // Inline emphasis. Bold / italic / strike traits are applied by
+  // default; set `fontWeight`, `fontStyle` or `textDecorationLine`
+  // explicitly to override.
   strong?: MarkdownStrongStyle
   emphasis?: MarkdownEmphasisStyle
   strikethrough?: MarkdownStrikethroughStyle
-  underline?: MarkdownUnderlineStyle
 
   // Special
   spoiler?: MarkdownSpoilerStyle
@@ -363,7 +356,6 @@ export interface EditorStyleState {
   link: { url: string } | null
   list: 'ordered' | 'unordered' | null
   strikethrough: boolean
-  underline: boolean
 }
 
 // --- Editor Handle ---
@@ -394,6 +386,5 @@ export interface MarkdownInputHandle {
   toggleItalic(): void
   toggleOrderedList(): void
   toggleStrikethrough(): void
-  toggleUnderline(): void
   toggleUnorderedList(): void
 }

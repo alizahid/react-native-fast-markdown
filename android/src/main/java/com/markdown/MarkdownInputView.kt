@@ -19,7 +19,6 @@ class MarkdownInputView(context: Context) : EditText(context) {
     var isBold = false; private set
     var isItalic = false; private set
     var isStrikethrough = false; private set
-    var isUnderline = false; private set
     var isCode = false; private set
 
     // Callbacks
@@ -55,7 +54,6 @@ class MarkdownInputView(context: Context) : EditText(context) {
     fun toggleBold() = toggleFormatting("**")
     fun toggleItalic() = toggleFormatting("*")
     fun toggleStrikethrough() = toggleFormatting("~~")
-    fun toggleUnderline() = toggleFormatting("__")
     fun toggleCode() = toggleFormatting("`")
 
     fun toggleHeading(level: Int) {

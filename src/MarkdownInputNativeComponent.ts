@@ -27,7 +27,6 @@ export interface MarkdownInputViewNativeProps extends ViewProps {
       bold: boolean
       italic: boolean
       strikethrough: boolean
-      underline: boolean
       code: boolean
       linkUrl: string
       heading: Int32
@@ -94,9 +93,6 @@ interface NativeCommands {
   toggleStrikethrough: (
     viewRef: React.ElementRef<MarkdownInputViewComponent>,
   ) => void
-  toggleUnderline: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
-  ) => void
   toggleUnorderedList: (
     viewRef: React.ElementRef<MarkdownInputViewComponent>,
   ) => void
@@ -111,7 +107,6 @@ export const Commands = codegenNativeCommands<NativeCommands>({
     'toggleBold',
     'toggleItalic',
     'toggleStrikethrough',
-    'toggleUnderline',
     'toggleCode',
     'toggleHeading',
     'toggleOrderedList',

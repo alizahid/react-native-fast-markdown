@@ -34,7 +34,6 @@ enum class NodeType {
   Link,
   Image,
   HtmlInline,
-  Underline,
 
   // Custom components (parsed from HTML-like tags)
   CustomTag,

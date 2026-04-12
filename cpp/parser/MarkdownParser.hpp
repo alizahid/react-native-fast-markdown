@@ -11,7 +11,6 @@ struct ParseOptions {
   bool enableStrikethrough = true;
   bool enableTaskLists = true;
   bool enableAutolinks = true;
-  bool enableUnderline = false;
   bool enableLatexMath = false;
   std::set<std::string> customTags; // registered custom tag names
 };

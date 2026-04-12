@@ -157,11 +157,6 @@ export const MarkdownInput = forwardRef<
           Commands.toggleStrikethrough(nativeRef.current)
         }
       },
-      toggleUnderline() {
-        if (nativeRef.current) {
-          Commands.toggleUnderline(nativeRef.current)
-        }
-      },
       toggleCode() {
         if (nativeRef.current) {
           Commands.toggleCode(nativeRef.current)
@@ -226,7 +221,6 @@ export const MarkdownInput = forwardRef<
         bold: boolean
         italic: boolean
         strikethrough: boolean
-        underline: boolean
         code: boolean
         linkUrl: string
         heading: number
@@ -237,7 +231,6 @@ export const MarkdownInput = forwardRef<
         bold: e.nativeEvent.bold,
         italic: e.nativeEvent.italic,
         strikethrough: e.nativeEvent.strikethrough,
-        underline: e.nativeEvent.underline,
         code: e.nativeEvent.code,
         link: e.nativeEvent.linkUrl ? { url: e.nativeEvent.linkUrl } : null,
         heading: e.nativeEvent.heading > 0 ? e.nativeEvent.heading : null,

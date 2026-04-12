@@ -41,7 +41,6 @@
     case markdown::NodeType::Link:           return MDNodeTypeLink;
     case markdown::NodeType::Image:          return MDNodeTypeImage;
     case markdown::NodeType::HtmlInline:     return MDNodeTypeHtmlInline;
-    case markdown::NodeType::Underline:      return MDNodeTypeUnderline;
     case markdown::NodeType::CustomTag:      return MDNodeTypeCustomTag;
   }
 }

@@ -11,7 +11,6 @@
 #import "ListItemRenderer.h"
 #import "BlockquoteRenderer.h"
 #import "StrikethroughRenderer.h"
-#import "UnderlineRenderer.h"
 #import "ThematicBreakRenderer.h"
 #import "ImageRenderer.h"
 #import "TableRenderer.h"
@@ -38,7 +37,6 @@ static NSDictionary<NSNumber *, id<NodeRenderer>> *_renderers;
       @(MDNodeTypeListItem) : [ListItemRenderer new],
       @(MDNodeTypeBlockquote) : [BlockquoteRenderer new],
       @(MDNodeTypeStrikethrough) : [StrikethroughRenderer new],
-      @(MDNodeTypeUnderline) : [UnderlineRenderer new],
       @(MDNodeTypeThematicBreak) : [ThematicBreakRenderer new],
       @(MDNodeTypeImage) : [ImageRenderer new],
       @(MDNodeTypeTable) : [TableRenderer new],

@@ -116,7 +116,6 @@ class MarkdownInputViewManager : SimpleViewManager<MarkdownInputView>(),
     override fun toggleBold(view: MarkdownInputView) = view.toggleBold()
     override fun toggleItalic(view: MarkdownInputView) = view.toggleItalic()
     override fun toggleStrikethrough(view: MarkdownInputView) = view.toggleStrikethrough()
-    override fun toggleUnderline(view: MarkdownInputView) = view.toggleUnderline()
     override fun toggleCode(view: MarkdownInputView) = view.toggleCode()
     override fun toggleHeading(view: MarkdownInputView, level: Int) = view.toggleHeading(level)
     override fun toggleOrderedList(view: MarkdownInputView) = view.toggleOrderedList()

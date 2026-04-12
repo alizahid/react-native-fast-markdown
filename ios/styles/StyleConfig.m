@@ -221,7 +221,6 @@
   config.strong = [self elementStyleFromDict:dict[@"strong"]];
   config.emphasis = [self elementStyleFromDict:dict[@"emphasis"]];
   config.strikethrough = [self elementStyleFromDict:dict[@"strikethrough"]];
-  config.underline = [self elementStyleFromDict:dict[@"underline"]];
   config.code = [self elementStyleFromDict:dict[@"code"]];
   config.link = [self elementStyleFromDict:dict[@"link"]];
   config.mentionUser = [self elementStyleFromDict:dict[@"mentionUser"]];

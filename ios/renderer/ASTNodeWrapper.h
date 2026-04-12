@@ -28,7 +28,6 @@ typedef NS_ENUM(NSInteger, MDNodeType) {
   MDNodeTypeLink,
   MDNodeTypeImage,
   MDNodeTypeHtmlInline,
-  MDNodeTypeUnderline,
   MDNodeTypeCustomTag,
 };
 
