@@ -3,13 +3,6 @@
 #import "MarkdownImageSizeCache.h"
 #import "MarkdownPressableOverlayView.h"
 
-// Breathing room around the image on all sides, matching the 2px
-// padding the mention/spoiler overlays use around their text. The
-// image view fills the outer bounds and the press overlay is
-// inset by this much on every side, so the tap highlight shows a
-// visible dark frame around the image content.
-static const CGFloat kImagePadding = 2.0;
-
 // Process-wide image cache of decoded UIImages. Separate from
 // MarkdownImageSizeCache which only tracks sizes — this one holds
 // the pixel data. NSCache evicts under memory pressure and is
@@ -65,14 +58,12 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
     _imageView.backgroundColor = [UIColor clearColor];
     [self addSubview:_imageView];
 
-    // Press overlay is a sibling of the image view inside this
-    // pure-layout wrapper. The wrapper has no background, border
-    // or corner radius of its own — all visual styling comes
-    // from the enclosing MarkdownBlockView — so the overlay
-    // can't hijack any style applied to the image. It sits above
-    // the image at the full wrapper bounds, while the image is
-    // inset by kImagePadding, giving the press highlight a 2px
-    // breather around the image content.
+    // Press overlay sits as a sibling above the image view at the
+    // exact same frame. The wrapper has no background or styling
+    // of its own, so the overlay can't hijack any style the
+    // caller applied via `image: { ... }` — the block wraps the
+    // image tightly and the overlay only shows a dark tint on
+    // press, covering the image content without any inset.
     _pressOverlay =
         [[MarkdownPressableOverlayView alloc] initWithFrame:CGRectZero];
     _pressOverlay.normalColor = [UIColor clearColor];
@@ -123,31 +114,29 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
     return CGSizeMake(w, _fallbackHeight);
   }
 
-  // Natural + 2*padding on both axes. When the box is wider than
-  // the available width, scale both dimensions down proportionally
-  // so it still fits. Never scale up — tiny images keep their
-  // natural size.
-  CGFloat boxW = natural.width + kImagePadding * 2;
-  CGFloat boxH = natural.height + kImagePadding * 2;
-  if (boxW > availableWidth) {
-    CGFloat scale = availableWidth / boxW;
-    boxW = availableWidth;
-    boxH = boxH * scale;
+  // Return the natural size, scaled proportionally down only if
+  // wider than the available space. Never scale up — tiny
+  // images keep their natural size. No extra padding: the image
+  // sits flush inside the block's content box so user-supplied
+  // borders / corner radii wrap the image tightly.
+  CGFloat w = natural.width;
+  CGFloat h = natural.height;
+  if (w > availableWidth) {
+    CGFloat scale = availableWidth / w;
+    w = availableWidth;
+    h = h * scale;
   }
-  return CGSizeMake(ceil(boxW), ceil(boxH));
+  return CGSizeMake(ceil(w), ceil(h));
 }
 
 - (void)layoutSubviews {
   [super layoutSubviews];
 
-  // Bounds are natural + 2*padding on each axis (sized by the
-  // enclosing MarkdownBlockView's hug logic). The image view
-  // sits inset by kImagePadding so the natural image occupies
-  // the center; the press overlay covers the full bounds, so
-  // when pressed the tint paints a 2px frame around the image
-  // — matching mention/spoiler breathing room.
-  _imageView.frame =
-      CGRectInset(self.bounds, kImagePadding, kImagePadding);
+  // Image view and press overlay both fill the wrapper's bounds
+  // exactly — no inset. The enclosing MarkdownBlockView hugs
+  // the image's natural size, so the bounds already match what
+  // the caller's style (bg, border, radius) should wrap.
+  _imageView.frame = self.bounds;
   _pressOverlay.frame = self.bounds;
 }
 

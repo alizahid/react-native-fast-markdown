@@ -13,11 +13,6 @@
 // the same height for a block image before its URL has loaded.
 static const CGFloat kMeasurerDefaultImageHeight = 200.0;
 
-// Must match kImagePadding in MarkdownImageView.m — the block
-// image size reserved at measurement time includes the 2px
-// breathing room the press overlay wraps around the image.
-static const CGFloat kMeasurerImagePadding = 2.0;
-
 static NSCache<NSString *, NSValue *> *sMeasureCache(void) {
   static dispatch_once_t once;
   static NSCache<NSString *, NSValue *> *cache;
@@ -160,11 +155,11 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   // caller via the `images` prop). Fall back to the discovered
   // shared cache populated by completed downloads. Finally fall
   // back to the style's width/height override or the default
-  // reservation. When we have a natural size we scale it
-  // proportionally to the available inner width — never scaling
-  // up, so tiny images stay small. Add kMeasurerImagePadding on
-  // both axes to match the overlay breathing room
-  // MarkdownImageView reserves around the image content.
+  // reservation. When a natural size is known the content box
+  // matches it exactly (scaled down proportionally if wider than
+  // the available width, never scaled up) so borders and corner
+  // radii applied via `image: { ... }` wrap the image tightly
+  // without any breathing-room inset.
   if (ASTNodeWrapper *imageChild = ImageOnlyParagraphChild(node)) {
     MarkdownElementStyle *imageStyle = styleConfig.image;
 
@@ -187,17 +182,14 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
 
     CGSize contentSize;
     if (natural.width > 0 && natural.height > 0 && contentWidth > 0) {
-      // Box = naturalSize + 2*padding on both axes so the visible
-      // image area matches the declared natural size and the 2px
-      // overlay breather wraps around it.
-      CGFloat boxW = natural.width + kMeasurerImagePadding * 2;
-      CGFloat boxH = natural.height + kMeasurerImagePadding * 2;
-      if (boxW > contentWidth) {
-        CGFloat scale = contentWidth / boxW;
-        boxW = contentWidth;
-        boxH = boxH * scale;
+      CGFloat w = natural.width;
+      CGFloat h = natural.height;
+      if (w > contentWidth) {
+        CGFloat scale = contentWidth / w;
+        w = contentWidth;
+        h = h * scale;
       }
-      contentSize = CGSizeMake(boxW, boxH);
+      contentSize = CGSizeMake(w, h);
     } else {
       CGFloat h = imageStyle.height > 0 ? imageStyle.height
                                          : kMeasurerDefaultImageHeight;
