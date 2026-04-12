@@ -386,7 +386,7 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   // Built-in custom tags — match MarkdownView.renderMarkdown.
   options.customTags.insert("UserMention");
   options.customTags.insert("ChannelMention");
-  options.customTags.insert("CommandMention");
+  options.customTags.insert("Command");
   options.customTags.insert("Spoiler");
   options.customTags.insert("Superscript");
   for (NSString *tag in customTags) {

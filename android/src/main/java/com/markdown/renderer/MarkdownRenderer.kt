@@ -276,7 +276,7 @@ class MarkdownRenderer(private val context: Context) {
             "ChannelMention" -> {
                 renderMention(node, builder, ctx.styleConfig.mentionChannel, "#")
             }
-            "CommandMention" -> {
+            "Command" -> {
                 renderMention(node, builder, ctx.styleConfig.mentionCommand, "/")
             }
             "Spoiler" -> {

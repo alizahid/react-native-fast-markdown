@@ -154,7 +154,7 @@
       style = self->_styleConfig.mentionUser;
     } else if ([tag hasPrefix:@"<ChannelMention"]) {
       style = self->_styleConfig.mentionChannel;
-    } else if ([tag hasPrefix:@"<CommandMention"]) {
+    } else if ([tag hasPrefix:@"<Command"]) {
       style = self->_styleConfig.mentionCommand;
     }
     if (!style) return;

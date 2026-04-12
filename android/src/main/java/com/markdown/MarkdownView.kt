@@ -51,7 +51,7 @@ class MarkdownView(context: Context) : TextView(context) {
         val config = styleConfig
         // Built-in custom tags — always recognized so users don't have to
         // register them via the customTags prop. Matches iOS MarkdownView.
-        val builtInTags = listOf("UserMention", "ChannelMention", "CommandMention", "Spoiler")
+        val builtInTags = listOf("UserMention", "ChannelMention", "Command", "Spoiler")
         val effectiveTags = (builtInTags + customTags).distinct()
         val tags = effectiveTags.toSet()
 

@@ -6,7 +6,7 @@ const mentionsMarkdown = `\
 
 Hey <UserMention id="u_ali" name="Ali" foo="123" />, have you seen the latest changes in <ChannelMention id="c_release" name="release" />?
 
-I think <UserMention id="u_sarah" name="Sarah" /> and <UserMention id="u_james" name="James" /> should review the PR. Try <CommandMention id="review" /> to request a review.
+I think <UserMention id="u_sarah" name="Sarah" /> and <UserMention id="u_james" name="James" /> should review the PR. Try <Command id="review" /> to request a review.
 `
 
 const spoilersMarkdown = `\
@@ -32,7 +32,7 @@ Here's a message with **bold text**, a [link](https://example.com), and a mentio
 
 - Assigned to <UserMention id="u_james" name="James" />
 - Post in <ChannelMention id="c_general" name="general" />
-- Run <CommandMention id="deploy" />
+- Run <Command id="deploy" />
 - Contains <Spoiler>hidden details</Spoiler>
 `
 

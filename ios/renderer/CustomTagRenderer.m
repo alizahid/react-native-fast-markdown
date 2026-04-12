@@ -15,7 +15,7 @@ NSString *const MarkdownMentionKey = @"MarkdownMention";
 // Built-in mention tags.
 static NSString *const kUserMentionTag = @"UserMention";
 static NSString *const kChannelMentionTag = @"ChannelMention";
-static NSString *const kCommandMentionTag = @"CommandMention";
+static NSString *const kCommandTag = @"Command";
 
 static NSString *const kSpoilerTag = @"Spoiler";
 static NSString *const kSuperscriptTag = @"Superscript";
@@ -41,7 +41,7 @@ static NSString *const kSuperscriptTag = @"Superscript";
                       style:context.styleConfig.mentionChannel
                        into:output
                     context:context];
-  } else if ([tag isEqualToString:kCommandMentionTag]) {
+  } else if ([tag isEqualToString:kCommandTag]) {
     [self renderMentionNode:node
                        type:@"command"
                      prefix:@"/"

@@ -1000,7 +1000,7 @@ using namespace facebook::react;
   } else if ([trigger isEqualToString:@"#"]) {
     tagName = @"ChannelMention";
   } else if ([trigger isEqualToString:@"/"]) {
-    tagName = @"CommandMention";
+    tagName = @"Command";
   } else {
     tagName = @"UserMention"; // default
   }
