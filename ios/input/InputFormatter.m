@@ -14,7 +14,6 @@
 
   [textStorage beginEditing];
 
-  // 1. Reset to base attributes (but preserve MDBlockType if set)
   CGFloat lineHeight = _baseLineHeight > 0
       ? _baseLineHeight
       : _styleConfig.base.lineHeight;
@@ -22,25 +21,10 @@
       ? _paragraphSpacing
       : _styleConfig.base.gap;
 
-  // Collect existing block type attributes before reset
-  NSMutableDictionary<NSNumber *, NSString *> *blockTypes =
-      [NSMutableDictionary new];
-  [textStorage enumerateAttribute:MDBlockTypeAttributeName
-                          inRange:fullRange
-                          options:0
-                       usingBlock:^(NSString *value, NSRange range,
-                                    BOOL *stop) {
-    if (value) {
-      // Store by location — we'll re-apply after reset
-      blockTypes[@(range.location)] = value;
-    }
-  }];
-
-  NSMutableDictionary *baseAttrs = [@{
-    NSFontAttributeName : _baseFont,
-    NSForegroundColorAttributeName : _baseColor,
-  } mutableCopy];
-
+  // 1. Reset base text attributes WITHOUT clearing MDBlockType.
+  // We overwrite font, color, paragraph style, and clear inline
+  // decorations, but preserve the block type attribute so
+  // UITextView's paragraph propagation stays intact.
   NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
   if (lineHeight > 0) {
     basePStyle.minimumLineHeight = lineHeight;
@@ -49,16 +33,28 @@
   if (gap > 0) {
     basePStyle.paragraphSpacing = gap;
   }
-  baseAttrs[NSParagraphStyleAttributeName] = basePStyle;
 
-  [textStorage setAttributes:baseAttrs range:fullRange];
+  [textStorage addAttribute:NSFontAttributeName value:_baseFont range:fullRange];
+  [textStorage addAttribute:NSForegroundColorAttributeName value:_baseColor range:fullRange];
+  [textStorage addAttribute:NSParagraphStyleAttributeName value:basePStyle range:fullRange];
+  [textStorage removeAttribute:NSBackgroundColorAttributeName range:fullRange];
+  [textStorage removeAttribute:NSStrikethroughStyleAttributeName range:fullRange];
+  [textStorage removeAttribute:NSStrikethroughColorAttributeName range:fullRange];
 
-  // Re-apply block type attributes (they were cleared by the
-  // reset but need to persist for UITextView paragraph
-  // continuation and layout manager drawing)
-  [self reapplyBlockTypes:blockTypes
-            toTextStorage:textStorage
-                    store:store];
+  // Also set MDBlockType from the store for freshly imported/toggled blocks
+  for (FormattingRange *r in store.allRanges) {
+    NSString *blockType = nil;
+    if (r.type == FormattingTypeCodeBlock) {
+      blockType = MDBlockTypeCodeBlock;
+    } else if (r.type == FormattingTypeBlockquote) {
+      blockType = MDBlockTypeBlockquote;
+    }
+    if (!blockType) continue;
+    if (NSMaxRange(r.range) > textStorage.length) continue;
+    [textStorage addAttribute:MDBlockTypeAttributeName
+                        value:blockType
+                        range:r.range];
+  }
 
   // 2. Apply block-level formatting from the store
   for (FormattingRange *r in store.allRanges) {
@@ -85,43 +81,6 @@
   }
 
   [textStorage endEditing];
-}
-
-#pragma mark - Block Type Attribute Management
-
-- (void)reapplyBlockTypes:(NSDictionary<NSNumber *, NSString *> *)blockTypes
-            toTextStorage:(NSTextStorage *)textStorage
-                    store:(FormattingStore *)store {
-  // Re-apply saved block type attributes
-  for (NSNumber *locNum in blockTypes) {
-    NSUInteger loc = locNum.unsignedIntegerValue;
-    if (loc >= textStorage.length) continue;
-    NSString *type = blockTypes[locNum];
-
-    // Find the extent of this paragraph
-    NSRange paraRange = [textStorage.string
-        paragraphRangeForRange:NSMakeRange(loc, 0)];
-    [textStorage addAttribute:MDBlockTypeAttributeName
-                        value:type
-                        range:paraRange];
-  }
-
-  // Also set block type attributes from the FormattingStore
-  // (for freshly imported or toggled blocks)
-  for (FormattingRange *r in store.allRanges) {
-    NSString *blockType = nil;
-    if (r.type == FormattingTypeCodeBlock) {
-      blockType = MDBlockTypeCodeBlock;
-    } else if (r.type == FormattingTypeBlockquote) {
-      blockType = MDBlockTypeBlockquote;
-    }
-    if (!blockType) continue;
-    if (NSMaxRange(r.range) > textStorage.length) continue;
-
-    [textStorage addAttribute:MDBlockTypeAttributeName
-                        value:blockType
-                        range:r.range];
-  }
 }
 
 - (void)applyBlockTypesFromAttributes:(NSTextStorage *)textStorage
