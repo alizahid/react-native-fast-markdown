@@ -398,6 +398,31 @@ using namespace facebook::react;
   NSUInteger lineStart = lineRange.location;
   NSUInteger localCursor = cursor.location - lineStart;
 
+  // --- Headings: "# " through "###### " at start of line ---
+  {
+    NSRegularExpression *regex = [NSRegularExpression
+        regularExpressionWithPattern:@"^(#{1,6})\\s"
+                             options:0
+                               error:nil];
+    NSTextCheckingResult *match =
+        [regex firstMatchInString:line
+                          options:0
+                            range:NSMakeRange(0, MIN(line.length, 8))];
+    if (match && localCursor >= match.range.length) {
+      NSInteger level = [match rangeAtIndex:1].length;
+      FormattingType hType = [FormattingRange headingTypeForLevel:level];
+      NSArray *existing = [_store rangesOfType:hType intersecting:lineRange];
+      if (existing.count == 0) {
+        NSString *prefix = [line substringWithRange:match.range];
+        [self autoConvertBlockPrefix:prefix
+                           lineStart:lineStart
+                            lineText:line
+                                type:hType];
+        return;
+      }
+    }
+  }
+
   // --- Blockquote: "> " at start of line ---
   if (localCursor >= 2 && [line hasPrefix:@"> "]) {
     // Don't trigger if the line already has blockquote formatting
