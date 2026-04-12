@@ -117,16 +117,16 @@ function normalizeColorValues(
     // and would otherwise get broken apart by the object-recurse
     // branch below.
     if (key.toLowerCase().includes('color')) {
-      if (value == null) continue
+      if (!value) {
+        continue
+      }
+
       result[key] = processColor(value as Parameters<typeof processColor>[0])
+
       continue
     }
 
-    if (
-      typeof value === 'object' &&
-      value !== null &&
-      !Array.isArray(value)
-    ) {
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
       result[key] = normalizeColorValues(value as Record<string, unknown>)
     } else {
       result[key] = value
