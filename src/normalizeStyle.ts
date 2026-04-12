@@ -20,9 +20,7 @@ const fonts = {
   }),
 }
 
-/** Library-provided default styles. Merged underneath the user's styles
- *  so users only need to override the keys they care about. */
-const defaultStyle: MarkdownStyle = {
+const defaultStyles: MarkdownStyle = {
   heading1: {
     fontSize: 24,
     fontWeight: '600',
@@ -35,9 +33,6 @@ const defaultStyle: MarkdownStyle = {
     fontSize: 18,
     fontWeight: '600',
   },
-  // Note: bold / italic / strikethrough traits are derived from the
-  // token itself by the native renderer — the only customization
-  // exposed on `strong`, `emphasis`, `strikethrough` is `color`.
   code: {
     fontFamily: fonts.mono,
     fontSize: 14,
@@ -107,15 +102,6 @@ function normalizeColorValues(
   const result: Record<string, unknown> = {}
 
   for (const [key, value] of Object.entries(style)) {
-    // Anything whose key contains "color" runs through processColor
-    // regardless of the value's type. Strings become an argb int,
-    // plain numbers pass through, and PlatformColor /
-    // DynamicColorIOS objects are normalized into the dict shape
-    // the native side knows how to parse. Critically, we do NOT
-    // recurse into these objects — PlatformColor('label') is
-    // `{ semantic: ['label'] }`, which isn't a nested style block
-    // and would otherwise get broken apart by the object-recurse
-    // branch below.
     if (key.toLowerCase().includes('color')) {
       if (!value) {
         continue
@@ -166,17 +152,17 @@ function mergeStyles(
 
 export function normalizeMarkdownStyle(userStyle?: MarkdownStyle): string {
   if (!userStyle) {
-    const cached = styleCache.get(defaultStyle)
+    const cached = styleCache.get(defaultStyles)
 
     if (cached) {
       return cached
     }
 
     const serialized = JSON.stringify(
-      normalizeColorValues(defaultStyle as unknown as Record<string, unknown>),
+      normalizeColorValues(defaultStyles as unknown as Record<string, unknown>),
     )
 
-    styleCache.set(defaultStyle, serialized)
+    styleCache.set(defaultStyles, serialized)
 
     return serialized
   }
@@ -188,7 +174,7 @@ export function normalizeMarkdownStyle(userStyle?: MarkdownStyle): string {
   }
 
   const merged = mergeStyles(
-    defaultStyle as unknown as Record<string, unknown>,
+    defaultStyles as unknown as Record<string, unknown>,
     userStyle as unknown as Record<string, unknown>,
   )
 
