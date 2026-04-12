@@ -1021,20 +1021,20 @@ using namespace facebook::react;
   }
   [tagStr appendString:@" />"];
 
-  // Replace the trigger + query with just the label visually,
-  // but store the full tag in the FormattingStore for export
+  // Display text includes the trigger prefix, matching the
+  // renderer: @James, #general, /deploy
+  NSString *displayText = [NSString stringWithFormat:@"%@%@", trigger, label];
+
+  // Replace the trigger + query with the display text
   _suppressFormatting = YES;
   [_textView.textStorage replaceCharactersInRange:replaceRange
-                                       withString:label];
+                                       withString:displayText];
   [_store adjustForEditAt:replaceRange.location
             deletedLength:replaceRange.length
-           insertedLength:label.length];
+           insertedLength:displayText.length];
   _suppressFormatting = NO;
 
-  // Determine mention type for styling
-  FormattingType mentionFType = FormattingTypeLink; // reuse link styling
-  // Store the tag text as metadata on a custom attribute
-  NSRange mentionRange = NSMakeRange(replaceRange.location, label.length);
+  NSRange mentionRange = NSMakeRange(replaceRange.location, displayText.length);
 
   // Apply mention styling (use the appropriate mention style)
   MarkdownElementStyle *mentionStyle;
@@ -1069,7 +1069,7 @@ using namespace facebook::react;
   _activeMentionTrigger = nil;
   _mentionStartPos = 0;
 
-  _textView.selectedRange = NSMakeRange(mentionRange.location + label.length, 0);
+  _textView.selectedRange = NSMakeRange(NSMaxRange(mentionRange), 0);
   [self applyFullFormatting];
   [self emitMarkdownChange];
 }
