@@ -41,11 +41,14 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
     self.clipsToBounds = YES;
 
     _imageView = [[UIImageView alloc] initWithFrame:CGRectZero];
-    // ScaleAspectFit so we never crop — the overlay frame should
-    // already match the image's aspect ratio once the natural
-    // size is known; the placeholder state is the only time we
-    // could letterbox and that's fine.
-    _imageView.contentMode = UIViewContentModeScaleAspectFit;
+    // ScaleAspectFill (CSS object-fit: cover) so the image always
+    // fills the reserved layout box. The sizeThatFits cascade
+    // scales the container to the natural aspect ratio whenever
+    // possible, but if the caller supplied dimensions via the
+    // `images` prop that don't exactly match the image bytes the
+    // container shouldn't have letterbox bars — we'd rather
+    // crop than show empty space around the picture.
+    _imageView.contentMode = UIViewContentModeScaleAspectFill;
     _imageView.clipsToBounds = YES;
     [self addSubview:_imageView];
 

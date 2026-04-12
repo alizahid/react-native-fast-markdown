@@ -23,6 +23,14 @@
 - (void)layoutSubviews {
   [super layoutSubviews];
   _fillLayer.frame = self.bounds;
+  // When no explicit shapePath is set (rectangular overlays like
+  // the one on MarkdownImageView), fill the full bounds. Without
+  // this the CAShapeLayer has no path and nothing draws, even
+  // though the UIControl still receives touches.
+  if (!_shapePath) {
+    _fillLayer.path =
+        [UIBezierPath bezierPathWithRect:self.bounds].CGPath;
+  }
 }
 
 - (void)setShapePath:(UIBezierPath *)shapePath {

@@ -38,16 +38,17 @@ Size MarkdownViewShadowNode::measureContent(
   // instead. Seeding from here runs on the shadow thread and
   // happens before the measurer reads the cache.
   //
-  // MarkdownImageSizeCache.setSize:forURLString: short-circuits
-  // when the size is already equal to what's cached, so repeated
-  // seeding with the same values doesn't re-post the did-update
-  // notification and doesn't create a re-measure loop.
+  // setPropSize:forURLString: writes into the authoritative tier
+  // of the cache so downloaded natural sizes never overwrite
+  // prop-supplied dimensions, and short-circuits when the value
+  // is unchanged so repeated seeding doesn't create a re-measure
+  // loop.
   MarkdownImageSizeCache *sizeCache = [MarkdownImageSizeCache sharedCache];
   for (const auto &img : props.images) {
     if (img.url.empty()) continue;
     NSString *urlKey = [NSString stringWithUTF8String:img.url.c_str()];
-    [sizeCache setSize:CGSizeMake(img.width, img.height)
-          forURLString:urlKey];
+    [sizeCache setPropSize:CGSizeMake(img.width, img.height)
+              forURLString:urlKey];
   }
 
   CGSize size = [MarkdownMeasurer measureMarkdown:markdown
