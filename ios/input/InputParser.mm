@@ -145,7 +145,7 @@
         bullet = [NSString
             stringWithFormat:@"%ld. ", (long)(node.listStart + idx)];
       } else {
-        bullet = @"\u2022  ";
+        bullet = @"\u2022 ";
       }
       [ctx.text appendString:bullet];
 

@@ -147,9 +147,9 @@
 + (NSUInteger)bulletLengthInLine:(NSString *)line
                         listType:(FormattingType)type {
   if (type == FormattingTypeUnorderedList) {
-    // "• " (bullet + two spaces)
     if ([line hasPrefix:@"\u2022  "]) return 3;
     if ([line hasPrefix:@"\u2022 "]) return 2;
+    if ([line hasPrefix:@"\u2022"]) return 1;
   } else if (type == FormattingTypeOrderedList) {
     // "N. " pattern
     NSRegularExpression *regex = [NSRegularExpression

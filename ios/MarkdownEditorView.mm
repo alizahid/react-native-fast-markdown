@@ -303,7 +303,7 @@ using namespace facebook::react;
 
     // Insert bullet prefix
     NSString *bullet =
-        (listType == FormattingTypeOrderedList) ? @"1. " : @"\u2022  ";
+        (listType == FormattingTypeOrderedList) ? @"1. " : @"\u2022 ";
 
     _suppressFormatting = YES;
     [_textView.textStorage replaceCharactersInRange:
@@ -327,8 +327,10 @@ using namespace facebook::react;
 - (NSUInteger)bulletLengthInLine:(NSString *)line
                         listType:(FormattingType)type {
   if (type == FormattingTypeUnorderedList) {
+    // Check longest prefix first
     if ([line hasPrefix:@"\u2022  "]) return 3;
     if ([line hasPrefix:@"\u2022 "]) return 2;
+    if ([line hasPrefix:@"\u2022"]) return 1;
     if ([line hasPrefix:@"- "]) return 2;
     if ([line hasPrefix:@"* "]) return 2;
   } else if (type == FormattingTypeOrderedList) {
@@ -361,41 +363,53 @@ using namespace facebook::react;
 #pragma mark - Auto-formatting (syntax detection as you type)
 // ---------------------------------------------------------------
 
-/// Called after each text change to detect markdown-like patterns
-/// and convert them to WYSIWYG formatting.
 - (void)detectAutoFormatting {
   NSString *text = _textView.text;
   NSRange cursor = _textView.selectedRange;
-  if (cursor.location == 0 || text.length == 0) return;
+  if (text.length == 0) return;
 
   // Get current line
-  NSRange lineRange = [text lineRangeForRange:cursor];
+  NSRange fullLineRange = [text lineRangeForRange:cursor];
+  // Trim trailing newline for our line content
+  NSRange lineRange = fullLineRange;
+  if (lineRange.length > 0 &&
+      [text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
+    lineRange.length--;
+  }
   NSString *line = [text substringWithRange:lineRange];
   NSUInteger lineStart = lineRange.location;
+  NSUInteger localCursor = cursor.location - lineStart;
 
   // --- Blockquote: "> " at start of line ---
-  if ([line isEqualToString:@"> "] || [line hasPrefix:@"> "]) {
-    // Only trigger if the > was just typed (cursor is right after "> ")
-    NSUInteger localCursor = cursor.location - lineStart;
-    if (localCursor == 2 && [line hasPrefix:@"> "]) {
+  if (localCursor >= 2 && [line hasPrefix:@"> "]) {
+    // Don't trigger if the line already has blockquote formatting
+    NSArray *existing = [_store rangesOfType:FormattingTypeBlockquote
+                                intersecting:lineRange];
+    if (existing.count == 0) {
       [self autoConvertBlockPrefix:@"> "
                          lineStart:lineStart
+                          lineText:line
                               type:FormattingTypeBlockquote];
       return;
     }
   }
 
   // --- Unordered list: "- " or "* " at start of line ---
-  if (([line hasPrefix:@"- "] || [line hasPrefix:@"* "]) &&
-      (cursor.location - lineStart) == 2) {
-    NSString *prefix = [line substringToIndex:2];
-    [self autoConvertBlockPrefix:prefix
-                       lineStart:lineStart
-                            type:FormattingTypeUnorderedList];
-    return;
+  if (localCursor >= 2 &&
+      ([line hasPrefix:@"- "] || [line hasPrefix:@"* "])) {
+    NSArray *existing = [_store rangesOfType:FormattingTypeUnorderedList
+                                intersecting:lineRange];
+    if (existing.count == 0) {
+      NSString *prefix = [line substringToIndex:2];
+      [self autoConvertBlockPrefix:prefix
+                         lineStart:lineStart
+                          lineText:line
+                              type:FormattingTypeUnorderedList];
+      return;
+    }
   }
 
-  // --- Ordered list: "1. " at start of line ---
+  // --- Ordered list: "1. " (or any number) at start of line ---
   {
     NSRegularExpression *regex = [NSRegularExpression
         regularExpressionWithPattern:@"^(\\d+\\.\\s)"
@@ -405,12 +419,17 @@ using namespace facebook::react;
         [regex firstMatchInString:line
                           options:0
                             range:NSMakeRange(0, MIN(line.length, 10))];
-    if (match && (cursor.location - lineStart) == match.range.length) {
-      NSString *prefix = [line substringWithRange:[match rangeAtIndex:1]];
-      [self autoConvertBlockPrefix:prefix
-                         lineStart:lineStart
-                              type:FormattingTypeOrderedList];
-      return;
+    if (match && localCursor >= match.range.length) {
+      NSArray *existing = [_store rangesOfType:FormattingTypeOrderedList
+                                  intersecting:lineRange];
+      if (existing.count == 0) {
+        NSString *prefix = [line substringWithRange:[match rangeAtIndex:1]];
+        [self autoConvertBlockPrefix:prefix
+                           lineStart:lineStart
+                            lineText:line
+                                type:FormattingTypeOrderedList];
+        return;
+      }
     }
   }
 
@@ -421,37 +440,24 @@ using namespace facebook::react;
   [self detectAutolinks];
 }
 
-/// Removes the typed prefix (e.g. "> ", "- ") and applies block
-/// formatting to the line.
 - (void)autoConvertBlockPrefix:(NSString *)prefix
                      lineStart:(NSUInteger)lineStart
+                      lineText:(NSString *)line
                           type:(FormattingType)type {
-  // Already has this formatting? Skip.
-  NSRange lineRange = [self currentLineRange];
-  NSArray *existing = [_store rangesOfType:type intersecting:lineRange];
-  if (existing.count > 0) return;
-
   // Delete the prefix from text
-  NSRange prefixRange = NSMakeRange(lineStart, prefix.length);
   _suppressFormatting = YES;
-  [_textView.textStorage deleteCharactersInRange:prefixRange];
+  [_textView.textStorage deleteCharactersInRange:
+      NSMakeRange(lineStart, prefix.length)];
   [_store adjustForEditAt:lineStart
             deletedLength:prefix.length
            insertedLength:0];
   _suppressFormatting = NO;
 
-  // If it's a list, insert a bullet character instead
-  if (type == FormattingTypeUnorderedList) {
-    NSString *bullet = @"\u2022  ";
-    _suppressFormatting = YES;
-    [_textView.textStorage replaceCharactersInRange:
-        NSMakeRange(lineStart, 0) withString:bullet];
-    [_store adjustForEditAt:lineStart
-              deletedLength:0
-             insertedLength:bullet.length];
-    _suppressFormatting = NO;
-  } else if (type == FormattingTypeOrderedList) {
-    NSString *bullet = @"1. ";
+  // For lists, insert a visual bullet
+  if (type == FormattingTypeUnorderedList ||
+      type == FormattingTypeOrderedList) {
+    NSString *bullet =
+        (type == FormattingTypeOrderedList) ? @"1. " : @"\u2022 ";
     _suppressFormatting = YES;
     [_textView.textStorage replaceCharactersInRange:
         NSMakeRange(lineStart, 0) withString:bullet];
@@ -461,62 +467,76 @@ using namespace facebook::react;
     _suppressFormatting = NO;
   }
 
-  // Apply formatting to the line
-  lineRange = [self currentLineRange];
-  if (lineRange.length > 0) {
-    [_store addRange:[FormattingRange rangeWithType:type range:lineRange]];
+  // Apply formatting to the current line
+  NSRange newLineRange = [self lineRangeAt:lineStart];
+  if (newLineRange.length > 0) {
+    [_store addRange:[FormattingRange rangeWithType:type
+                                             range:newLineRange]];
   }
 
   [self applyFormatting];
   [self emitMarkdownChange];
 }
 
-/// Detects paired backticks and converts to inline code.
+/// Returns the line range at a given position, trimming the
+/// trailing newline.
+- (NSRange)lineRangeAt:(NSUInteger)position {
+  if (position >= _textView.text.length && _textView.text.length > 0) {
+    position = _textView.text.length - 1;
+  }
+  NSRange lineRange = [_textView.text lineRangeForRange:
+      NSMakeRange(position, 0)];
+  if (lineRange.length > 0 &&
+      [_textView.text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
+    lineRange.length--;
+  }
+  return lineRange;
+}
+
+#pragma mark - Inline Code Detection
+
 - (void)detectInlineCode {
   NSString *text = _textView.text;
   NSRange cursor = _textView.selectedRange;
   if (cursor.location == 0) return;
 
-  // Check if the character just typed was a backtick
   unichar lastChar = [text characterAtIndex:cursor.location - 1];
   if (lastChar != '`') return;
 
-  // Look backwards for a matching opening backtick
-  NSUInteger pos = cursor.location - 2; // skip the backtick we just typed
-  while (pos > 0 && pos != NSNotFound) {
-    if ([text characterAtIndex:pos] == '`') {
-      // Found a pair! Check there's content between them
-      NSUInteger contentStart = pos + 1;
+  // Look backwards for a matching opening backtick on the same line
+  if (cursor.location < 2) return;
+  NSUInteger searchPos = cursor.location - 2;
+
+  while (searchPos != NSNotFound) {
+    unichar ch = [text characterAtIndex:searchPos];
+    if (ch == '\n') break;
+
+    if (ch == '`') {
+      NSUInteger contentStart = searchPos + 1;
       NSUInteger contentEnd = cursor.location - 1;
       if (contentEnd > contentStart) {
         NSString *content = [text substringWithRange:
             NSMakeRange(contentStart, contentEnd - contentStart)];
 
-        // Don't convert if content contains newlines (that'd be a code block)
-        if ([content rangeOfString:@"\n"].location != NSNotFound) break;
-
-        // Remove the backticks, create a code range
+        // Remove both backticks, create code range
         _suppressFormatting = YES;
-
-        // Remove closing backtick
         [_textView.textStorage deleteCharactersInRange:
             NSMakeRange(contentEnd, 1)];
-        [_store adjustForEditAt:contentEnd deletedLength:1 insertedLength:0];
-
-        // Remove opening backtick
+        [_store adjustForEditAt:contentEnd
+                  deletedLength:1
+                 insertedLength:0];
         [_textView.textStorage deleteCharactersInRange:
-            NSMakeRange(pos, 1)];
-        [_store adjustForEditAt:pos deletedLength:1 insertedLength:0];
-
+            NSMakeRange(searchPos, 1)];
+        [_store adjustForEditAt:searchPos
+                  deletedLength:1
+                 insertedLength:0];
         _suppressFormatting = NO;
 
-        // Create code range (positions shifted after deletions)
-        NSRange codeRange = NSMakeRange(pos, content.length);
+        NSRange codeRange = NSMakeRange(searchPos, content.length);
         [_store addRange:[FormattingRange rangeWithType:FormattingTypeCode
                                                   range:codeRange]];
-
-        // Place cursor after the code
-        _textView.selectedRange = NSMakeRange(pos + content.length, 0);
+        _textView.selectedRange =
+            NSMakeRange(searchPos + content.length, 0);
 
         [self applyFormatting];
         [self emitMarkdownChange];
@@ -525,13 +545,121 @@ using namespace facebook::react;
       break;
     }
 
-    // Don't search across line boundaries
-    if ([text characterAtIndex:pos] == '\n') break;
-    pos--;
+    if (searchPos == 0) break;
+    searchPos--;
   }
 }
 
-/// Detects URLs in the text and auto-creates link ranges.
+#pragma mark - List Continuation on Enter
+
+/// Called from shouldChangeTextInRange: when the replacement is a
+/// newline. Returns YES if the newline was handled (caller should
+/// return NO to prevent the default insertion).
+- (BOOL)handleNewlineInList:(NSRange)range {
+  NSString *text = _textView.text;
+  if (text.length == 0) return NO;
+
+  // Find the line the cursor is on
+  NSRange lineRange = [text lineRangeForRange:range];
+  if (lineRange.length > 0 &&
+      [text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
+    lineRange.length--;
+  }
+  NSString *line = [text substringWithRange:lineRange];
+
+  // Check if this line is in a list
+  FormattingType listType = FormattingTypeUnorderedList;
+  BOOL inList = NO;
+  NSArray *ulRanges = [_store rangesOfType:FormattingTypeUnorderedList
+                              intersecting:lineRange];
+  NSArray *olRanges = [_store rangesOfType:FormattingTypeOrderedList
+                              intersecting:lineRange];
+  if (ulRanges.count > 0) {
+    inList = YES;
+    listType = FormattingTypeUnorderedList;
+  } else if (olRanges.count > 0) {
+    inList = YES;
+    listType = FormattingTypeOrderedList;
+  }
+
+  if (!inList) return NO;
+
+  // Determine the bullet prefix length
+  NSUInteger bulletLen = [self bulletLengthInLine:line listType:listType];
+
+  // If the line is ONLY a bullet (empty list item), break out of
+  // the list: delete the bullet and don't insert a new one.
+  NSString *contentAfterBullet =
+      bulletLen < line.length ? [line substringFromIndex:bulletLen] : @"";
+  contentAfterBullet = [contentAfterBullet
+      stringByTrimmingCharactersInSet:[NSCharacterSet
+                                          whitespaceCharacterSet]];
+
+  if (contentAfterBullet.length == 0) {
+    // Empty list item — break out of list
+    _suppressFormatting = YES;
+    [_textView.textStorage deleteCharactersInRange:lineRange];
+    [_store adjustForEditAt:lineRange.location
+              deletedLength:lineRange.length
+             insertedLength:0];
+    // Remove the list range for this line
+    [_store removeRangesOfType:listType intersecting:lineRange];
+    _suppressFormatting = NO;
+
+    [self applyFormatting];
+    [self emitMarkdownChange];
+    return YES;
+  }
+
+  // Non-empty list item — continue the list on the next line
+  NSString *bullet;
+  if (listType == FormattingTypeOrderedList) {
+    // Increment number
+    NSRegularExpression *regex = [NSRegularExpression
+        regularExpressionWithPattern:@"^(\\d+)"
+                             options:0
+                               error:nil];
+    NSTextCheckingResult *match =
+        [regex firstMatchInString:line
+                          options:0
+                            range:NSMakeRange(0, MIN(line.length, 10))];
+    NSInteger num = 1;
+    if (match) {
+      num = [[line substringWithRange:[match rangeAtIndex:1]] integerValue] + 1;
+    }
+    bullet = [NSString stringWithFormat:@"%ld. ", (long)num];
+  } else {
+    bullet = @"\u2022 ";
+  }
+
+  NSString *insertion = [NSString stringWithFormat:@"\n%@", bullet];
+  NSUInteger insertAt = range.location;
+
+  _suppressFormatting = YES;
+  [_textView.textStorage replaceCharactersInRange:range
+                                       withString:insertion];
+  [_store adjustForEditAt:insertAt
+            deletedLength:range.length
+           insertedLength:insertion.length];
+  _suppressFormatting = NO;
+
+  // Create a list range for the new line
+  _textView.selectedRange =
+      NSMakeRange(insertAt + insertion.length, 0);
+  NSRange newLineRange = [self lineRangeAt:insertAt + 1];
+  if (newLineRange.length > 0) {
+    [_store addRange:[FormattingRange rangeWithType:listType
+                                             range:newLineRange]];
+  }
+
+  [self applyFormatting];
+  [self resetTypingAttributes];
+  [self emitMarkdownChange];
+  return YES;
+}
+
+#pragma mark - Autolink Detection
+
 - (void)detectAutolinks {
   NSString *text = _textView.text;
   if (text.length == 0) return;
@@ -546,22 +674,23 @@ using namespace facebook::react;
                         options:0
                           range:NSMakeRange(0, text.length)];
 
+  BOOL added = NO;
   for (NSTextCheckingResult *match in matches) {
     NSRange urlRange = match.range;
     NSURL *url = match.URL;
     if (!url) continue;
 
-    // Check if this range already has a link
-    NSArray *existingLinks =
+    NSArray *existing =
         [_store rangesOfType:FormattingTypeLink intersecting:urlRange];
-    if (existingLinks.count > 0) continue;
+    if (existing.count > 0) continue;
 
     [_store addRange:[FormattingRange rangeWithType:FormattingTypeLink
                                               range:urlRange
                                                 url:url.absoluteString]];
+    added = YES;
   }
 
-  [self applyFormatting];
+  if (added) [self applyFormatting];
 }
 
 // ---------------------------------------------------------------
@@ -744,6 +873,13 @@ using namespace facebook::react;
     shouldChangeTextInRange:(NSRange)range
             replacementText:(NSString *)text {
   if (_suppressFormatting) return YES;
+
+  // Handle enter key inside lists (continue or break out)
+  if ([text isEqualToString:@"\n"]) {
+    if ([self handleNewlineInList:range]) {
+      return NO; // we handled it
+    }
+  }
 
   NSUInteger deleted = range.length;
   NSUInteger inserted = text.length;
