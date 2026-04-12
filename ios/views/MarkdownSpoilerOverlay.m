@@ -7,6 +7,33 @@ static const CGFloat kRevealAnimationDuration = 0.25;
 // Breathing room around the text glyphs on all sides of the overlay.
 static const CGFloat kSpoilerPadding = 2.0;
 
+// Returns a darkened (or lightened, for very dark inputs) variant
+// of `color` to use as the press-feedback fill. Stays fully opaque
+// so the text underneath doesn't peek through during the tap.
+static UIColor *MarkdownSpoilerPressedColor(UIColor *color) {
+  if (!color) return [UIColor colorWithWhite:0.0 alpha:1.0];
+
+  CGFloat h = 0, s = 0, b = 0, a = 0;
+  if ([color getHue:&h saturation:&s brightness:&b alpha:&a]) {
+    // ~15% shift. Darken by default; if the color is already very
+    // dark, lighten instead so the feedback stays visible.
+    CGFloat targetBrightness = b < 0.2 ? MIN(b + 0.15, 1.0) : b * 0.85;
+    return [UIColor colorWithHue:h
+                       saturation:s
+                       brightness:targetBrightness
+                            alpha:a];
+  }
+
+  // Grayscale / pattern fallback: shift via white component.
+  CGFloat w = 0;
+  if ([color getWhite:&w alpha:&a]) {
+    CGFloat target = w < 0.2 ? MIN(w + 0.15, 1.0) : w * 0.85;
+    return [UIColor colorWithWhite:target alpha:a];
+  }
+
+  return color;
+}
+
 @implementation MarkdownSpoilerOverlay {
   __weak UITextView *_textView;
   NSMutableArray<MarkdownPressableOverlayView *> *_overlays;
@@ -107,9 +134,11 @@ static const CGFloat kSpoilerPadding = 2.0;
   [self removeAllOverlays];
 
   UIColor *normalColor = _overlayColor;
-  // A subtle flicker to acknowledge the tap — the real feedback is
-  // the reveal animation that runs on touch-up.
-  UIColor *pressedColor = [_overlayColor colorWithAlphaComponent:0.8];
+  // Press feedback: darken the overlay color ~15% (or lighten it if
+  // the color is already very dark). Alpha-based feedback would make
+  // the hidden text peek through during the tap, so we stay fully
+  // opaque and just shift brightness instead.
+  UIColor *pressedColor = MarkdownSpoilerPressedColor(_overlayColor);
 
   for (NSString *spoilerId in spoilerRanges) {
     BOOL isRevealed = [_revealedIds containsObject:spoilerId];
