@@ -1,0 +1,98 @@
+{
+  "name": "react-native-markdown",
+  "version": "0.1.0",
+  "description": "High-performance native Markdown renderer and editor for React Native",
+  "keywords": [
+    "react-native",
+    "markdown",
+    "editor",
+    "renderer",
+    "gfm",
+    "fabric",
+    "new-architecture"
+  ],
+  "homepage": "https://github.com/alizahid/react-native-markdown#readme",
+  "bugs": {
+    "url": "https://github.com/alizahid/react-native-markdown/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alizahid/react-native-markdown"
+  },
+  "license": "MIT",
+  "author": "Ali Zahid <ali.zahid@live.com>",
+  "main": "lib/commonjs/index",
+  "module": "lib/module/index",
+  "source": "src/index",
+  "react-native": "src/index",
+  "types": "lib/typescript/commonjs/index.d.ts",
+  "files": [
+    "src",
+    "lib",
+    "cpp",
+    "ios",
+    "android",
+    "react-native-markdown.podspec",
+    "react-native.config.js",
+    "!**/__tests__",
+    "!**/__fixtures__",
+    "!**/__mocks__",
+    "!**/.*"
+  ],
+  "scripts": {
+    "clean": "del-cli lib",
+    "example": "bun --cwd example",
+    "format": "bunx ultracite fix",
+    "lint": "ultracite",
+    "prepare": "bob build",
+    "typescript": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.11",
+    "@types/react": "~19.0.0",
+    "del-cli": "^6.0.0",
+    "oxlint": "^1.59.0",
+    "react": "19.2.0",
+    "react-native": "0.83.4",
+    "react-native-builder-bob": "^0.41.0",
+    "typescript": "^5.8.0",
+    "ultracite": "^7.4.4"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-native": ">=0.76.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "codegenConfig": {
+    "name": "MarkdownViewSpec",
+    "type": "components",
+    "jsSrcsDir": "src",
+    "ios": {
+      "componentProvider": {
+        "MarkdownView": "MarkdownView",
+        "MarkdownEditorView": "MarkdownEditorView"
+      }
+    }
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      [
+        "commonjs",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "module",
+        {
+          "esm": true
+        }
+      ],
+      "typescript"
+    ]
+  }
+}

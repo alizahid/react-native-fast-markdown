@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "react-native-markdown": ["./src/index"]
+    },
+    "esModuleInterop": true,
+    "jsx": "react-jsx",
+    "lib": ["ESNext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ESNext"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "lib", "example"]
+}

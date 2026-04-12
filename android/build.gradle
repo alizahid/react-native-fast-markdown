@@ -1,0 +1,52 @@
+buildscript {
+  ext.safeExtGet = {prop, fallback ->
+    rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+  }
+}
+
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+  namespace "com.markdown"
+
+  compileSdkVersion safeExtGet('compileSdkVersion', 35)
+
+  defaultConfig {
+    minSdkVersion safeExtGet('minSdkVersion', 24)
+    targetSdkVersion safeExtGet('targetSdkVersion', 35)
+
+    externalNativeBuild {
+      cmake {
+        cppFlags "-std=c++17 -O2 -frtti -fexceptions"
+        arguments "-DANDROID_STL=c++_shared"
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "src/main/jni/CMakeLists.txt"
+    }
+  }
+
+  sourceSets {
+    main {
+      java.srcDirs = ['src/main/java']
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_8
+    targetCompatibility JavaVersion.VERSION_1_8
+  }
+
+  kotlinOptions {
+    jvmTarget = '1.8'
+  }
+}
+
+dependencies {
+  implementation "com.facebook.react:react-android"
+  implementation "org.jetbrains.kotlin:kotlin-stdlib:${safeExtGet('kotlinVersion', '1.9.22')}"
+}
