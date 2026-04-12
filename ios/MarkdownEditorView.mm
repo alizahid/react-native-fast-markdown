@@ -6,10 +6,24 @@
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
-#import "StyleAttributes.h"
+#import "ASTNodeWrapper.h"
+#import "MarkdownParser.hpp"
 #import "StyleConfig.h"
 
 using namespace facebook::react;
+
+// Semantic attribute keys — these ride along on the attributed
+// string so we can export back to markdown and detect state.
+static NSString *const kBold = @"md.bold";
+static NSString *const kItalic = @"md.italic";
+static NSString *const kStrike = @"md.strike";
+static NSString *const kCode = @"md.code";
+static NSString *const kLink = @"md.link";
+static NSString *const kHeading = @"md.heading";
+static NSString *const kBlockquote = @"md.blockquote";
+static NSString *const kCodeBlock = @"md.codeBlock";
+static NSString *const kOrderedList = @"md.orderedList";
+static NSString *const kUnorderedList = @"md.unorderedList";
 
 @interface MarkdownEditorView () <UITextViewDelegate>
 @end
@@ -18,13 +32,9 @@ using namespace facebook::react;
   UITextView *_textView;
   StyleConfig *_styleConfig;
   NSString *_currentStyleJSON;
-  NSArray<NSString *> *_customTags;
 
-  // Formatting state
-  BOOL _isBold;
-  BOOL _isItalic;
-  BOOL _isStrikethrough;
-  BOOL _isCode;
+  // Cached base font — resolved once per style update
+  UIFont *_baseFont;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -55,35 +65,31 @@ using namespace facebook::react;
   const auto &newProps =
       *std::static_pointer_cast<const MarkdownEditorViewProps>(props);
 
-  // Default value
-  if (!oldProps) {
-    NSString *defaultValue =
-        [NSString stringWithUTF8String:newProps.defaultValue.c_str()];
-    if (defaultValue.length > 0) {
-      _textView.text = defaultValue;
-      [self applyMarkdownFormatting];
-    }
-  }
-
-  // Editable
-  _textView.editable = newProps.editable;
-
-  // Style
+  // Style — must be parsed before default value so fonts are ready
   NSString *styleJSON = newProps.styles.empty()
                             ? @""
                             : [NSString stringWithUTF8String:newProps.styles.c_str()];
   if (![styleJSON isEqualToString:_currentStyleJSON ?: @""]) {
     _currentStyleJSON = styleJSON;
     _styleConfig = [StyleConfig fromJSON:styleJSON];
-    [self applyMarkdownFormatting];
+    _baseFont = [_styleConfig.base resolvedFont]
+                    ?: [UIFont systemFontOfSize:16];
   }
 
-  // Custom tags
-  NSMutableArray<NSString *> *tags = [NSMutableArray new];
-  for (const auto &tag : newProps.customTags) {
-    [tags addObject:[NSString stringWithUTF8String:tag.c_str()]];
+  // Default value (first render only)
+  if (!oldProps) {
+    NSString *defaultValue =
+        [NSString stringWithUTF8String:newProps.defaultValue.c_str()];
+    if (defaultValue.length > 0) {
+      NSAttributedString *as = [self importMarkdown:defaultValue];
+      _textView.attributedText = as;
+    } else {
+      [self syncTypingAttributes];
+    }
   }
-  _customTags = tags;
+
+  // Editable
+  _textView.editable = newProps.editable;
 
   // Auto focus
   if (!oldProps && newProps.autoFocus) {
@@ -95,7 +101,708 @@ using namespace facebook::react;
   [super updateProps:props oldProps:oldProps];
 }
 
+// ---------------------------------------------------------------
+#pragma mark - Import (Markdown → Attributed String)
+// ---------------------------------------------------------------
+
+- (NSAttributedString *)importMarkdown:(NSString *)markdown {
+  if (markdown.length == 0) return [[NSAttributedString alloc] init];
+
+  markdown::ParseOptions options;
+  options.enableTables = false;
+  options.enableStrikethrough = true;
+  options.enableTaskLists = false;
+  options.enableAutolinks = true;
+  options.customTags.insert("Spoiler");
+  options.customTags.insert("Superscript");
+
+  std::string mdStr([markdown UTF8String]);
+  markdown::ASTNode ast = markdown::MarkdownParser::parse(mdStr, options);
+  ASTNodeWrapper *root = [[ASTNodeWrapper alloc] initWithOpaqueNode:&ast];
+
+  NSMutableAttributedString *result = [NSMutableAttributedString new];
+  [self walkNode:root into:result attrs:[self baseAttrs] blockIndex:0];
+
+  // Trim trailing newline
+  while (result.length > 0 &&
+         [[result.string substringFromIndex:result.length - 1]
+             isEqualToString:@"\n"]) {
+    [result deleteCharactersInRange:NSMakeRange(result.length - 1, 1)];
+  }
+
+  return result;
+}
+
+- (NSDictionary *)baseAttrs {
+  UIColor *color = _styleConfig.base.color ?: [UIColor labelColor];
+  return @{
+    NSFontAttributeName : _baseFont,
+    NSForegroundColorAttributeName : color,
+  };
+}
+
+/// Recursive AST walker that builds a single flat attributed string.
+- (void)walkNode:(ASTNodeWrapper *)node
+            into:(NSMutableAttributedString *)output
+           attrs:(NSDictionary *)attrs
+      blockIndex:(NSInteger)blockIndex {
+
+  switch (node.nodeType) {
+
+  // ---- Container / structural ----
+
+  case MDNodeTypeDocument: {
+    NSInteger idx = 0;
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:attrs blockIndex:idx];
+      idx++;
+    }
+    break;
+  }
+
+  case MDNodeTypeParagraph: {
+    if (output.length > 0 &&
+        ![[output.string substringFromIndex:output.length - 1]
+            isEqualToString:@"\n"]) {
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:@"\n" attributes:attrs]];
+    }
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:attrs blockIndex:0];
+    }
+    break;
+  }
+
+  // ---- Block elements ----
+
+  case MDNodeTypeHeading: {
+    if (output.length > 0) {
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
+    }
+
+    NSMutableDictionary *headingAttrs = [attrs mutableCopy];
+    headingAttrs[kHeading] = @(node.headingLevel);
+
+    MarkdownElementStyle *style =
+        [_styleConfig styleForHeadingLevel:node.headingLevel];
+    UIFont *headingFont = [style resolvedFontWithBase:_baseFont];
+    if (!headingFont) {
+      CGFloat scales[] = {0, 2.0, 1.5, 1.25, 1.1, 1.0, 0.9};
+      CGFloat s = node.headingLevel <= 6 ? scales[node.headingLevel] : 1.0;
+      headingFont = [UIFont systemFontOfSize:_baseFont.pointSize * s
+                                      weight:UIFontWeightBold];
+    }
+    headingAttrs[NSFontAttributeName] = headingFont;
+    if (style.color) {
+      headingAttrs[NSForegroundColorAttributeName] = style.color;
+    }
+
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:headingAttrs blockIndex:0];
+    }
+    break;
+  }
+
+  case MDNodeTypeBlockquote: {
+    if (output.length > 0) {
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
+    }
+
+    NSMutableDictionary *bqAttrs = [attrs mutableCopy];
+    bqAttrs[kBlockquote] = @YES;
+
+    MarkdownElementStyle *style = _styleConfig.blockquote;
+    UIFont *bqFont = [style resolvedFontWithBase:_baseFont];
+    if (bqFont) bqAttrs[NSFontAttributeName] = bqFont;
+    if (style.color) {
+      bqAttrs[NSForegroundColorAttributeName] = style.color;
+    }
+
+    // Indent via paragraph style
+    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+    pStyle.firstLineHeadIndent = 16;
+    pStyle.headIndent = 16;
+    bqAttrs[NSParagraphStyleAttributeName] = pStyle;
+
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:bqAttrs blockIndex:0];
+    }
+    break;
+  }
+
+  case MDNodeTypeList: {
+    if (output.length > 0 &&
+        ![[output.string substringFromIndex:output.length - 1]
+            isEqualToString:@"\n"]) {
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
+    }
+
+    NSInteger idx = 0;
+    for (ASTNodeWrapper *child in node.children) {
+      NSMutableDictionary *itemAttrs = [attrs mutableCopy];
+
+      if (node.isOrderedList) {
+        itemAttrs[kOrderedList] = @YES;
+      } else {
+        itemAttrs[kUnorderedList] = @YES;
+      }
+
+      // Prepend bullet / number
+      NSString *bullet;
+      if (node.isOrderedList) {
+        bullet = [NSString stringWithFormat:@"%ld. ",
+                                            (long)(node.listStart + idx)];
+      } else {
+        bullet = @"•  ";
+      }
+
+      MarkdownElementStyle *bulletStyle = _styleConfig.listBullet;
+      NSMutableDictionary *bulletAttrs = [itemAttrs mutableCopy];
+      if (bulletStyle.color) {
+        bulletAttrs[NSForegroundColorAttributeName] = bulletStyle.color;
+      }
+
+      if (idx > 0) {
+        [output appendAttributedString:
+            [[NSAttributedString alloc] initWithString:@"\n"
+                                            attributes:[self baseAttrs]]];
+      }
+
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:bullet
+                                          attributes:bulletAttrs]];
+
+      for (ASTNodeWrapper *grandchild in child.children) {
+        [self walkNode:grandchild into:output attrs:itemAttrs blockIndex:0];
+      }
+
+      idx++;
+    }
+    break;
+  }
+
+  case MDNodeTypeCodeBlock: {
+    if (output.length > 0) {
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
+    }
+
+    NSMutableDictionary *cbAttrs = [attrs mutableCopy];
+    cbAttrs[kCodeBlock] = @YES;
+
+    MarkdownElementStyle *style = _styleConfig.codeBlock;
+    UIFont *codeFont = [style resolvedFontWithBase:_baseFont]
+                           ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
+                                                          weight:UIFontWeightRegular];
+    cbAttrs[NSFontAttributeName] = codeFont;
+    if (style.color) {
+      cbAttrs[NSForegroundColorAttributeName] = style.color;
+    }
+    UIColor *bg = style.backgroundColor
+                      ?: [UIColor colorWithWhite:0.5 alpha:0.1];
+    cbAttrs[NSBackgroundColorAttributeName] = bg;
+
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:cbAttrs blockIndex:0];
+    }
+    break;
+  }
+
+  case MDNodeTypeThematicBreak: {
+    if (output.length > 0) {
+      [output appendAttributedString:
+          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
+    }
+    // Render as a visible separator line
+    NSMutableDictionary *hrAttrs = [attrs mutableCopy];
+    hrAttrs[NSForegroundColorAttributeName] =
+        [(_styleConfig.base.color ?: [UIColor labelColor])
+            colorWithAlphaComponent:0.3];
+    [output appendAttributedString:
+        [[NSAttributedString alloc] initWithString:@"───────"
+                                        attributes:hrAttrs]];
+    break;
+  }
+
+  // ---- Inline elements ----
+
+  case MDNodeTypeStrong: {
+    NSMutableDictionary *boldAttrs = [attrs mutableCopy];
+    boldAttrs[kBold] = @YES;
+
+    UIFont *current = attrs[NSFontAttributeName] ?: _baseFont;
+    boldAttrs[NSFontAttributeName] = [self boldVariantOf:current];
+
+    MarkdownElementStyle *style = _styleConfig.strong;
+    if (style.color) {
+      boldAttrs[NSForegroundColorAttributeName] = style.color;
+    }
+
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:boldAttrs blockIndex:0];
+    }
+    break;
+  }
+
+  case MDNodeTypeEmphasis: {
+    NSMutableDictionary *italicAttrs = [attrs mutableCopy];
+    italicAttrs[kItalic] = @YES;
+
+    UIFont *current = attrs[NSFontAttributeName] ?: _baseFont;
+    italicAttrs[NSFontAttributeName] = [self italicVariantOf:current];
+
+    MarkdownElementStyle *style = _styleConfig.emphasis;
+    if (style.color) {
+      italicAttrs[NSForegroundColorAttributeName] = style.color;
+    }
+
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:italicAttrs blockIndex:0];
+    }
+    break;
+  }
+
+  case MDNodeTypeStrikethrough: {
+    NSMutableDictionary *sAttrs = [attrs mutableCopy];
+    sAttrs[kStrike] = @YES;
+    sAttrs[NSStrikethroughStyleAttributeName] = @(NSUnderlineStyleSingle);
+
+    MarkdownElementStyle *style = _styleConfig.strikethrough;
+    if (style.color) {
+      sAttrs[NSForegroundColorAttributeName] = style.color;
+      sAttrs[NSStrikethroughColorAttributeName] = style.color;
+    }
+
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:sAttrs blockIndex:0];
+    }
+    break;
+  }
+
+  case MDNodeTypeCode: {
+    NSMutableDictionary *codeAttrs = [attrs mutableCopy];
+    codeAttrs[kCode] = @YES;
+
+    MarkdownElementStyle *style = _styleConfig.code;
+    UIFont *codeFont = [style resolvedFontWithBase:_baseFont]
+                           ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
+                                                          weight:UIFontWeightRegular];
+    codeAttrs[NSFontAttributeName] = codeFont;
+    if (style.color) {
+      codeAttrs[NSForegroundColorAttributeName] = style.color;
+    }
+    UIColor *bg = style.backgroundColor
+                      ?: [UIColor colorWithWhite:0.5 alpha:0.1];
+    codeAttrs[NSBackgroundColorAttributeName] = bg;
+
+    // Code nodes have content directly (not children)
+    NSString *content = node.content ?: @"";
+    [output appendAttributedString:
+        [[NSAttributedString alloc] initWithString:content
+                                        attributes:codeAttrs]];
+    break;
+  }
+
+  case MDNodeTypeLink: {
+    NSMutableDictionary *linkAttrs = [attrs mutableCopy];
+    linkAttrs[kLink] = node.linkUrl ?: @"";
+
+    MarkdownElementStyle *style = _styleConfig.link;
+    UIColor *linkColor = style.color ?: [UIColor systemBlueColor];
+    linkAttrs[NSForegroundColorAttributeName] = linkColor;
+
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:linkAttrs blockIndex:0];
+    }
+    break;
+  }
+
+  // ---- Leaf text ----
+
+  case MDNodeTypeText: {
+    NSString *content = node.content ?: @"";
+    [output appendAttributedString:
+        [[NSAttributedString alloc] initWithString:content
+                                        attributes:attrs]];
+    break;
+  }
+
+  case MDNodeTypeSoftBreak: {
+    [output appendAttributedString:
+        [[NSAttributedString alloc] initWithString:@" " attributes:attrs]];
+    break;
+  }
+
+  case MDNodeTypeLineBreak: {
+    [output appendAttributedString:
+        [[NSAttributedString alloc] initWithString:@"\n" attributes:attrs]];
+    break;
+  }
+
+  // ---- Skip / pass-through ----
+  case MDNodeTypeListItem:
+  case MDNodeTypeImage:
+  case MDNodeTypeHtmlBlock:
+  case MDNodeTypeHtmlInline:
+  case MDNodeTypeCustomTag:
+  default: {
+    for (ASTNodeWrapper *child in node.children) {
+      [self walkNode:child into:output attrs:attrs blockIndex:0];
+    }
+    break;
+  }
+  }
+}
+
+// ---------------------------------------------------------------
+#pragma mark - Export (Attributed String → Markdown)
+// ---------------------------------------------------------------
+
+- (NSString *)exportMarkdown {
+  NSAttributedString *as = _textView.attributedText;
+  if (as.length == 0) return @"";
+
+  NSString *text = as.string;
+  NSMutableString *md = [NSMutableString new];
+
+  // Process line by line
+  __block NSUInteger lineStart = 0;
+  [text enumerateSubstringsInRange:NSMakeRange(0, text.length)
+                           options:NSStringEnumerationByLines |
+                                   NSStringEnumerationSubstringNotRequired
+                        usingBlock:^(NSString *substring, NSRange substringRange,
+                                     NSRange enclosingRange, BOOL *stop) {
+    [self exportLine:substringRange from:as into:md];
+    [md appendString:@"\n"];
+  }];
+
+  // Trim trailing newlines
+  while (md.length > 0 && [md characterAtIndex:md.length - 1] == '\n') {
+    [md deleteCharactersInRange:NSMakeRange(md.length - 1, 1)];
+  }
+
+  return [md copy];
+}
+
+- (void)exportLine:(NSRange)lineRange
+              from:(NSAttributedString *)as
+              into:(NSMutableString *)md {
+  if (lineRange.length == 0) return;
+
+  // Check block-level attributes from the first character
+  NSDictionary *firstAttrs =
+      [as attributesAtIndex:lineRange.location effectiveRange:nil];
+
+  NSNumber *heading = firstAttrs[kHeading];
+  if (heading) {
+    for (int i = 0; i < heading.intValue; i++) [md appendString:@"#"];
+    [md appendString:@" "];
+  }
+
+  if ([firstAttrs[kBlockquote] boolValue]) {
+    [md appendString:@"> "];
+  }
+
+  if ([firstAttrs[kCodeBlock] boolValue]) {
+    // For code blocks, emit raw content — no inline formatting
+    [md appendString:[as.string substringWithRange:lineRange]];
+    return;
+  }
+
+  // Walk attribute runs for inline formatting
+  [as enumerateAttributesInRange:lineRange
+                         options:0
+                      usingBlock:^(NSDictionary *attrs, NSRange range,
+                                   BOOL *stop) {
+    NSString *runText = [as.string substringWithRange:range];
+
+    BOOL bold = [attrs[kBold] boolValue];
+    BOOL italic = [attrs[kItalic] boolValue];
+    BOOL strike = [attrs[kStrike] boolValue];
+    BOOL code = [attrs[kCode] boolValue];
+    NSString *link = attrs[kLink];
+
+    if (code) {
+      [md appendFormat:@"`%@`", runText];
+    } else {
+      BOOL hasLink = link.length > 0;
+      if (hasLink) [md appendString:@"["];
+      if (bold) [md appendString:@"**"];
+      if (italic) [md appendString:@"*"];
+      if (strike) [md appendString:@"~~"];
+
+      [md appendString:runText];
+
+      if (strike) [md appendString:@"~~"];
+      if (italic) [md appendString:@"*"];
+      if (bold) [md appendString:@"**"];
+      if (hasLink) [md appendFormat:@"](%@)", link];
+    }
+  }];
+}
+
+// ---------------------------------------------------------------
+#pragma mark - Toggle Formatting
+// ---------------------------------------------------------------
+
+- (void)toggleInlineAttr:(NSString *)attrKey
+            visualUpdate:(void (^)(NSMutableDictionary *attrs,
+                                   BOOL enabling))visualBlock {
+  NSRange range = _textView.selectedRange;
+
+  if (range.length == 0) {
+    // No selection — toggle in typingAttributes
+    NSMutableDictionary *attrs = [_textView.typingAttributes mutableCopy];
+    BOOL wasOn = [attrs[attrKey] boolValue];
+    if (wasOn) {
+      [attrs removeObjectForKey:attrKey];
+    } else {
+      attrs[attrKey] = @YES;
+    }
+    visualBlock(attrs, !wasOn);
+    _textView.typingAttributes = attrs;
+  } else {
+    // Has selection — check if the entire range already has this attr
+    __block BOOL allHave = YES;
+    [_textView.textStorage
+        enumerateAttribute:attrKey
+                   inRange:range
+                   options:0
+                usingBlock:^(id value, NSRange r, BOOL *stop) {
+                  if (![value boolValue]) {
+                    allHave = NO;
+                    *stop = YES;
+                  }
+                }];
+
+    BOOL enabling = !allHave;
+    if (enabling) {
+      [_textView.textStorage addAttribute:attrKey value:@YES range:range];
+    } else {
+      [_textView.textStorage removeAttribute:attrKey range:range];
+    }
+
+    // Apply visual changes to the range
+    [_textView.textStorage
+        enumerateAttributesInRange:range
+                           options:0
+                        usingBlock:^(NSDictionary *existing, NSRange r,
+                                     BOOL *stop) {
+                          NSMutableDictionary *updated =
+                              [existing mutableCopy];
+                          visualBlock(updated, enabling);
+                          [self->_textView.textStorage setAttributes:updated
+                                                              range:r];
+                        }];
+  }
+
+  [self detectFormattingState];
+  [self emitMarkdownChange];
+}
+
+- (void)toggleBold {
+  [self toggleInlineAttr:kBold
+            visualUpdate:^(NSMutableDictionary *attrs, BOOL enabling) {
+              UIFont *font = attrs[NSFontAttributeName] ?: self->_baseFont;
+              attrs[NSFontAttributeName] = enabling
+                  ? [self boldVariantOf:font]
+                  : [self unboldVariantOf:font];
+            }];
+}
+
+- (void)toggleItalic {
+  [self toggleInlineAttr:kItalic
+            visualUpdate:^(NSMutableDictionary *attrs, BOOL enabling) {
+              UIFont *font = attrs[NSFontAttributeName] ?: self->_baseFont;
+              attrs[NSFontAttributeName] = enabling
+                  ? [self italicVariantOf:font]
+                  : [self unitalicVariantOf:font];
+            }];
+}
+
+- (void)toggleStrikethrough {
+  [self toggleInlineAttr:kStrike
+            visualUpdate:^(NSMutableDictionary *attrs, BOOL enabling) {
+              if (enabling) {
+                attrs[NSStrikethroughStyleAttributeName] =
+                    @(NSUnderlineStyleSingle);
+              } else {
+                [attrs removeObjectForKey:NSStrikethroughStyleAttributeName];
+                [attrs removeObjectForKey:NSStrikethroughColorAttributeName];
+              }
+            }];
+}
+
+- (void)toggleCode {
+  [self toggleInlineAttr:kCode
+            visualUpdate:^(NSMutableDictionary *attrs, BOOL enabling) {
+              if (enabling) {
+                MarkdownElementStyle *style = self->_styleConfig.code;
+                UIFont *codeFont =
+                    [style resolvedFontWithBase:self->_baseFont]
+                        ?: [UIFont monospacedSystemFontOfSize:
+                                       self->_baseFont.pointSize
+                                                      weight:UIFontWeightRegular];
+                attrs[NSFontAttributeName] = codeFont;
+                UIColor *bg = style.backgroundColor
+                                  ?: [UIColor colorWithWhite:0.5 alpha:0.1];
+                attrs[NSBackgroundColorAttributeName] = bg;
+                if (style.color) {
+                  attrs[NSForegroundColorAttributeName] = style.color;
+                }
+              } else {
+                attrs[NSFontAttributeName] = self->_baseFont;
+                [attrs removeObjectForKey:NSBackgroundColorAttributeName];
+                attrs[NSForegroundColorAttributeName] =
+                    self->_styleConfig.base.color ?: [UIColor labelColor];
+              }
+            }];
+}
+
+- (void)toggleHeading:(NSInteger)level {
+  NSRange range = _textView.selectedRange;
+  NSRange lineRange = [_textView.text lineRangeForRange:range];
+  // Trim the trailing newline from lineRange
+  if (lineRange.length > 0 &&
+      [_textView.text characterAtIndex:lineRange.location + lineRange.length - 1] == '\n') {
+    lineRange.length--;
+  }
+  if (lineRange.length == 0) return;
+
+  NSDictionary *currentAttrs =
+      [_textView.textStorage attributesAtIndex:lineRange.location
+                                effectiveRange:nil];
+  NSNumber *currentLevel = currentAttrs[kHeading];
+  BOOL removing = currentLevel && currentLevel.integerValue == level;
+
+  NSMutableDictionary *newAttrs;
+  if (removing) {
+    newAttrs = [[self baseAttrs] mutableCopy];
+  } else {
+    newAttrs = [currentAttrs mutableCopy];
+    newAttrs[kHeading] = @(level);
+
+    MarkdownElementStyle *style = [_styleConfig styleForHeadingLevel:level];
+    UIFont *headingFont = [style resolvedFontWithBase:_baseFont];
+    if (!headingFont) {
+      CGFloat scales[] = {0, 2.0, 1.5, 1.25, 1.1, 1.0, 0.9};
+      CGFloat s = level <= 6 ? scales[level] : 1.0;
+      headingFont = [UIFont systemFontOfSize:_baseFont.pointSize * s
+                                      weight:UIFontWeightBold];
+    }
+    newAttrs[NSFontAttributeName] = headingFont;
+    if (style.color) {
+      newAttrs[NSForegroundColorAttributeName] = style.color;
+    }
+  }
+
+  [_textView.textStorage setAttributes:newAttrs range:lineRange];
+  [self detectFormattingState];
+  [self emitMarkdownChange];
+}
+
+- (void)toggleBlockquote {
+  NSRange range = _textView.selectedRange;
+  NSRange lineRange = [_textView.text lineRangeForRange:range];
+  if (lineRange.length > 0 &&
+      [_textView.text characterAtIndex:lineRange.location + lineRange.length - 1] == '\n') {
+    lineRange.length--;
+  }
+  if (lineRange.length == 0) return;
+
+  NSDictionary *currentAttrs =
+      [_textView.textStorage attributesAtIndex:lineRange.location
+                                effectiveRange:nil];
+  BOOL removing = [currentAttrs[kBlockquote] boolValue];
+
+  NSMutableDictionary *newAttrs;
+  if (removing) {
+    newAttrs = [[self baseAttrs] mutableCopy];
+  } else {
+    newAttrs = [currentAttrs mutableCopy];
+    newAttrs[kBlockquote] = @YES;
+
+    MarkdownElementStyle *style = _styleConfig.blockquote;
+    if (style.color) {
+      newAttrs[NSForegroundColorAttributeName] = style.color;
+    }
+
+    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+    pStyle.firstLineHeadIndent = 16;
+    pStyle.headIndent = 16;
+    newAttrs[NSParagraphStyleAttributeName] = pStyle;
+  }
+
+  [_textView.textStorage setAttributes:newAttrs range:lineRange];
+  [self detectFormattingState];
+  [self emitMarkdownChange];
+}
+
+- (void)insertLinkWithURL:(NSString *)url text:(NSString *)text {
+  NSRange range = _textView.selectedRange;
+
+  NSString *linkText;
+  if (text.length > 0) {
+    linkText = text;
+  } else if (range.length > 0) {
+    linkText = [_textView.text substringWithRange:range];
+  } else {
+    linkText = @"link";
+  }
+
+  NSMutableDictionary *attrs = [_textView.typingAttributes mutableCopy];
+  attrs[kLink] = url;
+
+  MarkdownElementStyle *style = _styleConfig.link;
+  attrs[NSForegroundColorAttributeName] =
+      style.color ?: [UIColor systemBlueColor];
+
+  NSAttributedString *linkAS =
+      [[NSAttributedString alloc] initWithString:linkText attributes:attrs];
+
+  if (range.length > 0) {
+    [_textView.textStorage replaceCharactersInRange:range
+                               withAttributedString:linkAS];
+  } else {
+    [_textView.textStorage insertAttributedString:linkAS atIndex:range.location];
+  }
+
+  [self emitMarkdownChange];
+}
+
+- (void)removeLink {
+  NSRange range = _textView.selectedRange;
+  if (range.location == NSNotFound) return;
+
+  // Find the link range around the cursor
+  __block NSRange linkRange = NSMakeRange(NSNotFound, 0);
+  NSRange searchRange = NSMakeRange(0, _textView.textStorage.length);
+  [_textView.textStorage
+      enumerateAttribute:kLink
+                 inRange:searchRange
+                 options:0
+              usingBlock:^(id value, NSRange r, BOOL *stop) {
+                if (value && NSLocationInRange(range.location, r)) {
+                  linkRange = r;
+                  *stop = YES;
+                }
+              }];
+
+  if (linkRange.location == NSNotFound) return;
+
+  [_textView.textStorage removeAttribute:kLink range:linkRange];
+  [_textView.textStorage addAttribute:NSForegroundColorAttributeName
+                                value:_styleConfig.base.color ?: [UIColor labelColor]
+                                range:linkRange];
+  [self emitMarkdownChange];
+}
+
+// ---------------------------------------------------------------
 #pragma mark - Native Commands
+// ---------------------------------------------------------------
 
 - (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args {
   if ([commandName isEqualToString:@"focus"]) {
@@ -104,28 +811,29 @@ using namespace facebook::react;
     [_textView resignFirstResponder];
   } else if ([commandName isEqualToString:@"setValue"]) {
     NSString *value = args[0];
-    _textView.text = value;
+    NSAttributedString *as = [self importMarkdown:value];
+    _textView.attributedText = as;
   } else if ([commandName isEqualToString:@"setSelection"]) {
     NSInteger start = [args[0] integerValue];
     NSInteger end = [args[1] integerValue];
     _textView.selectedRange = NSMakeRange(start, end - start);
   } else if ([commandName isEqualToString:@"toggleBold"]) {
-    [self toggleFormatting:@"**"];
+    [self toggleBold];
   } else if ([commandName isEqualToString:@"toggleItalic"]) {
-    [self toggleFormatting:@"*"];
+    [self toggleItalic];
   } else if ([commandName isEqualToString:@"toggleStrikethrough"]) {
-    [self toggleFormatting:@"~~"];
+    [self toggleStrikethrough];
   } else if ([commandName isEqualToString:@"toggleCode"]) {
-    [self toggleFormatting:@"`"];
+    [self toggleCode];
   } else if ([commandName isEqualToString:@"toggleHeading"]) {
     NSInteger level = [args[0] integerValue];
     [self toggleHeading:level];
   } else if ([commandName isEqualToString:@"toggleOrderedList"]) {
-    [self toggleLinePrefix:@"1. "];
+    // TODO: list support
   } else if ([commandName isEqualToString:@"toggleUnorderedList"]) {
-    [self toggleLinePrefix:@"- "];
+    // TODO: list support
   } else if ([commandName isEqualToString:@"toggleBlockquote"]) {
-    [self toggleLinePrefix:@"> "];
+    [self toggleBlockquote];
   } else if ([commandName isEqualToString:@"insertLink"]) {
     NSString *url = args[0];
     NSString *text = args.count > 1 ? args[1] : @"";
@@ -133,730 +841,125 @@ using namespace facebook::react;
   } else if ([commandName isEqualToString:@"removeLink"]) {
     [self removeLink];
   } else if ([commandName isEqualToString:@"insertMention"]) {
-    NSString *user = args[0];
-    [self insertText:[NSString stringWithFormat:@"<Mention user=\"%@\" />", user]];
+    // TODO: mention support
   } else if ([commandName isEqualToString:@"insertSpoiler"]) {
-    [self wrapSelection:@"<Spoiler>" suffix:@"</Spoiler>"];
+    // TODO: spoiler support
   } else if ([commandName isEqualToString:@"insertCustomTag"]) {
-    NSString *tag = args[0];
-    NSString *propsJSON = args.count > 1 ? args[1] : @"{}";
-    [self insertCustomTag:tag propsJSON:propsJSON];
+    // TODO: custom tag support
   }
 }
 
-#pragma mark - Formatting
-
-- (void)toggleFormatting:(NSString *)marker {
-  NSRange selectedRange = _textView.selectedRange;
-  NSString *text = _textView.text;
-
-  if (selectedRange.length == 0) {
-    NSString *newText = [NSString stringWithFormat:@"%@%@", marker, marker];
-    [self insertText:newText];
-    _textView.selectedRange =
-        NSMakeRange(selectedRange.location + marker.length, 0);
-  } else {
-    NSString *selectedText = [text substringWithRange:selectedRange];
-
-    if ([selectedText hasPrefix:marker] &&
-        [selectedText hasSuffix:marker] &&
-        selectedText.length > marker.length * 2) {
-      NSString *unformatted = [selectedText
-          substringWithRange:NSMakeRange(marker.length,
-                                         selectedText.length -
-                                             marker.length * 2)];
-      [_textView replaceRange:[self textRangeFromNSRange:selectedRange]
-                     withText:unformatted];
-    } else {
-      NSString *formatted = [NSString
-          stringWithFormat:@"%@%@%@", marker, selectedText, marker];
-      [_textView replaceRange:[self textRangeFromNSRange:selectedRange]
-                     withText:formatted];
-    }
-  }
-
-  [self emitChangeEvents];
-}
-
-- (void)toggleHeading:(NSInteger)level {
-  NSString *prefix = @"";
-  for (NSInteger i = 0; i < level; i++) {
-    prefix = [prefix stringByAppendingString:@"#"];
-  }
-  prefix = [prefix stringByAppendingString:@" "];
-  [self toggleLinePrefix:prefix];
-}
-
-- (void)toggleLinePrefix:(NSString *)prefix {
-  NSRange selectedRange = _textView.selectedRange;
-  NSString *text = _textView.text;
-
-  NSRange lineRange = [text lineRangeForRange:selectedRange];
-  NSString *line = [text substringWithRange:lineRange];
-
-  if ([line hasPrefix:prefix]) {
-    NSString *newLine = [line substringFromIndex:prefix.length];
-    [_textView replaceRange:[self textRangeFromNSRange:lineRange]
-                   withText:newLine];
-  } else {
-    NSString *newLine = [prefix stringByAppendingString:line];
-    [_textView replaceRange:[self textRangeFromNSRange:lineRange]
-                   withText:newLine];
-  }
-
-  [self emitChangeEvents];
-}
-
-- (void)insertLinkWithURL:(NSString *)url text:(NSString *)text {
-  NSRange selectedRange = _textView.selectedRange;
-
-  NSString *linkText;
-  if (text.length > 0) {
-    linkText = [NSString stringWithFormat:@"[%@](%@)", text, url];
-  } else if (selectedRange.length > 0) {
-    NSString *selected = [_textView.text substringWithRange:selectedRange];
-    linkText = [NSString stringWithFormat:@"[%@](%@)", selected, url];
-  } else {
-    linkText = [NSString stringWithFormat:@"[link](%@)", url];
-  }
-
-  [self insertText:linkText];
-}
-
-- (void)removeLink {
-  [self emitChangeEvents];
-}
-
-- (void)wrapSelection:(NSString *)prefix suffix:(NSString *)suffix {
-  NSRange selectedRange = _textView.selectedRange;
-  NSString *text = _textView.text;
-
-  if (selectedRange.length > 0) {
-    NSString *selected = [text substringWithRange:selectedRange];
-    NSString *wrapped =
-        [NSString stringWithFormat:@"%@%@%@", prefix, selected, suffix];
-    [_textView replaceRange:[self textRangeFromNSRange:selectedRange]
-                   withText:wrapped];
-  } else {
-    NSString *wrapped =
-        [NSString stringWithFormat:@"%@%@", prefix, suffix];
-    [self insertText:wrapped];
-    _textView.selectedRange =
-        NSMakeRange(selectedRange.location + prefix.length, 0);
-  }
-
-  [self emitChangeEvents];
-}
-
-- (void)insertText:(NSString *)text {
-  [_textView replaceRange:[self textRangeFromNSRange:_textView.selectedRange]
-                 withText:text];
-  [self emitChangeEvents];
-}
-
-- (void)insertCustomTag:(NSString *)tag propsJSON:(NSString *)propsJSON {
-  NSData *data = [propsJSON dataUsingEncoding:NSUTF8StringEncoding];
-  NSDictionary *props =
-      [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
-
-  NSMutableString *tagStr = [NSMutableString stringWithFormat:@"<%@", tag];
-  for (NSString *key in props) {
-    [tagStr appendFormat:@" %@=\"%@\"", key, props[key]];
-  }
-  [tagStr appendString:@" />"];
-  [self insertText:tagStr];
-}
-
-- (UITextRange *)textRangeFromNSRange:(NSRange)range {
-  UITextPosition *start =
-      [_textView positionFromPosition:_textView.beginningOfDocument
-                               offset:range.location];
-  UITextPosition *end =
-      [_textView positionFromPosition:start offset:range.length];
-  return [_textView textRangeFromPosition:start toPosition:end];
-}
-
-#pragma mark - Markdown Formatting
-
-- (void)applyMarkdownFormatting {
-  NSString *text = _textView.text;
-  if (text.length == 0) {
-    [self updateTypingAttributes];
-    return;
-  }
-
-  NSRange savedRange = _textView.selectedRange;
-
-  UIFont *baseFont = [_styleConfig.base resolvedFont]
-                         ?: [UIFont systemFontOfSize:16];
-  UIColor *textColor = _styleConfig.base.color ?: [UIColor labelColor];
-  UIColor *markerColor = [textColor colorWithAlphaComponent:0.35];
-
-  NSMutableDictionary *baseAttrs = [@{
-    NSFontAttributeName : baseFont,
-    NSForegroundColorAttributeName : textColor,
-  } mutableCopy];
-
-  NSMutableAttributedString *as =
-      [[NSMutableAttributedString alloc] initWithString:text
-                                             attributes:baseAttrs];
-
-  // Track fenced code block ranges — nothing inside them is parsed.
-  NSMutableIndexSet *codeBlockChars = [NSMutableIndexSet new];
-
-  // --- Pass 1: fenced code blocks (``` … ```) ---
-  [self styleFencedCodeBlocks:as
-                     baseFont:baseFont
-                  markerColor:markerColor
-               codeBlockChars:codeBlockChars];
-
-  // --- Pass 2: block-level (headings, blockquotes, lists, HRs) ---
-  [self styleBlockElements:as
-                  baseFont:baseFont
-               markerColor:markerColor
-            codeBlockChars:codeBlockChars];
-
-  // --- Pass 3: inline (bold, italic, strikethrough, code, links) ---
-  [self styleInlineElements:as
-                   baseFont:baseFont
-                markerColor:markerColor
-             codeBlockChars:codeBlockChars];
-
-  _textView.attributedText = as;
-
-  if (savedRange.location + savedRange.length <= text.length) {
-    _textView.selectedRange = savedRange;
-  }
-
-  [self updateTypingAttributes];
-}
-
-- (void)updateTypingAttributes {
-  UIFont *baseFont = [_styleConfig.base resolvedFont]
-                         ?: [UIFont systemFontOfSize:16];
-  UIColor *textColor = _styleConfig.base.color ?: [UIColor labelColor];
-  _textView.typingAttributes = @{
-    NSFontAttributeName : baseFont,
-    NSForegroundColorAttributeName : textColor,
-  };
-}
-
-#pragma mark - Fenced Code Blocks
-
-- (void)styleFencedCodeBlocks:(NSMutableAttributedString *)as
-                     baseFont:(UIFont *)baseFont
-                  markerColor:(UIColor *)markerColor
-               codeBlockChars:(NSMutableIndexSet *)codeBlockChars {
-  NSString *text = as.string;
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"^(`{3,})(.*?)\\n([\\s\\S]*?)^\\1\\s*$"
-                           options:NSRegularExpressionAnchorsMatchLines
-                             error:nil];
-
-  [regex enumerateMatchesInString:text
-                          options:0
-                            range:NSMakeRange(0, text.length)
-                       usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags,
-                                    BOOL *stop) {
-    NSRange fullRange = [match range];
-    NSRange fenceOpenRange = [match rangeAtIndex:1];
-    NSRange langRange = [match rangeAtIndex:2];
-    NSRange contentRange = [match rangeAtIndex:3];
-
-    [codeBlockChars addIndexesInRange:fullRange];
-
-    // Style the content with code font + background
-    MarkdownElementStyle *style = self->_styleConfig.codeBlock;
-    UIFont *codeFont = [style resolvedFontWithBase:baseFont]
-                           ?: [UIFont monospacedSystemFontOfSize:baseFont.pointSize
-                                                          weight:UIFontWeightRegular];
-    UIColor *bgColor = style.backgroundColor
-                           ?: [UIColor colorWithWhite:0.5 alpha:0.1];
-
-    [as addAttribute:NSFontAttributeName value:codeFont range:contentRange];
-    [as addAttribute:NSBackgroundColorAttributeName value:bgColor range:contentRange];
-    if (style.color) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:style.color
-                 range:contentRange];
-    }
-
-    // Dim the fence markers and language hint
-    [as addAttribute:NSForegroundColorAttributeName
-               value:markerColor
-               range:fenceOpenRange];
-    if (langRange.length > 0) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:markerColor
-                 range:langRange];
-    }
-
-    // Dim closing fence
-    NSUInteger closeStart = contentRange.location + contentRange.length;
-    NSUInteger closeLen = (fullRange.location + fullRange.length) - closeStart;
-    if (closeLen > 0) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:markerColor
-                 range:NSMakeRange(closeStart, closeLen)];
-    }
-  }];
-}
-
-#pragma mark - Block Elements
-
-- (void)styleBlockElements:(NSMutableAttributedString *)as
-                  baseFont:(UIFont *)baseFont
-               markerColor:(UIColor *)markerColor
-            codeBlockChars:(NSMutableIndexSet *)codeBlockChars {
-  NSString *text = as.string;
-
-  [text enumerateLinesUsingBlock:^(NSString *line, BOOL *stop) {
-    // Find this line's range in the full text
-    // enumerateLinesUsingBlock doesn't give us the range directly
-  }];
-
-  // Use regex to find line ranges instead, which gives us positions.
-  NSRegularExpression *lineRegex = [NSRegularExpression
-      regularExpressionWithPattern:@"^.*$"
-                           options:NSRegularExpressionAnchorsMatchLines
-                             error:nil];
-
-  [lineRegex enumerateMatchesInString:text
-                              options:0
-                                range:NSMakeRange(0, text.length)
-                           usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags,
-                                        BOOL *stop) {
-    NSRange lineRange = [match range];
-    if ([codeBlockChars containsIndexesInRange:lineRange]) return;
-
-    NSString *line = [text substringWithRange:lineRange];
-
-    // Headings: # through ######
-    [self styleHeadingInLine:line range:lineRange as:as baseFont:baseFont markerColor:markerColor];
-
-    // Blockquote: > ...
-    [self styleBlockquoteInLine:line range:lineRange as:as baseFont:baseFont markerColor:markerColor];
-
-    // Thematic break: --- or *** or ___
-    [self styleThematicBreakInLine:line range:lineRange as:as markerColor:markerColor];
-  }];
-}
-
-- (void)styleHeadingInLine:(NSString *)line
-                     range:(NSRange)lineRange
-                        as:(NSMutableAttributedString *)as
-                  baseFont:(UIFont *)baseFont
-               markerColor:(UIColor *)markerColor {
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"^(#{1,6})\\s+"
-                           options:0
-                             error:nil];
-  NSTextCheckingResult *match =
-      [regex firstMatchInString:line options:0 range:NSMakeRange(0, line.length)];
-  if (!match) return;
-
-  NSRange hashRange = [match rangeAtIndex:1];
-  NSInteger level = hashRange.length;
-
-  MarkdownElementStyle *style = [_styleConfig styleForHeadingLevel:level];
-  UIFont *headingFont = [style resolvedFontWithBase:baseFont];
-  if (!headingFont) {
-    // Default heading sizes
-    CGFloat sizes[] = {0, 2.0, 1.5, 1.25, 1.1, 1.0, 0.9};
-    CGFloat scale = level <= 6 ? sizes[level] : 1.0;
-    headingFont = [UIFont systemFontOfSize:baseFont.pointSize * scale
-                                    weight:UIFontWeightBold];
-  }
-
-  // Style the text content (after the marker)
-  NSUInteger contentStart = lineRange.location + match.range.length;
-  NSUInteger contentLen = lineRange.length - match.range.length;
-  if (contentLen > 0) {
-    NSRange contentRange = NSMakeRange(contentStart, contentLen);
-    [as addAttribute:NSFontAttributeName value:headingFont range:contentRange];
-    if (style.color) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:style.color
-                 range:contentRange];
-    }
-  }
-
-  // Dim the # marker
-  NSRange markerRange = NSMakeRange(lineRange.location + hashRange.location,
-                                    match.range.length);
-  [as addAttribute:NSForegroundColorAttributeName
-             value:markerColor
-             range:markerRange];
-}
-
-- (void)styleBlockquoteInLine:(NSString *)line
-                        range:(NSRange)lineRange
-                           as:(NSMutableAttributedString *)as
-                     baseFont:(UIFont *)baseFont
-                  markerColor:(UIColor *)markerColor {
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"^(>\\s*)"
-                           options:0
-                             error:nil];
-  NSTextCheckingResult *match =
-      [regex firstMatchInString:line options:0 range:NSMakeRange(0, line.length)];
-  if (!match) return;
-
-  MarkdownElementStyle *style = _styleConfig.blockquote;
-
-  // Dim the > marker
-  NSRange markerRange = NSMakeRange(lineRange.location, match.range.length);
-  [as addAttribute:NSForegroundColorAttributeName
-             value:markerColor
-             range:markerRange];
-
-  // Style the content
-  if (style.color) {
-    NSUInteger contentStart = lineRange.location + match.range.length;
-    NSUInteger contentLen = lineRange.length - match.range.length;
-    if (contentLen > 0) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:style.color
-                 range:NSMakeRange(contentStart, contentLen)];
-    }
-  }
-
-  // Italic by default for blockquotes, unless overridden
-  UIFont *bqFont = [style resolvedFontWithBase:baseFont];
-  if (bqFont) {
-    NSRange contentRange = NSMakeRange(lineRange.location + match.range.length,
-                                       lineRange.length - match.range.length);
-    [as addAttribute:NSFontAttributeName value:bqFont range:contentRange];
-  }
-}
-
-- (void)styleThematicBreakInLine:(NSString *)line
-                           range:(NSRange)lineRange
-                              as:(NSMutableAttributedString *)as
-                     markerColor:(UIColor *)markerColor {
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"^([-*_]\\s*){3,}$"
-                           options:0
-                             error:nil];
-  if ([regex firstMatchInString:line options:0
-                          range:NSMakeRange(0, line.length)]) {
-    [as addAttribute:NSForegroundColorAttributeName
-               value:markerColor
-               range:lineRange];
-  }
-}
-
-#pragma mark - Inline Elements
-
-- (void)styleInlineElements:(NSMutableAttributedString *)as
-                   baseFont:(UIFont *)baseFont
-                markerColor:(UIColor *)markerColor
-             codeBlockChars:(NSMutableIndexSet *)codeBlockChars {
-  // Order matters: bold before italic (both use *)
-  [self styleInlineCode:as baseFont:baseFont markerColor:markerColor
-         codeBlockChars:codeBlockChars];
-  [self styleBold:as baseFont:baseFont markerColor:markerColor
-   codeBlockChars:codeBlockChars];
-  [self styleItalic:as baseFont:baseFont markerColor:markerColor
-     codeBlockChars:codeBlockChars];
-  [self styleStrikethrough:as markerColor:markerColor
-            codeBlockChars:codeBlockChars];
-  [self styleLinks:as markerColor:markerColor codeBlockChars:codeBlockChars];
-}
-
-- (void)styleInlineCode:(NSMutableAttributedString *)as
-               baseFont:(UIFont *)baseFont
-            markerColor:(UIColor *)markerColor
-         codeBlockChars:(NSMutableIndexSet *)codeBlockChars {
-  NSString *text = as.string;
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"(`+)(?!`)(.*?)(?<!`)\\1(?!`)"
-                           options:0
-                             error:nil];
-
-  [regex enumerateMatchesInString:text
-                          options:0
-                            range:NSMakeRange(0, text.length)
-                       usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags,
-                                    BOOL *stop) {
-    NSRange fullRange = [match range];
-    if ([codeBlockChars containsIndexesInRange:fullRange]) return;
-
-    NSRange contentRange = [match rangeAtIndex:2];
-    NSRange openTick = [match rangeAtIndex:1];
-    NSRange closeTick = NSMakeRange(contentRange.location + contentRange.length,
-                                     openTick.length);
-
-    MarkdownElementStyle *style = self->_styleConfig.code;
-    UIFont *codeFont = [style resolvedFontWithBase:baseFont]
-                           ?: [UIFont monospacedSystemFontOfSize:baseFont.pointSize
-                                                          weight:UIFontWeightRegular];
-    UIColor *bgColor = style.backgroundColor
-                           ?: [UIColor colorWithWhite:0.5 alpha:0.1];
-
-    [as addAttribute:NSFontAttributeName value:codeFont range:contentRange];
-    [as addAttribute:NSBackgroundColorAttributeName value:bgColor range:contentRange];
-    if (style.color) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:style.color
-                 range:contentRange];
-    }
-
-    // Dim backticks
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:openTick];
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:closeTick];
-  }];
-}
-
-- (void)styleBold:(NSMutableAttributedString *)as
-         baseFont:(UIFont *)baseFont
-      markerColor:(UIColor *)markerColor
-   codeBlockChars:(NSMutableIndexSet *)codeBlockChars {
-  NSString *text = as.string;
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"(\\*\\*|__)(.+?)\\1"
-                           options:0
-                             error:nil];
-
-  [regex enumerateMatchesInString:text
-                          options:0
-                            range:NSMakeRange(0, text.length)
-                       usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags,
-                                    BOOL *stop) {
-    NSRange fullRange = [match range];
-    if ([codeBlockChars containsIndexesInRange:fullRange]) return;
-
-    NSRange markerRange = [match rangeAtIndex:1];
-    NSRange contentRange = [match rangeAtIndex:2];
-    NSRange closeMarker = NSMakeRange(contentRange.location + contentRange.length,
-                                       markerRange.length);
-
-    MarkdownElementStyle *style = self->_styleConfig.strong;
-    UIFont *boldFont = [style resolvedFontWithBase:baseFont];
-    if (!boldFont) {
-      UIFontDescriptor *desc =
-          [baseFont.fontDescriptor fontDescriptorWithSymbolicTraits:
-              UIFontDescriptorTraitBold];
-      boldFont = desc ? [UIFont fontWithDescriptor:desc size:baseFont.pointSize]
-                      : [UIFont boldSystemFontOfSize:baseFont.pointSize];
-    }
-
-    [as addAttribute:NSFontAttributeName value:boldFont range:contentRange];
-    if (style.color) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:style.color
-                 range:contentRange];
-    }
-
-    // Dim markers
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:markerRange];
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:closeMarker];
-  }];
-}
-
-- (void)styleItalic:(NSMutableAttributedString *)as
-           baseFont:(UIFont *)baseFont
-        markerColor:(UIColor *)markerColor
-     codeBlockChars:(NSMutableIndexSet *)codeBlockChars {
-  NSString *text = as.string;
-  // Match *text* but not **text** (negative lookbehind/ahead for *)
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"(?<!\\*)\\*(?!\\*)(.+?)(?<!\\*)\\*(?!\\*)"
-                           options:0
-                             error:nil];
-
-  [regex enumerateMatchesInString:text
-                          options:0
-                            range:NSMakeRange(0, text.length)
-                       usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags,
-                                    BOOL *stop) {
-    NSRange fullRange = [match range];
-    if ([codeBlockChars containsIndexesInRange:fullRange]) return;
-
-    NSRange contentRange = [match rangeAtIndex:1];
-
-    MarkdownElementStyle *style = self->_styleConfig.emphasis;
-    UIFont *italicFont = [style resolvedFontWithBase:baseFont];
-    if (!italicFont) {
-      UIFontDescriptor *desc =
-          [baseFont.fontDescriptor fontDescriptorWithSymbolicTraits:
-              UIFontDescriptorTraitItalic];
-      italicFont = desc ? [UIFont fontWithDescriptor:desc size:baseFont.pointSize]
-                        : baseFont;
-    }
-
-    [as addAttribute:NSFontAttributeName value:italicFont range:contentRange];
-    if (style.color) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:style.color
-                 range:contentRange];
-    }
-
-    // Dim the single * markers
-    [as addAttribute:NSForegroundColorAttributeName
-               value:markerColor
-               range:NSMakeRange(fullRange.location, 1)];
-    [as addAttribute:NSForegroundColorAttributeName
-               value:markerColor
-               range:NSMakeRange(fullRange.location + fullRange.length - 1, 1)];
-  }];
-}
-
-- (void)styleStrikethrough:(NSMutableAttributedString *)as
-               markerColor:(UIColor *)markerColor
-            codeBlockChars:(NSMutableIndexSet *)codeBlockChars {
-  NSString *text = as.string;
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"(~~)(.+?)\\1"
-                           options:0
-                             error:nil];
-
-  [regex enumerateMatchesInString:text
-                          options:0
-                            range:NSMakeRange(0, text.length)
-                       usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags,
-                                    BOOL *stop) {
-    NSRange fullRange = [match range];
-    if ([codeBlockChars containsIndexesInRange:fullRange]) return;
-
-    NSRange markerRange = [match rangeAtIndex:1];
-    NSRange contentRange = [match rangeAtIndex:2];
-    NSRange closeMarker = NSMakeRange(contentRange.location + contentRange.length,
-                                       markerRange.length);
-
-    MarkdownElementStyle *style = self->_styleConfig.strikethrough;
-
-    [as addAttribute:NSStrikethroughStyleAttributeName
-               value:@(NSUnderlineStyleSingle)
-               range:contentRange];
-    if (style.color) {
-      [as addAttribute:NSForegroundColorAttributeName
-                 value:style.color
-                 range:contentRange];
-      [as addAttribute:NSStrikethroughColorAttributeName
-                 value:style.color
-                 range:contentRange];
-    }
-
-    // Dim markers
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:markerRange];
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:closeMarker];
-  }];
-}
-
-- (void)styleLinks:(NSMutableAttributedString *)as
-       markerColor:(UIColor *)markerColor
-    codeBlockChars:(NSMutableIndexSet *)codeBlockChars {
-  NSString *text = as.string;
-  NSRegularExpression *regex = [NSRegularExpression
-      regularExpressionWithPattern:@"(\\[)(.+?)(\\]\\()(.+?)(\\))"
-                           options:0
-                             error:nil];
-
-  [regex enumerateMatchesInString:text
-                          options:0
-                            range:NSMakeRange(0, text.length)
-                       usingBlock:^(NSTextCheckingResult *match, NSMatchingFlags flags,
-                                    BOOL *stop) {
-    NSRange fullRange = [match range];
-    if ([codeBlockChars containsIndexesInRange:fullRange]) return;
-
-    NSRange openBracket = [match rangeAtIndex:1];
-    NSRange linkText = [match rangeAtIndex:2];
-    NSRange closeBracketOpenParen = [match rangeAtIndex:3];
-    NSRange urlRange = [match rangeAtIndex:4];
-    NSRange closeParen = [match rangeAtIndex:5];
-
-    MarkdownElementStyle *style = self->_styleConfig.link;
-    UIColor *linkColor = style.color ?: [UIColor systemBlueColor];
-
-    // Style the link text
-    [as addAttribute:NSForegroundColorAttributeName value:linkColor range:linkText];
-
-    // Dim the syntax markers and URL
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:openBracket];
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:closeBracketOpenParen];
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:urlRange];
-    [as addAttribute:NSForegroundColorAttributeName value:markerColor range:closeParen];
-  }];
-}
-
+// ---------------------------------------------------------------
 #pragma mark - State Detection
+// ---------------------------------------------------------------
 
 - (void)detectFormattingState {
   NSRange range = _textView.selectedRange;
   if (range.location == NSNotFound) return;
+  if (_textView.textStorage.length == 0) return;
 
-  NSString *text = _textView.text;
-  if (text.length == 0) return;
+  // Read attributes at the cursor position (or start of selection)
+  NSUInteger idx = range.location > 0 ? range.location - 1 : 0;
+  if (idx >= _textView.textStorage.length) {
+    idx = _textView.textStorage.length - 1;
+  }
 
-  _isBold = [self isInsideMarker:@"**" inText:text atPosition:range.location];
-  _isItalic =
-      [self isInsideMarker:@"*" inText:text atPosition:range.location] &&
-      !_isBold;
-  _isStrikethrough =
-      [self isInsideMarker:@"~~" inText:text atPosition:range.location];
-  _isCode =
-      [self isInsideMarker:@"`" inText:text atPosition:range.location];
+  NSDictionary *attrs = [_textView.textStorage attributesAtIndex:idx
+                                                  effectiveRange:nil];
 
-  [self emitStateChange];
+  [self emitStateFromAttrs:attrs];
 }
 
-- (BOOL)isInsideMarker:(NSString *)marker
-                inText:(NSString *)text
-            atPosition:(NSUInteger)pos {
-  NSRange before = [text rangeOfString:marker
-                               options:NSBackwardsSearch
-                                 range:NSMakeRange(0, pos)];
-  if (before.location == NSNotFound) return NO;
-
-  NSUInteger searchStart = before.location + marker.length;
-  if (searchStart >= text.length) return NO;
-
-  NSRange after = [text rangeOfString:marker
-                              options:0
-                                range:NSMakeRange(searchStart,
-                                                   text.length - searchStart)];
-  if (after.location == NSNotFound) return NO;
-
-  return pos > before.location && pos <= after.location;
+- (void)syncTypingAttributes {
+  _textView.typingAttributes = [self baseAttrs];
 }
 
+// ---------------------------------------------------------------
+#pragma mark - Font Helpers
+// ---------------------------------------------------------------
+
+- (UIFont *)boldVariantOf:(UIFont *)font {
+  UIFontDescriptorSymbolicTraits traits =
+      font.fontDescriptor.symbolicTraits | UIFontDescriptorTraitBold;
+  UIFontDescriptor *desc =
+      [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
+  return desc ? [UIFont fontWithDescriptor:desc size:font.pointSize]
+              : [UIFont boldSystemFontOfSize:font.pointSize];
+}
+
+- (UIFont *)unboldVariantOf:(UIFont *)font {
+  UIFontDescriptorSymbolicTraits traits =
+      font.fontDescriptor.symbolicTraits & ~UIFontDescriptorTraitBold;
+  UIFontDescriptor *desc =
+      [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
+  return desc ? [UIFont fontWithDescriptor:desc size:font.pointSize]
+              : [UIFont systemFontOfSize:font.pointSize];
+}
+
+- (UIFont *)italicVariantOf:(UIFont *)font {
+  UIFontDescriptorSymbolicTraits traits =
+      font.fontDescriptor.symbolicTraits | UIFontDescriptorTraitItalic;
+  UIFontDescriptor *desc =
+      [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
+  return desc ? [UIFont fontWithDescriptor:desc size:font.pointSize]
+              : font;
+}
+
+- (UIFont *)unitalicVariantOf:(UIFont *)font {
+  UIFontDescriptorSymbolicTraits traits =
+      font.fontDescriptor.symbolicTraits & ~UIFontDescriptorTraitItalic;
+  UIFontDescriptor *desc =
+      [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
+  return desc ? [UIFont fontWithDescriptor:desc size:font.pointSize]
+              : font;
+}
+
+// ---------------------------------------------------------------
 #pragma mark - Events
+// ---------------------------------------------------------------
 
-- (void)emitChangeEvents {
+- (void)emitMarkdownChange {
   if (!_eventEmitter) return;
 
+  NSString *markdown = [self exportMarkdown];
   const auto &emitter =
       static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
 
   emitter.onChangeText({.text = std::string([_textView.text UTF8String])});
   emitter.onChangeMarkdown(
-      {.markdown = std::string([_textView.text UTF8String])});
+      {.markdown = std::string([markdown UTF8String])});
 }
 
-- (void)emitStateChange {
+- (void)emitStateFromAttrs:(NSDictionary *)attrs {
   if (!_eventEmitter) return;
 
   const auto &emitter =
       static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
 
+  NSString *linkUrl = attrs[kLink] ?: @"";
+  NSNumber *heading = attrs[kHeading];
+
+  NSString *listType = @"";
+  if ([attrs[kOrderedList] boolValue]) listType = @"ordered";
+  else if ([attrs[kUnorderedList] boolValue]) listType = @"unordered";
+
   emitter.onChangeState({
-      .bold = _isBold,
-      .italic = _isItalic,
-      .strikethrough = _isStrikethrough,
-      .code = _isCode,
-      .linkUrl = std::string(""),
-      .heading = 0,
-      .list = std::string(""),
+      .bold = [attrs[kBold] boolValue],
+      .italic = [attrs[kItalic] boolValue],
+      .strikethrough = [attrs[kStrike] boolValue],
+      .code = [attrs[kCode] boolValue],
+      .linkUrl = std::string([linkUrl UTF8String]),
+      .heading = heading ? static_cast<int>(heading.integerValue) : 0,
+      .list = std::string([listType UTF8String]),
   });
 }
 
+// ---------------------------------------------------------------
 #pragma mark - UITextViewDelegate
+// ---------------------------------------------------------------
 
 - (void)textViewDidChange:(UITextView *)textView {
-  [self applyMarkdownFormatting];
-  [self emitChangeEvents];
+  [self emitMarkdownChange];
 }
 
 - (void)textViewDidChangeSelection:(UITextView *)textView {
