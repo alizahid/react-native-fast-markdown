@@ -1,7 +1,7 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native'
 import {
   Markdown,
-  type MarkdownBlockStyle,
+  type MarkdownBaseStyle,
   type MarkdownStyle,
 } from 'react-native-markdown'
 
@@ -114,7 +114,7 @@ const serifTheme: MarkdownStyle = {
 const themes: Array<{
   name: string
   styles: MarkdownStyle
-  style?: MarkdownBlockStyle
+  style?: MarkdownBaseStyle
 }> = [
   {
     name: 'Default',

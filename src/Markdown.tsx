@@ -5,7 +5,7 @@ import { normalizeMarkdownStyle } from './normalizeStyle'
 import {
   type ImagePressEvent,
   type LinkPressEvent,
-  type MarkdownBlockStyle,
+  type MarkdownBaseStyle,
   type MarkdownImageData,
   type MarkdownStyle,
   type MentionPressEvent,
@@ -47,10 +47,15 @@ export interface MarkdownProps extends Omit<ViewProps, 'style'> {
   /** Called when a task list checkbox is pressed */
   onTaskListItemPress?: (event: TaskListItemPressEvent) => void
 
-  /** Style applied to the markdown container. Accepts both ViewStyle
-   *  (padding, background, borders, gap between blocks) and TextStyle
-   *  (default font, color, lineHeight inherited by all text). */
-  style?: StyleProp<MarkdownBlockStyle>
+  /** Style applied to the markdown container. Block-view props
+   *  (background, border, radius, margin, padding, width / height)
+   *  apply to the outer container; `gap` sets the vertical spacing
+   *  between top-level blocks. A reduced subset of text props —
+   *  `color`, `fontFamily`, `fontSize`, `fontStyle`, `fontWeight`,
+   *  `lineHeight`, `textAlign` — cascade down to every block. Other
+   *  text styling should be set on the per-element key in `styles`
+   *  instead. */
+  style?: StyleProp<MarkdownBaseStyle>
 
   /** Custom styles for markdown elements */
   styles?: MarkdownStyle

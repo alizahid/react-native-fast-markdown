@@ -1,10 +1,13 @@
 import { type TextStyle, type ViewStyle } from 'react-native'
 
-// --- Style type building blocks ---
+// --- Style building blocks ---
 
-/** Standard React Native ViewStyle properties supported on block-level
- *  markdown elements. Applied to a container view that wraps the block. */
-export type MarkdownViewStyle = Pick<
+/** Every block-level element in markdown goes through
+ *  MarkdownBlockView on the native side, which reads exactly this
+ *  set of view-style props: background, border widths + colors
+ *  (uniform + per-side), border radius (uniform + per-corner),
+ *  margin, padding, and explicit width / height overrides. */
+export type MarkdownBlockViewStyle = Pick<
   ViewStyle,
   | 'backgroundColor'
   | 'borderBottomColor'
@@ -24,7 +27,6 @@ export type MarkdownViewStyle = Pick<
   | 'borderTopRightRadius'
   | 'borderTopWidth'
   | 'borderWidth'
-  | 'gap'
   | 'height'
   | 'margin'
   | 'marginBottom'
@@ -33,8 +35,6 @@ export type MarkdownViewStyle = Pick<
   | 'marginRight'
   | 'marginTop'
   | 'marginVertical'
-  | 'maxHeight'
-  | 'maxWidth'
   | 'padding'
   | 'paddingBottom'
   | 'paddingHorizontal'
@@ -45,9 +45,12 @@ export type MarkdownViewStyle = Pick<
   | 'width'
 >
 
-/** Standard React Native TextStyle properties supported on text and
- *  block-level elements. Applied via attributed string attributes. */
-export type MarkdownTextStyle = Pick<
+/** Full text-style surface applied via StyleAttributes.applyStyle
+ *  on the native side: font (family, size, style, weight), color,
+ *  inline background highlight, kerning, text decoration, line
+ *  height, and alignment. Elements whose renderer calls applyStyle
+ *  accept this entire surface. */
+export type MarkdownInlineTextStyle = Pick<
   TextStyle,
   | 'backgroundColor'
   | 'color'
@@ -63,69 +66,222 @@ export type MarkdownTextStyle = Pick<
   | 'textDecorationStyle'
 >
 
-/** Block-level style: accepts both ViewStyle (for the container)
- *  and TextStyle (for the text inside). */
-export type MarkdownBlockStyle = MarkdownViewStyle & MarkdownTextStyle
+// --- Per-element styles ---
 
-/** Image block style: ViewStyle plus `objectFit` which controls how
- *  the image fills the reserved rect when `maxWidth` / `maxHeight`
- *  produce a box whose aspect ratio differs from the image's
- *  natural aspect ratio.
- *
- *  - `cover` (default): the block is sized to (maxWidth, maxHeight)
- *    exactly and the image is scaled to fill, cropping whatever
- *    overflows.
- *  - `contain`: the block shrinks to the image's natural aspect
- *    ratio fitted within (maxWidth, maxHeight). No cropping, no
- *    empty space. */
-export type MarkdownImageStyle = MarkdownViewStyle & {
+/** Outer `<Markdown style={...}>` style. The root block view reads
+ *  the full MarkdownBlockViewStyle surface; `gap` sets the vertical
+ *  spacing between top-level blocks. A reduced subset of text props
+ *  cascades down to every nested block: `color`, `fontFamily`,
+ *  `fontSize`, `fontStyle`, `fontWeight`, `lineHeight`, `textAlign`.
+ *  Other text props (kerning, decoration, inline background) need
+ *  to be set on the individual element style instead. */
+export type MarkdownBaseStyle = MarkdownBlockViewStyle & {
+  gap?: number
+} & Pick<
+    TextStyle,
+    | 'color'
+    | 'fontFamily'
+    | 'fontSize'
+    | 'fontStyle'
+    | 'fontWeight'
+    | 'lineHeight'
+    | 'textAlign'
+  >
+
+/** Paragraph — a block-level run of text. Supports the full block
+ *  view surface (background, borders, radius, margin, padding) plus
+ *  the full inline text set. */
+export type MarkdownParagraphStyle = MarkdownBlockViewStyle &
+  MarkdownInlineTextStyle
+
+/** Heading levels 1 through 6. Same surface as paragraph; each
+ *  level has its own style key and the renderer picks the right
+ *  one. */
+export type MarkdownHeadingStyle = MarkdownBlockViewStyle &
+  MarkdownInlineTextStyle
+
+/** Blockquote. Same surface as paragraph plus `gap` for the
+ *  vertical spacing between nested children — the blockquote is a
+ *  container that can hold multiple paragraphs / lists / code
+ *  blocks. Text props on the blockquote style cascade down into
+ *  those children. */
+export type MarkdownBlockquoteStyle = MarkdownBlockViewStyle &
+  MarkdownInlineTextStyle & {
+    gap?: number
+  }
+
+/** Fenced code block. Block view surface plus the full inline text
+ *  set — the block's text runs through the same attributed-string
+ *  pipeline so `fontFamily` lets you swap in a monospaced font and
+ *  `backgroundColor` on the block view gives it the classic tinted
+ *  look. */
+export type MarkdownCodeBlockStyle = MarkdownBlockViewStyle &
+  MarkdownInlineTextStyle
+
+/** Outer list container. Only block view props plus `gap` (the
+ *  vertical spacing between list items) apply here — text props on
+ *  the list style itself are NOT read. Use `listItem` or
+ *  `listBullet` to style the item text or the marker. */
+export type MarkdownListStyle = MarkdownBlockViewStyle & {
+  gap?: number
+}
+
+/** List item. Wraps a single marker + content pair. Block view
+ *  surface plus the full inline text set for the item's content
+ *  text. */
+export type MarkdownListItemStyle = MarkdownBlockViewStyle &
+  MarkdownInlineTextStyle
+
+/** The bullet or numbered marker on each list item. The marker is
+ *  rendered as a prefix string inside the attributed content of
+ *  the item, so only text-style props apply. */
+export type MarkdownListBulletStyle = MarkdownInlineTextStyle
+
+/** Block-level image (`![alt](url)` on its own line). Block view
+ *  surface plus image-specific sizing constraints. Text props are
+ *  not read — images don't render any text. */
+export type MarkdownImageStyle = MarkdownBlockViewStyle & {
+  /** Hard cap on the block height. When the natural size would
+   *  exceed this, the block (and image inside) scale down
+   *  proportionally. */
+  maxHeight?: number
+  /** Hard cap on the block width. Same semantics as `maxHeight`. */
+  maxWidth?: number
+  /** How the image fills the reserved rect when `maxWidth` /
+   *  `maxHeight` produce a box whose aspect ratio differs from the
+   *  image's natural aspect ratio.
+   *
+   *  - `cover` (default): the block is sized to (maxWidth,
+   *    maxHeight) exactly and the image scales to fill, cropping
+   *    whatever overflows.
+   *  - `contain`: the block shrinks to the image's natural aspect
+   *    ratio fitted within the max box. No cropping, no empty
+   *    space. */
   objectFit?: 'contain' | 'cover'
 }
+
+/** Horizontal rule. Block view surface — `height` sets the line
+ *  thickness and `backgroundColor` sets the line color. There's
+ *  no text. */
+export type MarkdownThematicBreakStyle = MarkdownBlockViewStyle
+
+/** Outer table container. Only the block view surface applies
+ *  here — the wrapping background, border, corner radius, padding
+ *  and margin. Internal cell grid lines are driven by the
+ *  `tableCell` border, not this style. */
+export type MarkdownTableStyle = MarkdownBlockViewStyle
+
+/** Table row. Only `backgroundColor` is read — everything else
+ *  (borders, padding, text) is set via `tableCell` or
+ *  `tableHeaderCell`. */
+export type MarkdownTableRowStyle = Pick<ViewStyle, 'backgroundColor'>
+
+/** Table cell. Uniform border (per-side borders aren't supported
+ *  on cells), padding, background — plus the cell text's font,
+ *  color, and alignment. Inline formatting inside the cell (bold,
+ *  emphasis, links, …) still flows through the inline renderers. */
+export type MarkdownTableCellStyle = Pick<
+  ViewStyle,
+  | 'backgroundColor'
+  | 'borderColor'
+  | 'borderWidth'
+  | 'padding'
+  | 'paddingBottom'
+  | 'paddingHorizontal'
+  | 'paddingLeft'
+  | 'paddingRight'
+  | 'paddingTop'
+  | 'paddingVertical'
+> &
+  Pick<
+    TextStyle,
+    'color' | 'fontFamily' | 'fontSize' | 'fontStyle' | 'fontWeight' | 'textAlign'
+  >
+
+/** Inline link. Full text surface — color, font, decoration,
+ *  inline background. View-style props (padding, borders, …) don't
+ *  apply to inline runs. */
+export type MarkdownLinkStyle = MarkdownInlineTextStyle
+
+/** Inline code span. Full text surface — set `backgroundColor` to
+ *  get the classic inline code tint and `fontFamily` to switch to
+ *  a monospaced font. */
+export type MarkdownCodeStyle = MarkdownInlineTextStyle
+
+/** Mention span. Three mention types share the same surface:
+ *  `mentionUser` (@), `mentionChannel` (#), `mentionCommand` (/).
+ *  Full text surface — the press overlay is a separate view that
+ *  doesn't read any style props. */
+export type MarkdownMentionStyle = MarkdownInlineTextStyle
+
+/** Bold / strong span. Only `color` is read — the renderer derives
+ *  the bold trait from whatever font is currently in effect and
+ *  layers the color on top. */
+export type MarkdownStrongStyle = Pick<TextStyle, 'color'>
+
+/** Italic / emphasis span. Only `color` is read — the renderer
+ *  derives the italic trait from the current font. */
+export type MarkdownEmphasisStyle = Pick<TextStyle, 'color'>
+
+/** Strikethrough span. Only `color` is read — both the glyphs and
+ *  the strike line pick up the same color. */
+export type MarkdownStrikethroughStyle = Pick<TextStyle, 'color'>
+
+/** Spoiler overlay. Only `backgroundColor` (the overlay fill) and
+ *  `borderRadius` (the overlay corner radius) are read — the
+ *  spoiler is drawn as a single coloured shape on top of its text
+ *  range, not as a block view. */
+export type MarkdownSpoilerStyle = Pick<
+  ViewStyle,
+  'backgroundColor' | 'borderRadius'
+>
 
 // --- Markdown Style ---
 
 // biome-ignore assist/source/useSortedInterfaceMembers: go away
 export interface MarkdownStyle {
-  // Block elements (accept both view + text)
-  paragraph?: MarkdownBlockStyle
-  heading1?: MarkdownBlockStyle
-  heading2?: MarkdownBlockStyle
-  heading3?: MarkdownBlockStyle
-  heading4?: MarkdownBlockStyle
-  heading5?: MarkdownBlockStyle
-  heading6?: MarkdownBlockStyle
-  blockquote?: MarkdownBlockStyle
-  codeBlock?: MarkdownBlockStyle
-  list?: MarkdownBlockStyle
-  listItem?: MarkdownBlockStyle
+  // Block-level text content
+  paragraph?: MarkdownParagraphStyle
+  heading1?: MarkdownHeadingStyle
+  heading2?: MarkdownHeadingStyle
+  heading3?: MarkdownHeadingStyle
+  heading4?: MarkdownHeadingStyle
+  heading5?: MarkdownHeadingStyle
+  heading6?: MarkdownHeadingStyle
+  blockquote?: MarkdownBlockquoteStyle
+  codeBlock?: MarkdownCodeBlockStyle
 
-  // Block elements with no text content
-  thematicBreak?: MarkdownViewStyle
+  // Lists
+  list?: MarkdownListStyle
+  listItem?: MarkdownListItemStyle
+  listBullet?: MarkdownListBulletStyle
+
+  // Block-level with no text content
   image?: MarkdownImageStyle
+  thematicBreak?: MarkdownThematicBreakStyle
 
   // Tables
-  table?: MarkdownViewStyle
-  tableRow?: MarkdownViewStyle
-  tableHeaderRow?: MarkdownViewStyle
-  tableCell?: MarkdownBlockStyle
-  tableHeaderCell?: MarkdownBlockStyle
+  table?: MarkdownTableStyle
+  tableRow?: MarkdownTableRowStyle
+  tableHeaderRow?: MarkdownTableRowStyle
+  tableCell?: MarkdownTableCellStyle
+  tableHeaderCell?: MarkdownTableCellStyle
 
-  // Inline / text-only elements
-  strong?: MarkdownTextStyle
-  emphasis?: MarkdownTextStyle
-  strikethrough?: MarkdownTextStyle
-  underline?: MarkdownTextStyle
-  code?: MarkdownTextStyle
-  link?: MarkdownTextStyle
-  listBullet?: MarkdownTextStyle
+  // Inline — full text styling
+  link?: MarkdownLinkStyle
+  code?: MarkdownCodeStyle
+  mentionUser?: MarkdownMentionStyle
+  mentionChannel?: MarkdownMentionStyle
+  mentionCommand?: MarkdownMentionStyle
 
-  // Mentions — three trigger types, each with its own style
-  mentionUser?: MarkdownTextStyle
-  mentionChannel?: MarkdownTextStyle
-  mentionCommand?: MarkdownTextStyle
+  // Inline — color-only (bold / italic / strikethrough traits are
+  // derived from the token itself, not from this style)
+  strong?: MarkdownStrongStyle
+  emphasis?: MarkdownEmphasisStyle
+  strikethrough?: MarkdownStrikethroughStyle
 
   // Special
-  spoiler?: MarkdownViewStyle
+  spoiler?: MarkdownSpoilerStyle
 }
 
 // --- Event Types ---

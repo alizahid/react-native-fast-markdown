@@ -35,18 +35,9 @@ const defaultStyle: MarkdownStyle = {
     fontSize: 18,
     fontWeight: '600',
   },
-  strong: {
-    fontWeight: '600',
-  },
-  emphasis: {
-    fontStyle: 'italic',
-  },
-  strikethrough: {
-    textDecorationLine: 'line-through',
-  },
-  underline: {
-    textDecorationLine: 'underline',
-  },
+  // Note: bold / italic / strikethrough traits are derived from the
+  // token itself by the native renderer — the only customization
+  // exposed on `strong`, `emphasis`, `strikethrough` is `color`.
   code: {
     fontFamily: fonts.mono,
     fontSize: 14,
