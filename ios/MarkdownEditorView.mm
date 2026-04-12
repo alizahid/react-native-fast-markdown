@@ -32,6 +32,10 @@ using namespace facebook::react;
 
   // Guards against re-entrant formatting during programmatic edits
   BOOL _suppressFormatting;
+
+  // Tracks whether the last keypress was Enter on an empty line
+  // inside a block. A second Enter breaks out.
+  BOOL _lastWasEmptyBlockEnter;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -807,18 +811,12 @@ using namespace facebook::react;
 #pragma mark - Block Continuation on Enter
 
 /// Called from shouldChangeTextInRange: when Enter is pressed
-/// inside a code block or blockquote. On an empty line, breaks
-/// out of the block. Returns YES if handled.
+/// inside a code block or blockquote. Pressing Enter on an empty
+/// line twice breaks out (first Enter creates the empty line,
+/// second Enter breaks out — same UX as lists).
 - (BOOL)handleNewlineInBlock:(NSRange)range {
   NSString *text = _textView.text;
   if (text.length == 0) return NO;
-
-  NSRange lineRange = [text lineRangeForRange:range];
-  if (lineRange.length > 0 &&
-      [text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
-    lineRange.length--;
-  }
-  NSString *line = [text substringWithRange:lineRange];
 
   // Check if cursor is inside a code block or blockquote
   FormattingType blockType = FormattingTypeCodeBlock;
@@ -828,58 +826,80 @@ using namespace facebook::react;
     if (r.type != FormattingTypeCodeBlock &&
         r.type != FormattingTypeBlockquote) continue;
     if (range.location >= r.range.location &&
-        range.location <= NSMaxRange(r.range)) {
+        range.location < NSMaxRange(r.range)) {
       blockRange = r;
       blockType = r.type;
       break;
     }
   }
 
-  if (!blockRange) return NO;
+  if (!blockRange) {
+    _lastWasEmptyBlockEnter = NO;
+    return NO;
+  }
 
-  // If the current line is empty (or whitespace only), break out
+  NSRange lineRange = [text lineRangeForRange:range];
+  if (lineRange.length > 0 &&
+      [text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
+    lineRange.length--;
+  }
+  NSString *line = [text substringWithRange:lineRange];
   NSString *trimmed = [line stringByTrimmingCharactersInSet:
       [NSCharacterSet whitespaceAndNewlineCharacterSet]];
 
-  if (trimmed.length == 0) {
-    // Delete the empty line content
-    _suppressFormatting = YES;
-    if (lineRange.length > 0) {
-      [_textView.textStorage deleteCharactersInRange:lineRange];
-      [_store adjustForEditAt:lineRange.location
-                deletedLength:lineRange.length
-               insertedLength:0];
+  BOOL lineIsEmpty = trimmed.length == 0;
+
+  if (lineIsEmpty && _lastWasEmptyBlockEnter) {
+    // Second Enter on empty line — break out of the block
+    _lastWasEmptyBlockEnter = NO;
+
+    // Delete the empty line and its preceding newline
+    NSUInteger deleteStart = lineRange.location;
+    NSUInteger deleteEnd = NSMaxRange(lineRange);
+    // Include the newline before this empty line
+    if (deleteStart > 0 &&
+        [_textView.text characterAtIndex:deleteStart - 1] == '\n') {
+      deleteStart--;
     }
+    NSRange deleteRange = NSMakeRange(deleteStart, deleteEnd - deleteStart);
+
+    _suppressFormatting = YES;
+    [_textView.textStorage deleteCharactersInRange:deleteRange];
+    [_store adjustForEditAt:deleteStart
+              deletedLength:deleteRange.length
+             insertedLength:0];
     _suppressFormatting = NO;
 
-    // Trim the block range to end before this line
+    // Trim the block range to end before the deleted region
     NSRange oldRange = blockRange.range;
-    if (lineRange.location > oldRange.location) {
-      // Shrink the range to end at the start of this line
-      NSUInteger newEnd = lineRange.location;
-      // Also trim the trailing newline from the block
-      if (newEnd > 0 && newEnd <= _textView.text.length &&
-          [_textView.text characterAtIndex:newEnd - 1] == '\n') {
-        newEnd--;
-      }
-      if (newEnd > oldRange.location) {
-        [_store removeRangesOfType:blockType intersecting:oldRange];
-        [_store addRange:[FormattingRange
-                            rangeWithType:blockType
-                                    range:NSMakeRange(oldRange.location,
-                                                       newEnd - oldRange.location)]];
-      } else {
-        [_store removeRangesOfType:blockType intersecting:oldRange];
-      }
-    } else {
-      // The block was just the empty line — remove it entirely
-      [_store removeRangesOfType:blockType intersecting:oldRange];
+    NSUInteger newEnd = deleteStart;
+    // Trim any trailing newline from the block
+    if (newEnd > 0 && newEnd <= _textView.text.length &&
+        [_textView.text characterAtIndex:newEnd - 1] == '\n') {
+      newEnd--;
     }
 
+    [_store removeRangesOfType:blockType intersecting:oldRange];
+    if (newEnd > oldRange.location) {
+      [_store addRange:[FormattingRange
+                          rangeWithType:blockType
+                                  range:NSMakeRange(oldRange.location,
+                                                     newEnd - oldRange.location)]];
+    }
+
+    _textView.selectedRange = NSMakeRange(deleteStart, 0);
     [self applyFormatting];
     [self resetTypingAttributes];
     [self emitMarkdownChange];
     return YES;
+  }
+
+  if (lineIsEmpty) {
+    // First Enter on empty line — mark it, let the newline go
+    // through normally so adjustForEditAt expands the block
+    _lastWasEmptyBlockEnter = YES;
+  } else {
+    _lastWasEmptyBlockEnter = NO;
   }
 
   return NO;
@@ -1161,6 +1181,9 @@ using namespace facebook::react;
     if ([self handleNewlineInBlock:range]) {
       return NO;
     }
+  } else {
+    // Any non-Enter input resets the double-Enter tracker
+    _lastWasEmptyBlockEnter = NO;
   }
 
   NSUInteger deleted = range.length;
