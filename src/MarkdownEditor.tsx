@@ -1,16 +1,16 @@
 import React, { forwardRef, useCallback, useMemo } from 'react'
 import { type ColorValue, type ViewProps } from 'react-native'
-import MarkdownInputViewNative, {
+import MarkdownEditorViewNative, {
   Commands,
-} from './MarkdownInputNativeComponent'
+} from './MarkdownEditorNativeComponent'
 import { normalizeMarkdownStyle } from './normalizeStyle'
 import {
   type EditorStyleState,
-  type MarkdownInputHandle,
+  type MarkdownEditorHandle,
   type MarkdownStyle,
 } from './types'
 
-export interface MarkdownInputProps extends ViewProps {
+export interface MarkdownEditorProps extends ViewProps {
   /** Auto-capitalize behavior */
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'
 
@@ -71,10 +71,10 @@ export interface MarkdownInputProps extends ViewProps {
   styles?: MarkdownStyle
 }
 
-export const MarkdownInput = forwardRef<
-  MarkdownInputHandle,
-  MarkdownInputProps
->(function MarkdownInput(
+export const MarkdownEditor = forwardRef<
+  MarkdownEditorHandle,
+  MarkdownEditorProps
+>(function MarkdownEditor(
   {
     defaultValue,
     placeholder,
@@ -101,7 +101,7 @@ export const MarkdownInput = forwardRef<
   ref,
 ) {
   const nativeRef =
-    React.useRef<React.ElementRef<typeof MarkdownInputViewNative>>(null)
+    React.useRef<React.ElementRef<typeof MarkdownEditorViewNative>>(null)
 
   const serializedStyles = useMemo(
     () => normalizeMarkdownStyle(markdownStyles),
@@ -244,7 +244,7 @@ export const MarkdownInput = forwardRef<
   )
 
   return (
-    <MarkdownInputViewNative
+    <MarkdownEditorViewNative
       {...viewProps}
       autoCapitalize={autoCapitalize}
       autoFocus={autoFocus}

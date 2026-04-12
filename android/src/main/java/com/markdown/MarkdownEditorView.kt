@@ -8,7 +8,7 @@ import com.markdown.parser.ParserBridge
 import com.markdown.renderer.MarkdownRenderer
 import com.markdown.styles.StyleConfig
 
-class MarkdownInputView(context: Context) : EditText(context) {
+class MarkdownEditorView(context: Context) : EditText(context) {
 
     private val renderer = MarkdownRenderer(context)
     private var styleConfig = StyleConfig()

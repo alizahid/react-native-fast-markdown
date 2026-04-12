@@ -3,7 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface MarkdownInputView : RCTViewComponentView
+@interface MarkdownEditorView : RCTViewComponentView
 
 @end
 

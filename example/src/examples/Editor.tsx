@@ -9,8 +9,8 @@ import {
 } from 'react-native'
 import {
   type EditorStyleState,
-  MarkdownInput,
-  useMarkdownInput,
+  MarkdownEditor,
+  useMarkdownEditor,
 } from 'react-native-markdown'
 
 const initialMarkdown = `\
@@ -43,7 +43,7 @@ function ToolbarButton({
 }
 
 export function EditorScreen() {
-  const editor = useMarkdownInput()
+  const editor = useMarkdownEditor()
   const [styleState, setStyleState] = useState<EditorStyleState>({
     bold: false,
     italic: false,
@@ -81,7 +81,7 @@ export function EditorScreen() {
       >
         <Text style={styles.label}>EDITOR</Text>
         <View style={styles.editorCard}>
-          <MarkdownInput
+          <MarkdownEditor
             autoFocus
             defaultValue={initialMarkdown}
             onChangeMarkdown={setMarkdown}

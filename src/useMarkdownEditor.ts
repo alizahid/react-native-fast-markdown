@@ -1,8 +1,8 @@
 import { useCallback, useRef } from 'react'
-import { type MarkdownInputHandle } from './types'
+import { type MarkdownEditorHandle } from './types'
 
-export function useMarkdownInput() {
-  const ref = useRef<MarkdownInputHandle>(null)
+export function useMarkdownEditor() {
+  const ref = useRef<MarkdownEditorHandle>(null)
 
   const focus = useCallback(() => ref.current?.focus(), [])
   const blur = useCallback(() => ref.current?.blur(), [])

@@ -10,7 +10,7 @@ import {
   type Int32,
 } from 'react-native/Libraries/Types/CodegenTypes'
 
-export interface MarkdownInputViewNativeProps extends ViewProps {
+export interface MarkdownEditorViewNativeProps extends ViewProps {
   autoCapitalize?: string
   autoFocus?: boolean
   cursorColor?: string
@@ -47,54 +47,54 @@ export interface MarkdownInputViewNativeProps extends ViewProps {
   styles?: string // JSON-serialized MarkdownStyle
 }
 
-type MarkdownInputViewComponent = HostComponent<MarkdownInputViewNativeProps>
+type MarkdownEditorViewComponent = HostComponent<MarkdownEditorViewNativeProps>
 
 interface NativeCommands {
-  blur: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
-  focus: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
+  blur: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
+  focus: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
   insertCustomTag: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
     tag: string,
     propsJson: string,
   ) => void
   insertLink: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
     url: string,
     text: string,
   ) => void
   insertMention: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
     user: string,
   ) => void
-  insertSpoiler: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
-  removeLink: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
+  insertSpoiler: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
+  removeLink: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
   setSelection: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
     start: Int32,
     end: Int32,
   ) => void
   setValue: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
     value: string,
   ) => void
   toggleBlockquote: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
   ) => void
-  toggleBold: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
-  toggleCode: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
+  toggleBold: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
+  toggleCode: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
   toggleHeading: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
     level: Int32,
   ) => void
-  toggleItalic: (viewRef: React.ElementRef<MarkdownInputViewComponent>) => void
+  toggleItalic: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
   toggleOrderedList: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
   ) => void
   toggleStrikethrough: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
   ) => void
   toggleUnorderedList: (
-    viewRef: React.ElementRef<MarkdownInputViewComponent>,
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
   ) => void
 }
 
@@ -120,6 +120,6 @@ export const Commands = codegenNativeCommands<NativeCommands>({
   ],
 })
 
-export default codegenNativeComponent<MarkdownInputViewNativeProps>(
-  'MarkdownInputView',
-) as MarkdownInputViewComponent
+export default codegenNativeComponent<MarkdownEditorViewNativeProps>(
+  'MarkdownEditorView',
+) as MarkdownEditorViewComponent

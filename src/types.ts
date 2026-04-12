@@ -374,7 +374,7 @@ export interface EditorStyleState {
 
 // --- Editor Handle ---
 
-export interface MarkdownInputHandle {
+export interface MarkdownEditorHandle {
   blur(): void
   focus(): void
   getMarkdown(): Promise<string>

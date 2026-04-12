@@ -15,6 +15,6 @@ class MarkdownPackage : ReactPackage {
         reactContext: ReactApplicationContext
     ): List<ViewManager<*, *>> = listOf(
         MarkdownViewManager(),
-        MarkdownInputViewManager()
+        MarkdownEditorViewManager()
     )
 }

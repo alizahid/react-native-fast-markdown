@@ -1,4 +1,4 @@
-#import "MarkdownInputView.h"
+#import "MarkdownEditorView.h"
 
 #import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
@@ -14,10 +14,10 @@
 
 using namespace facebook::react;
 
-@interface MarkdownInputView () <UITextViewDelegate>
+@interface MarkdownEditorView () <UITextViewDelegate>
 @end
 
-@implementation MarkdownInputView {
+@implementation MarkdownEditorView {
   UITextView *_textView;
   StyleConfig *_styleConfig;
   NSString *_currentStyleJSON;
@@ -32,7 +32,7 @@ using namespace facebook::react;
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
   return concreteComponentDescriptorProvider<
-      MarkdownInputViewComponentDescriptor>();
+      MarkdownEditorViewComponentDescriptor>();
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -56,7 +56,7 @@ using namespace facebook::react;
 - (void)updateProps:(const Props::Shared &)props
            oldProps:(const Props::Shared &)oldProps {
   const auto &newProps =
-      *std::static_pointer_cast<const MarkdownInputViewProps>(props);
+      *std::static_pointer_cast<const MarkdownEditorViewProps>(props);
 
   // Default value
   if (!oldProps) {
@@ -356,7 +356,7 @@ using namespace facebook::react;
   if (!_eventEmitter) return;
 
   const auto &emitter =
-      static_cast<const MarkdownInputViewEventEmitter &>(*_eventEmitter);
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
 
   emitter.onChangeText({.text = std::string([_textView.text UTF8String])});
   emitter.onChangeMarkdown(
@@ -367,7 +367,7 @@ using namespace facebook::react;
   if (!_eventEmitter) return;
 
   const auto &emitter =
-      static_cast<const MarkdownInputViewEventEmitter &>(*_eventEmitter);
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
 
   emitter.onChangeState({
       .bold = _isBold,
@@ -391,7 +391,7 @@ using namespace facebook::react;
 
   if (!_eventEmitter) return;
   const auto &emitter =
-      static_cast<const MarkdownInputViewEventEmitter &>(*_eventEmitter);
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
 
   NSRange range = textView.selectedRange;
   emitter.onChangeSelection({
@@ -403,19 +403,19 @@ using namespace facebook::react;
 - (void)textViewDidBeginEditing:(UITextView *)textView {
   if (!_eventEmitter) return;
   const auto &emitter =
-      static_cast<const MarkdownInputViewEventEmitter &>(*_eventEmitter);
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
   emitter.onEditorFocus({.focused = true});
 }
 
 - (void)textViewDidEndEditing:(UITextView *)textView {
   if (!_eventEmitter) return;
   const auto &emitter =
-      static_cast<const MarkdownInputViewEventEmitter &>(*_eventEmitter);
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
   emitter.onEditorBlur({.focused = false});
 }
 
 @end
 
-Class<RCTComponentViewProtocol> MarkdownInputViewCls(void) {
-  return MarkdownInputView.class;
+Class<RCTComponentViewProtocol> MarkdownEditorViewCls(void) {
+  return MarkdownEditorView.class;
 }

@@ -1,7 +1,7 @@
 export type { MarkdownProps } from './Markdown'
 export { Markdown } from './Markdown'
-export type { MarkdownInputProps } from './MarkdownInput'
-export { MarkdownInput } from './MarkdownInput'
+export type { MarkdownEditorProps } from './MarkdownEditor'
+export { MarkdownEditor } from './MarkdownEditor'
 export type {
   EditorStyleState,
   ImagePressEvent,
@@ -16,7 +16,7 @@ export type {
   MarkdownImageData,
   MarkdownImageStyle,
   MarkdownInlineTextStyle,
-  MarkdownInputHandle,
+  MarkdownEditorHandle,
   MarkdownLinkStyle,
   MarkdownListBulletStyle,
   MarkdownListItemStyle,
@@ -36,4 +36,4 @@ export type {
   MentionType,
   TaskListItemPressEvent,
 } from './types'
-export { useMarkdownInput } from './useMarkdownInput'
+export { useMarkdownEditor } from './useMarkdownEditor'
