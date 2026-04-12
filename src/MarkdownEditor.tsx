@@ -112,7 +112,7 @@ export const MarkdownEditor = forwardRef<
   // properties stay on the native view's style prop.
   const { style, ...restViewProps } = viewProps
 
-  const { textStyle, layoutStyle } = useMemo(() => {
+  const { textStyle, layoutStyle, contentPadding } = useMemo(() => {
     const flat = StyleSheet.flatten(style) || {}
     const text: Record<string, unknown> = {
       color: 'rgb(16, 15, 15)',
@@ -121,15 +121,39 @@ export const MarkdownEditor = forwardRef<
     }
     const layout: Record<string, unknown> = {}
 
+    // Extract padding for textContainerInset
+    let padTop = 0
+    let padRight = 0
+    let padBottom = 0
+    let padLeft = 0
+
     for (const [key, value] of Object.entries(flat)) {
       if (textPropNames.has(key)) {
         text[key] = value
+      } else if (key === 'padding' && typeof value === 'number') {
+        padTop = padRight = padBottom = padLeft = value
+      } else if (key === 'paddingHorizontal' && typeof value === 'number') {
+        padLeft = padRight = value
+      } else if (key === 'paddingVertical' && typeof value === 'number') {
+        padTop = padBottom = value
+      } else if (key === 'paddingTop' && typeof value === 'number') {
+        padTop = value
+      } else if (key === 'paddingRight' && typeof value === 'number') {
+        padRight = value
+      } else if (key === 'paddingBottom' && typeof value === 'number') {
+        padBottom = value
+      } else if (key === 'paddingLeft' && typeof value === 'number') {
+        padLeft = value
       } else {
         layout[key] = value
       }
     }
 
-    return { textStyle: text, layoutStyle: layout }
+    return {
+      textStyle: text,
+      layoutStyle: layout,
+      contentPadding: { padTop, padRight, padBottom, padLeft },
+    }
   }, [style])
 
   const effectiveStyle = useMemo(() => {
@@ -290,6 +314,10 @@ export const MarkdownEditor = forwardRef<
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}
+      contentInsetTop={contentPadding.padTop}
+      contentInsetRight={contentPadding.padRight}
+      contentInsetBottom={contentPadding.padBottom}
+      contentInsetLeft={contentPadding.padLeft}
       cursorColor={cursorColor ? String(cursorColor) : undefined}
       customTags={customTags}
       defaultValue={defaultValue}

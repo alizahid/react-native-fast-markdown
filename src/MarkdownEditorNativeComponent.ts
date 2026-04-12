@@ -14,6 +14,10 @@ export interface MarkdownEditorViewNativeProps extends ViewProps {
   autoCapitalize?: string
   autoCorrect?: boolean
   autoFocus?: boolean
+  contentInsetTop?: Double
+  contentInsetRight?: Double
+  contentInsetBottom?: Double
+  contentInsetLeft?: Double
   cursorColor?: string
   customTags?: ReadonlyArray<string>
   defaultValue?: string

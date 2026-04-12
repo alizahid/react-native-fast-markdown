@@ -239,8 +239,6 @@ const styles = StyleSheet.create({
   input: {
     minHeight: 180,
     padding: 16,
-    fontSize: 16,
-    lineHeight: 24,
   },
   previewCard: {
     backgroundColor: '#fff',

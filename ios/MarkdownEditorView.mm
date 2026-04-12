@@ -109,6 +109,15 @@ using namespace facebook::react;
   }
 
   _textView.editable = newProps.editable;
+
+  // Content inset (padding from style prop)
+  _textView.textContainerInset = UIEdgeInsetsMake(
+      newProps.contentInsetTop,
+      newProps.contentInsetLeft,
+      newProps.contentInsetBottom,
+      newProps.contentInsetRight);
+  _textView.textContainer.lineFragmentPadding = 0;
+
   _textView.autocorrectionType = newProps.autoCorrect
       ? UITextAutocorrectionTypeYes
       : UITextAutocorrectionTypeNo;
