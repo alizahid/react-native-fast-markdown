@@ -804,6 +804,87 @@ using namespace facebook::react;
   return YES;
 }
 
+#pragma mark - Block Continuation on Enter
+
+/// Called from shouldChangeTextInRange: when Enter is pressed
+/// inside a code block or blockquote. On an empty line, breaks
+/// out of the block. Returns YES if handled.
+- (BOOL)handleNewlineInBlock:(NSRange)range {
+  NSString *text = _textView.text;
+  if (text.length == 0) return NO;
+
+  NSRange lineRange = [text lineRangeForRange:range];
+  if (lineRange.length > 0 &&
+      [text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
+    lineRange.length--;
+  }
+  NSString *line = [text substringWithRange:lineRange];
+
+  // Check if cursor is inside a code block or blockquote
+  FormattingType blockType = FormattingTypeCodeBlock;
+  FormattingRange *blockRange = nil;
+
+  for (FormattingRange *r in _store.allRanges) {
+    if (r.type != FormattingTypeCodeBlock &&
+        r.type != FormattingTypeBlockquote) continue;
+    if (range.location >= r.range.location &&
+        range.location <= NSMaxRange(r.range)) {
+      blockRange = r;
+      blockType = r.type;
+      break;
+    }
+  }
+
+  if (!blockRange) return NO;
+
+  // If the current line is empty (or whitespace only), break out
+  NSString *trimmed = [line stringByTrimmingCharactersInSet:
+      [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+
+  if (trimmed.length == 0) {
+    // Delete the empty line content
+    _suppressFormatting = YES;
+    if (lineRange.length > 0) {
+      [_textView.textStorage deleteCharactersInRange:lineRange];
+      [_store adjustForEditAt:lineRange.location
+                deletedLength:lineRange.length
+               insertedLength:0];
+    }
+    _suppressFormatting = NO;
+
+    // Trim the block range to end before this line
+    NSRange oldRange = blockRange.range;
+    if (lineRange.location > oldRange.location) {
+      // Shrink the range to end at the start of this line
+      NSUInteger newEnd = lineRange.location;
+      // Also trim the trailing newline from the block
+      if (newEnd > 0 && newEnd <= _textView.text.length &&
+          [_textView.text characterAtIndex:newEnd - 1] == '\n') {
+        newEnd--;
+      }
+      if (newEnd > oldRange.location) {
+        [_store removeRangesOfType:blockType intersecting:oldRange];
+        [_store addRange:[FormattingRange
+                            rangeWithType:blockType
+                                    range:NSMakeRange(oldRange.location,
+                                                       newEnd - oldRange.location)]];
+      } else {
+        [_store removeRangesOfType:blockType intersecting:oldRange];
+      }
+    } else {
+      // The block was just the empty line — remove it entirely
+      [_store removeRangesOfType:blockType intersecting:oldRange];
+    }
+
+    [self applyFormatting];
+    [self resetTypingAttributes];
+    [self emitMarkdownChange];
+    return YES;
+  }
+
+  return NO;
+}
+
 #pragma mark - Autolink Detection
 
 - (void)detectAutolinks {
@@ -1072,10 +1153,13 @@ using namespace facebook::react;
             replacementText:(NSString *)text {
   if (_suppressFormatting) return YES;
 
-  // Handle enter key inside lists (continue or break out)
+  // Handle enter key inside lists and blocks
   if ([text isEqualToString:@"\n"]) {
     if ([self handleNewlineInList:range]) {
-      return NO; // we handled it
+      return NO;
+    }
+    if ([self handleNewlineInBlock:range]) {
+      return NO;
     }
   }
 
