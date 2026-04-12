@@ -444,6 +444,10 @@ using namespace facebook::react;
                      lineStart:(NSUInteger)lineStart
                       lineText:(NSString *)line
                           type:(FormattingType)type {
+  // Remember content offset relative to prefix end
+  NSUInteger cursorPos = _textView.selectedRange.location;
+  NSUInteger contentOffset = cursorPos - lineStart - prefix.length;
+
   // Delete the prefix from text
   _suppressFormatting = YES;
   [_textView.textStorage deleteCharactersInRange:
@@ -454,16 +458,18 @@ using namespace facebook::react;
   _suppressFormatting = NO;
 
   // For lists, insert a visual bullet
+  NSUInteger bulletLen = 0;
   if (type == FormattingTypeUnorderedList ||
       type == FormattingTypeOrderedList) {
     NSString *bullet =
         (type == FormattingTypeOrderedList) ? @"1. " : @"\u2022 ";
+    bulletLen = bullet.length;
     _suppressFormatting = YES;
     [_textView.textStorage replaceCharactersInRange:
         NSMakeRange(lineStart, 0) withString:bullet];
     [_store adjustForEditAt:lineStart
               deletedLength:0
-             insertedLength:bullet.length];
+             insertedLength:bulletLen];
     _suppressFormatting = NO;
   }
 
@@ -475,6 +481,14 @@ using namespace facebook::react;
   }
 
   [self applyFormatting];
+
+  // Restore cursor position after the bullet + content offset
+  NSUInteger newCursor = lineStart + bulletLen + contentOffset;
+  if (newCursor > _textView.text.length) {
+    newCursor = _textView.text.length;
+  }
+  _textView.selectedRange = NSMakeRange(newCursor, 0);
+
   [self emitMarkdownChange];
 }
 
