@@ -6,24 +6,14 @@
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 
-#import "ASTNodeWrapper.h"
-#import "MarkdownParser.hpp"
+#import "FormattingRange.h"
+#import "FormattingStore.h"
+#import "InputFormatter.h"
+#import "InputParser.h"
+#import "MarkdownSerializer.h"
 #import "StyleConfig.h"
 
 using namespace facebook::react;
-
-// Semantic attribute keys — these ride along on the attributed
-// string so we can export back to markdown and detect state.
-static NSString *const kBold = @"md.bold";
-static NSString *const kItalic = @"md.italic";
-static NSString *const kStrike = @"md.strike";
-static NSString *const kCode = @"md.code";
-static NSString *const kLink = @"md.link";
-static NSString *const kHeading = @"md.heading";
-static NSString *const kBlockquote = @"md.blockquote";
-static NSString *const kCodeBlock = @"md.codeBlock";
-static NSString *const kOrderedList = @"md.orderedList";
-static NSString *const kUnorderedList = @"md.unorderedList";
 
 @interface MarkdownEditorView () <UITextViewDelegate>
 @end
@@ -32,9 +22,14 @@ static NSString *const kUnorderedList = @"md.unorderedList";
   UITextView *_textView;
   StyleConfig *_styleConfig;
   NSString *_currentStyleJSON;
-
-  // Cached base font — resolved once per style update
   UIFont *_baseFont;
+  UIColor *_baseColor;
+
+  FormattingStore *_store;
+  InputFormatter *_formatter;
+
+  // Guards against re-entrant formatting during programmatic edits
+  BOOL _suppressFormatting;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -45,6 +40,9 @@ static NSString *const kUnorderedList = @"md.unorderedList";
 - (instancetype)initWithFrame:(CGRect)frame {
   self = [super initWithFrame:frame];
   if (self) {
+    _store = [FormattingStore new];
+    _formatter = [InputFormatter new];
+
     _textView = [[UITextView alloc] initWithFrame:self.bounds];
     _textView.delegate = self;
     _textView.autocorrectionType = UITextAutocorrectionTypeDefault;
@@ -60,12 +58,16 @@ static NSString *const kUnorderedList = @"md.unorderedList";
   _textView.frame = self.bounds;
 }
 
+// ---------------------------------------------------------------
+#pragma mark - Props
+// ---------------------------------------------------------------
+
 - (void)updateProps:(const Props::Shared &)props
            oldProps:(const Props::Shared &)oldProps {
   const auto &newProps =
       *std::static_pointer_cast<const MarkdownEditorViewProps>(props);
 
-  // Style — must be parsed before default value so fonts are ready
+  // Style — must be parsed before default value
   NSString *styleJSON = newProps.styles.empty()
                             ? @""
                             : [NSString stringWithUTF8String:newProps.styles.c_str()];
@@ -74,6 +76,16 @@ static NSString *const kUnorderedList = @"md.unorderedList";
     _styleConfig = [StyleConfig fromJSON:styleJSON];
     _baseFont = [_styleConfig.base resolvedFont]
                     ?: [UIFont systemFontOfSize:16];
+    _baseColor = _styleConfig.base.color ?: [UIColor labelColor];
+
+    _formatter.styleConfig = _styleConfig;
+    _formatter.baseFont = _baseFont;
+    _formatter.baseColor = _baseColor;
+
+    // Re-apply formatting with new styles if we already have content
+    if (_textView.text.length > 0) {
+      [self applyFormatting];
+    }
   }
 
   // Default value (first render only)
@@ -81,17 +93,14 @@ static NSString *const kUnorderedList = @"md.unorderedList";
     NSString *defaultValue =
         [NSString stringWithUTF8String:newProps.defaultValue.c_str()];
     if (defaultValue.length > 0) {
-      NSAttributedString *as = [self importMarkdown:defaultValue];
-      _textView.attributedText = as;
+      [self importMarkdown:defaultValue];
     } else {
-      [self syncTypingAttributes];
+      [self resetTypingAttributes];
     }
   }
 
-  // Editable
   _textView.editable = newProps.editable;
 
-  // Auto focus
   if (!oldProps && newProps.autoFocus) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self->_textView becomeFirstResponder];
@@ -102,644 +111,168 @@ static NSString *const kUnorderedList = @"md.unorderedList";
 }
 
 // ---------------------------------------------------------------
-#pragma mark - Import (Markdown → Attributed String)
+#pragma mark - Import / Export
 // ---------------------------------------------------------------
 
-- (NSAttributedString *)importMarkdown:(NSString *)markdown {
-  if (markdown.length == 0) return [[NSAttributedString alloc] init];
+- (void)importMarkdown:(NSString *)markdown {
+  InputParserResult *result = [InputParser parseMarkdown:markdown];
 
-  markdown::ParseOptions options;
-  options.enableTables = false;
-  options.enableStrikethrough = true;
-  options.enableTaskLists = false;
-  options.enableAutolinks = true;
-  options.customTags.insert("Spoiler");
-  options.customTags.insert("Superscript");
+  _suppressFormatting = YES;
+  _textView.text = result.plainText;
+  _store = result.store;
+  _suppressFormatting = NO;
 
-  std::string mdStr([markdown UTF8String]);
-  markdown::ASTNode ast = markdown::MarkdownParser::parse(mdStr, options);
-  ASTNodeWrapper *root = [[ASTNodeWrapper alloc] initWithOpaqueNode:&ast];
+  _formatter.styleConfig = _styleConfig;
+  _formatter.baseFont = _baseFont;
+  _formatter.baseColor = _baseColor;
 
-  NSMutableAttributedString *result = [NSMutableAttributedString new];
-  [self walkNode:root into:result attrs:[self baseAttrs] blockIndex:0];
-
-  // Trim trailing newline
-  while (result.length > 0 &&
-         [[result.string substringFromIndex:result.length - 1]
-             isEqualToString:@"\n"]) {
-    [result deleteCharactersInRange:NSMakeRange(result.length - 1, 1)];
-  }
-
-  return result;
+  [self applyFormatting];
+  [self resetTypingAttributes];
 }
 
-- (NSDictionary *)baseAttrs {
-  UIColor *color = _styleConfig.base.color ?: [UIColor labelColor];
-  return @{
-    NSFontAttributeName : _baseFont,
-    NSForegroundColorAttributeName : color,
+- (NSString *)exportMarkdown {
+  return [MarkdownSerializer serializePlainText:_textView.text
+                                     withStore:_store];
+}
+
+// ---------------------------------------------------------------
+#pragma mark - Formatting Application
+// ---------------------------------------------------------------
+
+- (void)applyFormatting {
+  if (_suppressFormatting) return;
+  [_formatter applyAllFormatting:_store toTextStorage:_textView.textStorage];
+}
+
+- (void)resetTypingAttributes {
+  _textView.typingAttributes = @{
+    NSFontAttributeName : _baseFont ?: [UIFont systemFontOfSize:16],
+    NSForegroundColorAttributeName : _baseColor ?: [UIColor labelColor],
   };
 }
 
-/// Recursive AST walker that builds a single flat attributed string.
-- (void)walkNode:(ASTNodeWrapper *)node
-            into:(NSMutableAttributedString *)output
-           attrs:(NSDictionary *)attrs
-      blockIndex:(NSInteger)blockIndex {
-
-  switch (node.nodeType) {
-
-  // ---- Container / structural ----
-
-  case MDNodeTypeDocument: {
-    NSInteger idx = 0;
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:attrs blockIndex:idx];
-      idx++;
-    }
-    break;
-  }
-
-  case MDNodeTypeParagraph: {
-    if (output.length > 0 &&
-        ![[output.string substringFromIndex:output.length - 1]
-            isEqualToString:@"\n"]) {
-      [output appendAttributedString:
-          [[NSAttributedString alloc] initWithString:@"\n" attributes:attrs]];
-    }
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:attrs blockIndex:0];
-    }
-    break;
-  }
-
-  // ---- Block elements ----
-
-  case MDNodeTypeHeading: {
-    if (output.length > 0) {
-      [output appendAttributedString:
-          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
-    }
-
-    NSMutableDictionary *headingAttrs = [attrs mutableCopy];
-    headingAttrs[kHeading] = @(node.headingLevel);
-
-    MarkdownElementStyle *style =
-        [_styleConfig styleForHeadingLevel:node.headingLevel];
-    UIFont *headingFont = [style resolvedFontWithBase:_baseFont];
-    if (!headingFont) {
-      CGFloat scales[] = {0, 2.0, 1.5, 1.25, 1.1, 1.0, 0.9};
-      CGFloat s = node.headingLevel <= 6 ? scales[node.headingLevel] : 1.0;
-      headingFont = [UIFont systemFontOfSize:_baseFont.pointSize * s
-                                      weight:UIFontWeightBold];
-    }
-    headingAttrs[NSFontAttributeName] = headingFont;
-    if (style.color) {
-      headingAttrs[NSForegroundColorAttributeName] = style.color;
-    }
-
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:headingAttrs blockIndex:0];
-    }
-    break;
-  }
-
-  case MDNodeTypeBlockquote: {
-    if (output.length > 0) {
-      [output appendAttributedString:
-          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
-    }
-
-    NSMutableDictionary *bqAttrs = [attrs mutableCopy];
-    bqAttrs[kBlockquote] = @YES;
-
-    MarkdownElementStyle *style = _styleConfig.blockquote;
-    UIFont *bqFont = [style resolvedFontWithBase:_baseFont];
-    if (bqFont) bqAttrs[NSFontAttributeName] = bqFont;
-    if (style.color) {
-      bqAttrs[NSForegroundColorAttributeName] = style.color;
-    }
-
-    // Indent via paragraph style
-    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-    pStyle.firstLineHeadIndent = 16;
-    pStyle.headIndent = 16;
-    bqAttrs[NSParagraphStyleAttributeName] = pStyle;
-
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:bqAttrs blockIndex:0];
-    }
-    break;
-  }
-
-  case MDNodeTypeList: {
-    if (output.length > 0 &&
-        ![[output.string substringFromIndex:output.length - 1]
-            isEqualToString:@"\n"]) {
-      [output appendAttributedString:
-          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
-    }
-
-    NSInteger idx = 0;
-    for (ASTNodeWrapper *child in node.children) {
-      NSMutableDictionary *itemAttrs = [attrs mutableCopy];
-
-      if (node.isOrderedList) {
-        itemAttrs[kOrderedList] = @YES;
-      } else {
-        itemAttrs[kUnorderedList] = @YES;
-      }
-
-      // Prepend bullet / number
-      NSString *bullet;
-      if (node.isOrderedList) {
-        bullet = [NSString stringWithFormat:@"%ld. ",
-                                            (long)(node.listStart + idx)];
-      } else {
-        bullet = @"•  ";
-      }
-
-      MarkdownElementStyle *bulletStyle = _styleConfig.listBullet;
-      NSMutableDictionary *bulletAttrs = [itemAttrs mutableCopy];
-      if (bulletStyle.color) {
-        bulletAttrs[NSForegroundColorAttributeName] = bulletStyle.color;
-      }
-
-      if (idx > 0) {
-        [output appendAttributedString:
-            [[NSAttributedString alloc] initWithString:@"\n"
-                                            attributes:[self baseAttrs]]];
-      }
-
-      [output appendAttributedString:
-          [[NSAttributedString alloc] initWithString:bullet
-                                          attributes:bulletAttrs]];
-
-      for (ASTNodeWrapper *grandchild in child.children) {
-        [self walkNode:grandchild into:output attrs:itemAttrs blockIndex:0];
-      }
-
-      idx++;
-    }
-    break;
-  }
-
-  case MDNodeTypeCodeBlock: {
-    if (output.length > 0) {
-      [output appendAttributedString:
-          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
-    }
-
-    NSMutableDictionary *cbAttrs = [attrs mutableCopy];
-    cbAttrs[kCodeBlock] = @YES;
-
-    MarkdownElementStyle *style = _styleConfig.codeBlock;
-    UIFont *codeFont = [style resolvedFontWithBase:_baseFont]
-                           ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
-                                                          weight:UIFontWeightRegular];
-    cbAttrs[NSFontAttributeName] = codeFont;
-    if (style.color) {
-      cbAttrs[NSForegroundColorAttributeName] = style.color;
-    }
-    UIColor *bg = style.backgroundColor
-                      ?: [UIColor colorWithWhite:0.5 alpha:0.1];
-    cbAttrs[NSBackgroundColorAttributeName] = bg;
-
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:cbAttrs blockIndex:0];
-    }
-    break;
-  }
-
-  case MDNodeTypeThematicBreak: {
-    if (output.length > 0) {
-      [output appendAttributedString:
-          [[NSAttributedString alloc] initWithString:@"\n" attributes:[self baseAttrs]]];
-    }
-    // Render as a visible separator line
-    NSMutableDictionary *hrAttrs = [attrs mutableCopy];
-    hrAttrs[NSForegroundColorAttributeName] =
-        [(_styleConfig.base.color ?: [UIColor labelColor])
-            colorWithAlphaComponent:0.3];
-    [output appendAttributedString:
-        [[NSAttributedString alloc] initWithString:@"───────"
-                                        attributes:hrAttrs]];
-    break;
-  }
-
-  // ---- Inline elements ----
-
-  case MDNodeTypeStrong: {
-    NSMutableDictionary *boldAttrs = [attrs mutableCopy];
-    boldAttrs[kBold] = @YES;
-
-    UIFont *current = attrs[NSFontAttributeName] ?: _baseFont;
-    boldAttrs[NSFontAttributeName] = [self boldVariantOf:current];
-
-    MarkdownElementStyle *style = _styleConfig.strong;
-    if (style.color) {
-      boldAttrs[NSForegroundColorAttributeName] = style.color;
-    }
-
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:boldAttrs blockIndex:0];
-    }
-    break;
-  }
-
-  case MDNodeTypeEmphasis: {
-    NSMutableDictionary *italicAttrs = [attrs mutableCopy];
-    italicAttrs[kItalic] = @YES;
-
-    UIFont *current = attrs[NSFontAttributeName] ?: _baseFont;
-    italicAttrs[NSFontAttributeName] = [self italicVariantOf:current];
-
-    MarkdownElementStyle *style = _styleConfig.emphasis;
-    if (style.color) {
-      italicAttrs[NSForegroundColorAttributeName] = style.color;
-    }
-
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:italicAttrs blockIndex:0];
-    }
-    break;
-  }
-
-  case MDNodeTypeStrikethrough: {
-    NSMutableDictionary *sAttrs = [attrs mutableCopy];
-    sAttrs[kStrike] = @YES;
-    sAttrs[NSStrikethroughStyleAttributeName] = @(NSUnderlineStyleSingle);
-
-    MarkdownElementStyle *style = _styleConfig.strikethrough;
-    if (style.color) {
-      sAttrs[NSForegroundColorAttributeName] = style.color;
-      sAttrs[NSStrikethroughColorAttributeName] = style.color;
-    }
-
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:sAttrs blockIndex:0];
-    }
-    break;
-  }
-
-  case MDNodeTypeCode: {
-    NSMutableDictionary *codeAttrs = [attrs mutableCopy];
-    codeAttrs[kCode] = @YES;
-
-    MarkdownElementStyle *style = _styleConfig.code;
-    UIFont *codeFont = [style resolvedFontWithBase:_baseFont]
-                           ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
-                                                          weight:UIFontWeightRegular];
-    codeAttrs[NSFontAttributeName] = codeFont;
-    if (style.color) {
-      codeAttrs[NSForegroundColorAttributeName] = style.color;
-    }
-    UIColor *bg = style.backgroundColor
-                      ?: [UIColor colorWithWhite:0.5 alpha:0.1];
-    codeAttrs[NSBackgroundColorAttributeName] = bg;
-
-    // Code nodes have content directly (not children)
-    NSString *content = node.content ?: @"";
-    [output appendAttributedString:
-        [[NSAttributedString alloc] initWithString:content
-                                        attributes:codeAttrs]];
-    break;
-  }
-
-  case MDNodeTypeLink: {
-    NSMutableDictionary *linkAttrs = [attrs mutableCopy];
-    linkAttrs[kLink] = node.linkUrl ?: @"";
-
-    MarkdownElementStyle *style = _styleConfig.link;
-    UIColor *linkColor = style.color ?: [UIColor systemBlueColor];
-    linkAttrs[NSForegroundColorAttributeName] = linkColor;
-
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:linkAttrs blockIndex:0];
-    }
-    break;
-  }
-
-  // ---- Leaf text ----
-
-  case MDNodeTypeText: {
-    NSString *content = node.content ?: @"";
-    [output appendAttributedString:
-        [[NSAttributedString alloc] initWithString:content
-                                        attributes:attrs]];
-    break;
-  }
-
-  case MDNodeTypeSoftBreak: {
-    [output appendAttributedString:
-        [[NSAttributedString alloc] initWithString:@" " attributes:attrs]];
-    break;
-  }
-
-  case MDNodeTypeLineBreak: {
-    [output appendAttributedString:
-        [[NSAttributedString alloc] initWithString:@"\n" attributes:attrs]];
-    break;
-  }
-
-  // ---- Skip / pass-through ----
-  case MDNodeTypeListItem:
-  case MDNodeTypeImage:
-  case MDNodeTypeHtmlBlock:
-  case MDNodeTypeHtmlInline:
-  case MDNodeTypeCustomTag:
-  default: {
-    for (ASTNodeWrapper *child in node.children) {
-      [self walkNode:child into:output attrs:attrs blockIndex:0];
-    }
-    break;
-  }
-  }
-}
-
 // ---------------------------------------------------------------
-#pragma mark - Export (Attributed String → Markdown)
+#pragma mark - Toggle Inline Formatting
 // ---------------------------------------------------------------
 
-- (NSString *)exportMarkdown {
-  NSAttributedString *as = _textView.attributedText;
-  if (as.length == 0) return @"";
-
-  NSString *text = as.string;
-  NSMutableString *md = [NSMutableString new];
-
-  // Process line by line
-  __block NSUInteger lineStart = 0;
-  [text enumerateSubstringsInRange:NSMakeRange(0, text.length)
-                           options:NSStringEnumerationByLines |
-                                   NSStringEnumerationSubstringNotRequired
-                        usingBlock:^(NSString *substring, NSRange substringRange,
-                                     NSRange enclosingRange, BOOL *stop) {
-    [self exportLine:substringRange from:as into:md];
-    [md appendString:@"\n"];
-  }];
-
-  // Trim trailing newlines
-  while (md.length > 0 && [md characterAtIndex:md.length - 1] == '\n') {
-    [md deleteCharactersInRange:NSMakeRange(md.length - 1, 1)];
-  }
-
-  return [md copy];
-}
-
-- (void)exportLine:(NSRange)lineRange
-              from:(NSAttributedString *)as
-              into:(NSMutableString *)md {
-  if (lineRange.length == 0) return;
-
-  // Check block-level attributes from the first character
-  NSDictionary *firstAttrs =
-      [as attributesAtIndex:lineRange.location effectiveRange:nil];
-
-  NSNumber *heading = firstAttrs[kHeading];
-  if (heading) {
-    for (int i = 0; i < heading.intValue; i++) [md appendString:@"#"];
-    [md appendString:@" "];
-  }
-
-  if ([firstAttrs[kBlockquote] boolValue]) {
-    [md appendString:@"> "];
-  }
-
-  if ([firstAttrs[kCodeBlock] boolValue]) {
-    // For code blocks, emit raw content — no inline formatting
-    [md appendString:[as.string substringWithRange:lineRange]];
-    return;
-  }
-
-  // Walk attribute runs for inline formatting
-  [as enumerateAttributesInRange:lineRange
-                         options:0
-                      usingBlock:^(NSDictionary *attrs, NSRange range,
-                                   BOOL *stop) {
-    NSString *runText = [as.string substringWithRange:range];
-
-    BOOL bold = [attrs[kBold] boolValue];
-    BOOL italic = [attrs[kItalic] boolValue];
-    BOOL strike = [attrs[kStrike] boolValue];
-    BOOL code = [attrs[kCode] boolValue];
-    NSString *link = attrs[kLink];
-
-    if (code) {
-      [md appendFormat:@"`%@`", runText];
-    } else {
-      BOOL hasLink = link.length > 0;
-      if (hasLink) [md appendString:@"["];
-      if (bold) [md appendString:@"**"];
-      if (italic) [md appendString:@"*"];
-      if (strike) [md appendString:@"~~"];
-
-      [md appendString:runText];
-
-      if (strike) [md appendString:@"~~"];
-      if (italic) [md appendString:@"*"];
-      if (bold) [md appendString:@"**"];
-      if (hasLink) [md appendFormat:@"](%@)", link];
-    }
-  }];
-}
-
-// ---------------------------------------------------------------
-#pragma mark - Toggle Formatting
-// ---------------------------------------------------------------
-
-- (void)toggleInlineAttr:(NSString *)attrKey
-            visualUpdate:(void (^)(NSMutableDictionary *attrs,
-                                   BOOL enabling))visualBlock {
+- (void)toggleInlineType:(FormattingType)type {
   NSRange range = _textView.selectedRange;
 
   if (range.length == 0) {
-    // No selection — toggle in typingAttributes
-    NSMutableDictionary *attrs = [_textView.typingAttributes mutableCopy];
-    BOOL wasOn = [attrs[attrKey] boolValue];
-    if (wasOn) {
-      [attrs removeObjectForKey:attrKey];
+    // Cursor only — toggle in pending sets
+    NSNumber *key = @(type);
+    BOOL currentlyActive =
+        [_store isEffectivelyActive:type
+                            atIndex:range.location > 0 ? range.location - 1
+                                                       : 0];
+    if (currentlyActive) {
+      [_store.pendingStyles removeObject:key];
+      [_store.pendingRemovals addObject:key];
     } else {
-      attrs[attrKey] = @YES;
+      [_store.pendingRemovals removeObject:key];
+      [_store.pendingStyles addObject:key];
     }
-    visualBlock(attrs, !wasOn);
-    _textView.typingAttributes = attrs;
   } else {
-    // Has selection — check if the entire range already has this attr
-    __block BOOL allHave = YES;
-    [_textView.textStorage
-        enumerateAttribute:attrKey
-                   inRange:range
-                   options:0
-                usingBlock:^(id value, NSRange r, BOOL *stop) {
-                  if (![value boolValue]) {
-                    allHave = NO;
-                    *stop = YES;
-                  }
-                }];
+    // Has selection — check if entire selection is covered
+    NSArray *existing =
+        [_store rangesOfType:type intersecting:range];
+    BOOL fullyCovered = [self isRange:range
+                      fullyCoveredBy:existing];
 
-    BOOL enabling = !allHave;
-    if (enabling) {
-      [_textView.textStorage addAttribute:attrKey value:@YES range:range];
+    if (fullyCovered) {
+      [_store removeRangesOfType:type intersecting:range];
     } else {
-      [_textView.textStorage removeAttribute:attrKey range:range];
+      // Remove any existing ranges of this type first to avoid
+      // partial overlaps, then add the full selection range.
+      [_store removeRangesOfType:type intersecting:range];
+      [_store addRange:[FormattingRange rangeWithType:type range:range]];
     }
 
-    // Apply visual changes to the range
-    [_textView.textStorage
-        enumerateAttributesInRange:range
-                           options:0
-                        usingBlock:^(NSDictionary *existing, NSRange r,
-                                     BOOL *stop) {
-                          NSMutableDictionary *updated =
-                              [existing mutableCopy];
-                          visualBlock(updated, enabling);
-                          [self->_textView.textStorage setAttributes:updated
-                                                              range:r];
-                        }];
+    [self applyFormatting];
   }
 
-  [self detectFormattingState];
-  [self emitMarkdownChange];
+  [self detectAndEmitState];
 }
 
-- (void)toggleBold {
-  [self toggleInlineAttr:kBold
-            visualUpdate:^(NSMutableDictionary *attrs, BOOL enabling) {
-              UIFont *font = attrs[NSFontAttributeName] ?: self->_baseFont;
-              attrs[NSFontAttributeName] = enabling
-                  ? [self boldVariantOf:font]
-                  : [self unboldVariantOf:font];
-            }];
+- (BOOL)isRange:(NSRange)range
+    fullyCoveredBy:(NSArray<FormattingRange *> *)ranges {
+  if (ranges.count == 0) return NO;
+
+  // Build a union of all the ranges and check coverage
+  NSMutableIndexSet *covered = [NSMutableIndexSet new];
+  for (FormattingRange *r in ranges) {
+    NSRange intersection = NSIntersectionRange(r.range, range);
+    if (intersection.length > 0) {
+      [covered addIndexesInRange:intersection];
+    }
+  }
+
+  return covered.count >= range.length;
 }
 
-- (void)toggleItalic {
-  [self toggleInlineAttr:kItalic
-            visualUpdate:^(NSMutableDictionary *attrs, BOOL enabling) {
-              UIFont *font = attrs[NSFontAttributeName] ?: self->_baseFont;
-              attrs[NSFontAttributeName] = enabling
-                  ? [self italicVariantOf:font]
-                  : [self unitalicVariantOf:font];
-            }];
-}
-
-- (void)toggleStrikethrough {
-  [self toggleInlineAttr:kStrike
-            visualUpdate:^(NSMutableDictionary *attrs, BOOL enabling) {
-              if (enabling) {
-                attrs[NSStrikethroughStyleAttributeName] =
-                    @(NSUnderlineStyleSingle);
-              } else {
-                [attrs removeObjectForKey:NSStrikethroughStyleAttributeName];
-                [attrs removeObjectForKey:NSStrikethroughColorAttributeName];
-              }
-            }];
-}
-
-- (void)toggleCode {
-  [self toggleInlineAttr:kCode
-            visualUpdate:^(NSMutableDictionary *attrs, BOOL enabling) {
-              if (enabling) {
-                MarkdownElementStyle *style = self->_styleConfig.code;
-                UIFont *codeFont =
-                    [style resolvedFontWithBase:self->_baseFont]
-                        ?: [UIFont monospacedSystemFontOfSize:
-                                       self->_baseFont.pointSize
-                                                      weight:UIFontWeightRegular];
-                attrs[NSFontAttributeName] = codeFont;
-                UIColor *bg = style.backgroundColor
-                                  ?: [UIColor colorWithWhite:0.5 alpha:0.1];
-                attrs[NSBackgroundColorAttributeName] = bg;
-                if (style.color) {
-                  attrs[NSForegroundColorAttributeName] = style.color;
-                }
-              } else {
-                attrs[NSFontAttributeName] = self->_baseFont;
-                [attrs removeObjectForKey:NSBackgroundColorAttributeName];
-                attrs[NSForegroundColorAttributeName] =
-                    self->_styleConfig.base.color ?: [UIColor labelColor];
-              }
-            }];
-}
+// ---------------------------------------------------------------
+#pragma mark - Toggle Block Formatting
+// ---------------------------------------------------------------
 
 - (void)toggleHeading:(NSInteger)level {
-  NSRange range = _textView.selectedRange;
-  NSRange lineRange = [_textView.text lineRangeForRange:range];
-  // Trim the trailing newline from lineRange
-  if (lineRange.length > 0 &&
-      [_textView.text characterAtIndex:lineRange.location + lineRange.length - 1] == '\n') {
-    lineRange.length--;
-  }
+  NSRange lineRange = [self currentLineRange];
   if (lineRange.length == 0) return;
 
-  NSDictionary *currentAttrs =
-      [_textView.textStorage attributesAtIndex:lineRange.location
-                                effectiveRange:nil];
-  NSNumber *currentLevel = currentAttrs[kHeading];
-  BOOL removing = currentLevel && currentLevel.integerValue == level;
+  FormattingType hType = [FormattingRange headingTypeForLevel:level];
 
-  NSMutableDictionary *newAttrs;
-  if (removing) {
-    newAttrs = [[self baseAttrs] mutableCopy];
+  // Check if this line already has this heading level
+  NSArray *existing = [_store rangesOfType:hType intersecting:lineRange];
+
+  if (existing.count > 0) {
+    // Remove the heading
+    [_store removeRangesOfType:hType intersecting:lineRange];
   } else {
-    newAttrs = [currentAttrs mutableCopy];
-    newAttrs[kHeading] = @(level);
-
-    MarkdownElementStyle *style = [_styleConfig styleForHeadingLevel:level];
-    UIFont *headingFont = [style resolvedFontWithBase:_baseFont];
-    if (!headingFont) {
-      CGFloat scales[] = {0, 2.0, 1.5, 1.25, 1.1, 1.0, 0.9};
-      CGFloat s = level <= 6 ? scales[level] : 1.0;
-      headingFont = [UIFont systemFontOfSize:_baseFont.pointSize * s
-                                      weight:UIFontWeightBold];
+    // Remove any other heading types on this line
+    for (NSInteger l = 1; l <= 6; l++) {
+      FormattingType t = [FormattingRange headingTypeForLevel:l];
+      [_store removeRangesOfType:t intersecting:lineRange];
     }
-    newAttrs[NSFontAttributeName] = headingFont;
-    if (style.color) {
-      newAttrs[NSForegroundColorAttributeName] = style.color;
-    }
+    [_store addRange:[FormattingRange rangeWithType:hType range:lineRange]];
   }
 
-  [_textView.textStorage setAttributes:newAttrs range:lineRange];
-  [self detectFormattingState];
-  [self emitMarkdownChange];
+  [self applyFormatting];
+  [self detectAndEmitState];
 }
 
 - (void)toggleBlockquote {
-  NSRange range = _textView.selectedRange;
-  NSRange lineRange = [_textView.text lineRangeForRange:range];
-  if (lineRange.length > 0 &&
-      [_textView.text characterAtIndex:lineRange.location + lineRange.length - 1] == '\n') {
-    lineRange.length--;
-  }
+  NSRange lineRange = [self currentLineRange];
   if (lineRange.length == 0) return;
 
-  NSDictionary *currentAttrs =
-      [_textView.textStorage attributesAtIndex:lineRange.location
-                                effectiveRange:nil];
-  BOOL removing = [currentAttrs[kBlockquote] boolValue];
+  NSArray *existing = [_store rangesOfType:FormattingTypeBlockquote
+                              intersecting:lineRange];
 
-  NSMutableDictionary *newAttrs;
-  if (removing) {
-    newAttrs = [[self baseAttrs] mutableCopy];
+  if (existing.count > 0) {
+    [_store removeRangesOfType:FormattingTypeBlockquote
+                  intersecting:lineRange];
   } else {
-    newAttrs = [currentAttrs mutableCopy];
-    newAttrs[kBlockquote] = @YES;
-
-    MarkdownElementStyle *style = _styleConfig.blockquote;
-    if (style.color) {
-      newAttrs[NSForegroundColorAttributeName] = style.color;
-    }
-
-    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-    pStyle.firstLineHeadIndent = 16;
-    pStyle.headIndent = 16;
-    newAttrs[NSParagraphStyleAttributeName] = pStyle;
+    [_store addRange:[FormattingRange rangeWithType:FormattingTypeBlockquote
+                                             range:lineRange]];
   }
 
-  [_textView.textStorage setAttributes:newAttrs range:lineRange];
-  [self detectFormattingState];
-  [self emitMarkdownChange];
+  [self applyFormatting];
+  [self detectAndEmitState];
 }
+
+- (NSRange)currentLineRange {
+  NSRange range = _textView.selectedRange;
+  NSRange lineRange = [_textView.text lineRangeForRange:range];
+  // Trim trailing newline
+  if (lineRange.length > 0 &&
+      [_textView.text characterAtIndex:lineRange.location +
+                                           lineRange.length - 1] == '\n') {
+    lineRange.length--;
+  }
+  return lineRange;
+}
+
+// ---------------------------------------------------------------
+#pragma mark - Links
+// ---------------------------------------------------------------
 
 - (void)insertLinkWithURL:(NSString *)url text:(NSString *)text {
   NSRange range = _textView.selectedRange;
@@ -753,85 +286,78 @@ static NSString *const kUnorderedList = @"md.unorderedList";
     linkText = @"link";
   }
 
-  NSMutableDictionary *attrs = [_textView.typingAttributes mutableCopy];
-  attrs[kLink] = url;
-
-  MarkdownElementStyle *style = _styleConfig.link;
-  attrs[NSForegroundColorAttributeName] =
-      style.color ?: [UIColor systemBlueColor];
-
-  NSAttributedString *linkAS =
-      [[NSAttributedString alloc] initWithString:linkText attributes:attrs];
-
+  _suppressFormatting = YES;
   if (range.length > 0) {
     [_textView.textStorage replaceCharactersInRange:range
-                               withAttributedString:linkAS];
+                                         withString:linkText];
+    [_store adjustForEditAt:range.location
+              deletedLength:range.length
+             insertedLength:linkText.length];
   } else {
-    [_textView.textStorage insertAttributedString:linkAS atIndex:range.location];
+    [_textView.textStorage replaceCharactersInRange:range
+                                         withString:linkText];
+    [_store adjustForEditAt:range.location
+              deletedLength:0
+             insertedLength:linkText.length];
   }
+  _suppressFormatting = NO;
 
+  NSRange linkRange = NSMakeRange(range.location, linkText.length);
+  [_store addRange:[FormattingRange rangeWithType:FormattingTypeLink
+                                            range:linkRange
+                                              url:url]];
+
+  [self applyFormatting];
   [self emitMarkdownChange];
 }
 
 - (void)removeLink {
   NSRange range = _textView.selectedRange;
-  if (range.location == NSNotFound) return;
+  NSUInteger idx = range.location > 0 ? range.location - 1 : 0;
 
-  // Find the link range around the cursor
-  __block NSRange linkRange = NSMakeRange(NSNotFound, 0);
-  NSRange searchRange = NSMakeRange(0, _textView.textStorage.length);
-  [_textView.textStorage
-      enumerateAttribute:kLink
-                 inRange:searchRange
-                 options:0
-              usingBlock:^(id value, NSRange r, BOOL *stop) {
-                if (value && NSLocationInRange(range.location, r)) {
-                  linkRange = r;
-                  *stop = YES;
-                }
-              }];
-
-  if (linkRange.location == NSNotFound) return;
-
-  [_textView.textStorage removeAttribute:kLink range:linkRange];
-  [_textView.textStorage addAttribute:NSForegroundColorAttributeName
-                                value:_styleConfig.base.color ?: [UIColor labelColor]
-                                range:linkRange];
-  [self emitMarkdownChange];
+  // Find link range at cursor
+  for (FormattingRange *r in _store.allRanges) {
+    if (r.type == FormattingTypeLink &&
+        idx >= r.range.location &&
+        idx < NSMaxRange(r.range)) {
+      [_store removeRangesOfType:FormattingTypeLink intersecting:r.range];
+      [self applyFormatting];
+      [self emitMarkdownChange];
+      return;
+    }
+  }
 }
 
 // ---------------------------------------------------------------
 #pragma mark - Native Commands
 // ---------------------------------------------------------------
 
-- (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args {
+- (void)handleCommand:(const NSString *)commandName
+                 args:(const NSArray *)args {
   if ([commandName isEqualToString:@"focus"]) {
     [_textView becomeFirstResponder];
   } else if ([commandName isEqualToString:@"blur"]) {
     [_textView resignFirstResponder];
   } else if ([commandName isEqualToString:@"setValue"]) {
-    NSString *value = args[0];
-    NSAttributedString *as = [self importMarkdown:value];
-    _textView.attributedText = as;
+    [self importMarkdown:args[0]];
   } else if ([commandName isEqualToString:@"setSelection"]) {
     NSInteger start = [args[0] integerValue];
     NSInteger end = [args[1] integerValue];
     _textView.selectedRange = NSMakeRange(start, end - start);
   } else if ([commandName isEqualToString:@"toggleBold"]) {
-    [self toggleBold];
+    [self toggleInlineType:FormattingTypeBold];
   } else if ([commandName isEqualToString:@"toggleItalic"]) {
-    [self toggleItalic];
+    [self toggleInlineType:FormattingTypeItalic];
   } else if ([commandName isEqualToString:@"toggleStrikethrough"]) {
-    [self toggleStrikethrough];
+    [self toggleInlineType:FormattingTypeStrikethrough];
   } else if ([commandName isEqualToString:@"toggleCode"]) {
-    [self toggleCode];
+    [self toggleInlineType:FormattingTypeCode];
   } else if ([commandName isEqualToString:@"toggleHeading"]) {
-    NSInteger level = [args[0] integerValue];
-    [self toggleHeading:level];
+    [self toggleHeading:[args[0] integerValue]];
   } else if ([commandName isEqualToString:@"toggleOrderedList"]) {
-    // TODO: list support
+    // TODO
   } else if ([commandName isEqualToString:@"toggleUnorderedList"]) {
-    // TODO: list support
+    // TODO
   } else if ([commandName isEqualToString:@"toggleBlockquote"]) {
     [self toggleBlockquote];
   } else if ([commandName isEqualToString:@"insertLink"]) {
@@ -841,11 +367,11 @@ static NSString *const kUnorderedList = @"md.unorderedList";
   } else if ([commandName isEqualToString:@"removeLink"]) {
     [self removeLink];
   } else if ([commandName isEqualToString:@"insertMention"]) {
-    // TODO: mention support
+    // TODO
   } else if ([commandName isEqualToString:@"insertSpoiler"]) {
-    // TODO: spoiler support
+    // TODO
   } else if ([commandName isEqualToString:@"insertCustomTag"]) {
-    // TODO: custom tag support
+    // TODO
   }
 }
 
@@ -853,65 +379,50 @@ static NSString *const kUnorderedList = @"md.unorderedList";
 #pragma mark - State Detection
 // ---------------------------------------------------------------
 
-- (void)detectFormattingState {
-  NSRange range = _textView.selectedRange;
-  if (range.location == NSNotFound) return;
-  if (_textView.textStorage.length == 0) return;
+- (void)detectAndEmitState {
+  if (!_eventEmitter) return;
 
-  // Read attributes at the cursor position (or start of selection)
+  NSRange range = _textView.selectedRange;
+  // Use the character before cursor for state detection
   NSUInteger idx = range.location > 0 ? range.location - 1 : 0;
-  if (idx >= _textView.textStorage.length) {
-    idx = _textView.textStorage.length - 1;
+
+  BOOL bold = [_store isEffectivelyActive:FormattingTypeBold atIndex:idx];
+  BOOL italic = [_store isEffectivelyActive:FormattingTypeItalic atIndex:idx];
+  BOOL strike =
+      [_store isEffectivelyActive:FormattingTypeStrikethrough atIndex:idx];
+  BOOL code = [_store isEffectivelyActive:FormattingTypeCode atIndex:idx];
+
+  NSString *linkUrl = [_store effectiveLinkAtIndex:idx] ?: @"";
+
+  // Heading — check all levels
+  NSInteger heading = 0;
+  for (NSInteger l = 1; l <= 6; l++) {
+    FormattingType hType = [FormattingRange headingTypeForLevel:l];
+    if ([_store hasType:hType atIndex:idx]) {
+      heading = l;
+      break;
+    }
   }
 
-  NSDictionary *attrs = [_textView.textStorage attributesAtIndex:idx
-                                                  effectiveRange:nil];
+  NSString *listType = @"";
+  if ([_store hasType:FormattingTypeOrderedList atIndex:idx]) {
+    listType = @"ordered";
+  } else if ([_store hasType:FormattingTypeUnorderedList atIndex:idx]) {
+    listType = @"unordered";
+  }
 
-  [self emitStateFromAttrs:attrs];
-}
+  const auto &emitter =
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
 
-- (void)syncTypingAttributes {
-  _textView.typingAttributes = [self baseAttrs];
-}
-
-// ---------------------------------------------------------------
-#pragma mark - Font Helpers
-// ---------------------------------------------------------------
-
-- (UIFont *)boldVariantOf:(UIFont *)font {
-  UIFontDescriptorSymbolicTraits traits =
-      font.fontDescriptor.symbolicTraits | UIFontDescriptorTraitBold;
-  UIFontDescriptor *desc =
-      [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
-  return desc ? [UIFont fontWithDescriptor:desc size:font.pointSize]
-              : [UIFont boldSystemFontOfSize:font.pointSize];
-}
-
-- (UIFont *)unboldVariantOf:(UIFont *)font {
-  UIFontDescriptorSymbolicTraits traits =
-      font.fontDescriptor.symbolicTraits & ~UIFontDescriptorTraitBold;
-  UIFontDescriptor *desc =
-      [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
-  return desc ? [UIFont fontWithDescriptor:desc size:font.pointSize]
-              : [UIFont systemFontOfSize:font.pointSize];
-}
-
-- (UIFont *)italicVariantOf:(UIFont *)font {
-  UIFontDescriptorSymbolicTraits traits =
-      font.fontDescriptor.symbolicTraits | UIFontDescriptorTraitItalic;
-  UIFontDescriptor *desc =
-      [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
-  return desc ? [UIFont fontWithDescriptor:desc size:font.pointSize]
-              : font;
-}
-
-- (UIFont *)unitalicVariantOf:(UIFont *)font {
-  UIFontDescriptorSymbolicTraits traits =
-      font.fontDescriptor.symbolicTraits & ~UIFontDescriptorTraitItalic;
-  UIFontDescriptor *desc =
-      [font.fontDescriptor fontDescriptorWithSymbolicTraits:traits];
-  return desc ? [UIFont fontWithDescriptor:desc size:font.pointSize]
-              : font;
+  emitter.onChangeState({
+      .bold = bold,
+      .italic = italic,
+      .strikethrough = strike,
+      .code = code,
+      .linkUrl = std::string([linkUrl UTF8String]),
+      .heading = static_cast<int>(heading),
+      .list = std::string([listType UTF8String]),
+  });
 }
 
 // ---------------------------------------------------------------
@@ -925,45 +436,72 @@ static NSString *const kUnorderedList = @"md.unorderedList";
   const auto &emitter =
       static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
 
-  emitter.onChangeText({.text = std::string([_textView.text UTF8String])});
+  emitter.onChangeText(
+      {.text = std::string([_textView.text UTF8String])});
   emitter.onChangeMarkdown(
       {.markdown = std::string([markdown UTF8String])});
-}
-
-- (void)emitStateFromAttrs:(NSDictionary *)attrs {
-  if (!_eventEmitter) return;
-
-  const auto &emitter =
-      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
-
-  NSString *linkUrl = attrs[kLink] ?: @"";
-  NSNumber *heading = attrs[kHeading];
-
-  NSString *listType = @"";
-  if ([attrs[kOrderedList] boolValue]) listType = @"ordered";
-  else if ([attrs[kUnorderedList] boolValue]) listType = @"unordered";
-
-  emitter.onChangeState({
-      .bold = [attrs[kBold] boolValue],
-      .italic = [attrs[kItalic] boolValue],
-      .strikethrough = [attrs[kStrike] boolValue],
-      .code = [attrs[kCode] boolValue],
-      .linkUrl = std::string([linkUrl UTF8String]),
-      .heading = heading ? static_cast<int>(heading.integerValue) : 0,
-      .list = std::string([listType UTF8String]),
-  });
 }
 
 // ---------------------------------------------------------------
 #pragma mark - UITextViewDelegate
 // ---------------------------------------------------------------
 
+- (BOOL)textView:(UITextView *)textView
+    shouldChangeTextInRange:(NSRange)range
+            replacementText:(NSString *)text {
+  if (_suppressFormatting) return YES;
+
+  NSUInteger deleted = range.length;
+  NSUInteger inserted = text.length;
+
+  // Adjust all existing ranges for this edit
+  [_store adjustForEditAt:range.location
+            deletedLength:deleted
+           insertedLength:inserted];
+
+  // Apply pending styles to the inserted text
+  if (inserted > 0) {
+    NSRange insertedRange = NSMakeRange(range.location, inserted);
+
+    for (NSNumber *typeNum in _store.pendingStyles) {
+      FormattingType type = (FormattingType)typeNum.integerValue;
+      [_store addRange:[FormattingRange rangeWithType:type
+                                                range:insertedRange]];
+    }
+
+    // Handle pending removals: carve out the inserted range from
+    // any existing formatting of the removed type
+    for (NSNumber *typeNum in _store.pendingRemovals) {
+      FormattingType type = (FormattingType)typeNum.integerValue;
+      [_store removeRangesOfType:type intersecting:insertedRange];
+    }
+
+    // Also expand any ranges that the cursor was inside (not at
+    // the boundary) — this is the "typing inside a range expands
+    // it" behavior. The adjustForEditAt already handles this for
+    // ranges where the edit point is strictly inside (case 3).
+  }
+
+  [_store clearPending];
+
+  return YES;
+}
+
 - (void)textViewDidChange:(UITextView *)textView {
+  if (_suppressFormatting) return;
+
+  [self applyFormatting];
+  [self resetTypingAttributes];
   [self emitMarkdownChange];
 }
 
 - (void)textViewDidChangeSelection:(UITextView *)textView {
-  [self detectFormattingState];
+  if (_suppressFormatting) return;
+
+  // Clear pending styles on cursor move (they're ephemeral)
+  [_store clearPending];
+
+  [self detectAndEmitState];
 
   if (!_eventEmitter) return;
   const auto &emitter =
