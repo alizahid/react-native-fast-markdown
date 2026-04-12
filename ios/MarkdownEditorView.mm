@@ -316,10 +316,16 @@ using namespace facebook::react;
 }
 
 - (void)resetTypingAttributes {
-  // If the cursor is inside a block, inherit the block's styling
-  // for new characters. Otherwise use base attributes.
-  NSUInteger idx = _textView.selectedRange.location;
-  if (idx > 0) idx--;
+  // If the cursor is inside a block, inherit the block's styling.
+  // For a selection, check the selection start. For a cursor,
+  // check the character before it.
+  NSRange sel = _textView.selectedRange;
+  NSUInteger idx;
+  if (sel.length > 0) {
+    idx = sel.location; // start of selection
+  } else {
+    idx = sel.location > 0 ? sel.location - 1 : 0;
+  }
   if (idx >= _textView.textStorage.length && _textView.textStorage.length > 0) {
     idx = _textView.textStorage.length - 1;
   }
