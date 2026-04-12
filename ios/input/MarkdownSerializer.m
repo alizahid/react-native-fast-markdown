@@ -23,6 +23,17 @@
 
   NSMutableString *md = [NSMutableString new];
 
+  // Collect code block ranges for fence wrapping
+  NSMutableIndexSet *codeBlockChars = [NSMutableIndexSet new];
+  for (FormattingRange *r in store.allRanges) {
+    if (r.type == FormattingTypeCodeBlock) {
+      [codeBlockChars addIndexesInRange:r.range];
+    }
+  }
+
+  // Track whether we're inside a code block fence
+  BOOL inCodeBlock = NO;
+
   // Process line by line
   NSArray<NSString *> *lines = [text componentsSeparatedByString:@"\n"];
   NSUInteger offset = 0;
@@ -33,51 +44,59 @@
 
     if (lineIdx > 0) [md appendString:@"\n"];
 
-    // Check for block-level formatting
-    NSString *prefix = [self blockPrefixForRange:lineRange store:store];
-    NSString *contentToSerialize = line;
+    // Check if this line is in a code block
+    BOOL lineInCodeBlock = lineRange.length > 0 &&
+        [codeBlockChars containsIndex:lineRange.location];
 
-    // For list items, skip the bullet prefix in the plain text
-    // (we're replacing it with markdown syntax)
-    if (prefix) {
-      FormattingRange *listRange = [self listRangeAt:lineRange store:store];
-      if (listRange) {
-        // Skip the visual bullet ("• " or "1. ") from content
-        NSUInteger skipLen = [self bulletLengthInLine:line
-                                            listType:listRange.type];
-        if (skipLen > 0 && skipLen <= line.length) {
-          contentToSerialize = [line substringFromIndex:skipLen];
-          lineRange = NSMakeRange(lineRange.location + skipLen,
-                                   lineRange.length - skipLen);
-        }
-      }
-      [md appendString:prefix];
+    // Emit opening fence when entering code block
+    if (lineInCodeBlock && !inCodeBlock) {
+      [md appendString:@"```\n"];
+      inCodeBlock = YES;
     }
 
-    // Check for code block — emit raw, no inline formatting
-    BOOL isCodeBlock = NO;
-    for (FormattingRange *r in store.allRanges) {
-      if (r.type == FormattingTypeCodeBlock &&
-          NSIntersectionRange(r.range, lineRange).length > 0) {
-        isCodeBlock = YES;
-        break;
-      }
+    // Emit closing fence when leaving code block
+    if (!lineInCodeBlock && inCodeBlock) {
+      [md appendString:@"```\n"];
+      inCodeBlock = NO;
     }
 
-    if (isCodeBlock) {
-      [md appendString:contentToSerialize];
+    if (lineInCodeBlock) {
+      // Inside code block — emit raw content
+      [md appendString:line];
     } else {
+      // Check for block-level formatting
+      NSString *prefix = [self blockPrefixForRange:lineRange store:store];
+      NSString *contentToSerialize = line;
+
+      // For list items, skip the bullet prefix in the plain text
+      if (prefix) {
+        FormattingRange *listRange =
+            [self listRangeAt:lineRange store:store];
+        if (listRange) {
+          NSUInteger skipLen = [self bulletLengthInLine:line
+                                              listType:listRange.type];
+          if (skipLen > 0 && skipLen <= line.length) {
+            contentToSerialize = [line substringFromIndex:skipLen];
+            lineRange = NSMakeRange(lineRange.location + skipLen,
+                                     lineRange.length - skipLen);
+          }
+        }
+        [md appendString:prefix];
+      }
+
       [self serializeInlineContent:contentToSerialize
                        sourceRange:lineRange
                              store:store
                               into:md];
     }
 
-    offset += line.length + 1; // +1 for \n
+    offset += line.length + 1;
   }
 
-  // Wrap code blocks in fences
-  md = [[self wrapCodeBlocks:md text:text store:store] mutableCopy];
+  // Close any trailing code block
+  if (inCodeBlock) {
+    [md appendString:@"\n```"];
+  }
 
   return [md copy];
 }
@@ -253,20 +272,6 @@
 
 + (NSString *)closeMarkerForType:(FormattingType)type {
   return [self openMarkerForType:type];
-}
-
-#pragma mark - Code Block Fences
-
-+ (NSString *)wrapCodeBlocks:(NSString *)serialized
-                        text:(NSString *)text
-                       store:(FormattingStore *)store {
-  // For now, code blocks are emitted inline. If we detect a code
-  // block range in the store, wrap the corresponding output lines
-  // in fences. This is a simplified approach — proper implementation
-  // would track code block boundaries during line-by-line processing.
-
-  // TODO: improve code block fence wrapping for multi-line blocks
-  return serialized;
 }
 
 @end
