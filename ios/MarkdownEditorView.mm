@@ -405,16 +405,15 @@ using namespace facebook::react;
          formattingType:(FormattingType)fType {
   NSRange cursor = _textView.selectedRange;
 
-  // Get the full paragraph range (includes the trailing newline,
-  // unlike currentLineRange which trims it). This works even on
-  // empty lines where the paragraph is just "\n".
-  NSRange paraRange;
-  if (_textView.text.length == 0) {
-    paraRange = NSMakeRange(0, 0);
-  } else {
-    NSUInteger pos = MIN(cursor.location, _textView.text.length - 1);
-    paraRange = [_textView.text paragraphRangeForRange:NSMakeRange(pos, 0)];
+  // Get the paragraph range at the cursor.
+  NSRange paraRange = NSMakeRange(cursor.location, 0);
+  if (_textView.text.length > 0 && cursor.location < _textView.text.length) {
+    paraRange = [_textView.text
+        paragraphRangeForRange:NSMakeRange(cursor.location, 0)];
   }
+  // If cursor is at text.length (after trailing \n), paraRange
+  // stays {cursor.location, 0} — an empty paragraph. We'll only
+  // set typing attributes for this case.
 
   // Check if this paragraph already has the block type
   BOOL hasBlock = NO;
