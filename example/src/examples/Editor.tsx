@@ -238,6 +238,7 @@ const styles = StyleSheet.create({
   },
   input: {
     minHeight: 180,
+    gap: 8,
     padding: 16,
   },
   previewCard: {

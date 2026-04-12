@@ -20,17 +20,22 @@
   } mutableCopy];
 
   // Base paragraph style: line height + gap (paragraph spacing)
-  if (_baseLineHeight > 0 || _paragraphSpacing > 0) {
-    NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
-    if (_baseLineHeight > 0) {
-      basePStyle.minimumLineHeight = _baseLineHeight;
-      basePStyle.maximumLineHeight = _baseLineHeight;
-    }
-    if (_paragraphSpacing > 0) {
-      basePStyle.paragraphSpacing = _paragraphSpacing;
-    }
-    baseAttrs[NSParagraphStyleAttributeName] = basePStyle;
+  CGFloat lineHeight = _baseLineHeight > 0
+      ? _baseLineHeight
+      : _styleConfig.base.lineHeight;
+  CGFloat gap = _paragraphSpacing > 0
+      ? _paragraphSpacing
+      : _styleConfig.base.gap;
+
+  NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
+  if (lineHeight > 0) {
+    basePStyle.minimumLineHeight = lineHeight;
+    basePStyle.maximumLineHeight = lineHeight;
   }
+  if (gap > 0) {
+    basePStyle.paragraphSpacing = gap;
+  }
+  baseAttrs[NSParagraphStyleAttributeName] = basePStyle;
 
   [textStorage setAttributes:baseAttrs range:fullRange];
 
@@ -85,6 +90,8 @@
   }
 
   case FormattingTypeBlockquote: {
+    CGFloat lineHeight = _styleConfig.base.lineHeight;
+    CGFloat gap = _styleConfig.base.gap;
     MarkdownElementStyle *style = _styleConfig.blockquote;
     if (style.color) {
       [textStorage addAttribute:NSForegroundColorAttributeName
@@ -107,10 +114,15 @@
     NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
     pStyle.firstLineHeadIndent = indent;
     pStyle.headIndent = indent;
+    if (lineHeight > 0) {
+      pStyle.minimumLineHeight = lineHeight;
+      pStyle.maximumLineHeight = lineHeight;
+    }
     pStyle.paragraphSpacingBefore = style.padding + style.paddingTop +
                                     style.paddingVertical;
-    pStyle.paragraphSpacing = style.padding + style.paddingBottom +
-                              style.paddingVertical;
+    CGFloat bqPadBottom = style.padding + style.paddingBottom +
+                          style.paddingVertical;
+    pStyle.paragraphSpacing = MAX(bqPadBottom, gap);
     [textStorage addAttribute:NSParagraphStyleAttributeName
                         value:pStyle
                         range:r.range];
@@ -118,6 +130,8 @@
   }
 
   case FormattingTypeCodeBlock: {
+    CGFloat lineHeight = _styleConfig.base.lineHeight;
+    CGFloat gap = _styleConfig.base.gap;
     MarkdownElementStyle *style = _styleConfig.codeBlock;
     UIFont *codeFont =
         [style resolvedFontWithBase:_baseFont]
@@ -138,13 +152,19 @@
     }
 
     CGFloat pad = style.padding;
-    if (pad > 0) {
+    {
       NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-      pStyle.firstLineHeadIndent = pad;
-      pStyle.headIndent = pad;
-      pStyle.tailIndent = -pad;
-      pStyle.paragraphSpacingBefore = pad;
-      pStyle.paragraphSpacing = pad;
+      if (pad > 0) {
+        pStyle.firstLineHeadIndent = pad;
+        pStyle.headIndent = pad;
+        pStyle.tailIndent = -pad;
+        pStyle.paragraphSpacingBefore = pad;
+      }
+      pStyle.paragraphSpacing = MAX(pad, gap);
+      if (lineHeight > 0) {
+        pStyle.minimumLineHeight = lineHeight;
+        pStyle.maximumLineHeight = lineHeight;
+      }
       [textStorage addAttribute:NSParagraphStyleAttributeName
                           value:pStyle
                           range:r.range];
