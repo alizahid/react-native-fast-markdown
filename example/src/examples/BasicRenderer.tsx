@@ -8,9 +8,9 @@ This is a **bold** statement with *italic* emphasis and some ~~strikethrough~~ t
 
 ## Reddit stuff
 
->!spoilers!<
+This line has >!spoilers!< inside it.
 
-^superscript or ^(superscript with space)
+This line has ^superscript or ^(superscript with spaces) inside it.
 
 ## Links & Images
 
