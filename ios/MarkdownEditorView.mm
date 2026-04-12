@@ -1346,9 +1346,43 @@ using namespace facebook::react;
 - (void)textViewDidChange:(UITextView *)textView {
   if (_suppressFormatting) return;
 
+  NSUInteger cursorPos = _textView.selectedRange.location;
+  NSLog(@"[MD] textViewDidChange cursor=%lu text.length=%lu",
+        (unsigned long)cursorPos,
+        (unsigned long)_textView.text.length);
+
+  // Check MDBlockType at cursor
+  if (cursorPos > 0 && _textView.textStorage.length > 0) {
+    NSUInteger checkIdx = MIN(cursorPos - 1, _textView.textStorage.length - 1);
+    NSDictionary *attrs = [_textView.textStorage attributesAtIndex:checkIdx
+                                                    effectiveRange:nil];
+    NSLog(@"[MD]   attr at %lu: MDBlockType=%@, font=%@",
+          (unsigned long)checkIdx,
+          attrs[MDBlockTypeAttributeName],
+          [attrs[NSFontAttributeName] fontName]);
+  }
+
+  // Check typing attributes
+  NSLog(@"[MD]   typingAttrs MDBlockType=%@",
+        _textView.typingAttributes[MDBlockTypeAttributeName]);
+
   [self detectAutoFormatting];
   [self applyDirtyFormatting];
   [self resetTypingAttributes];
+
+  // Check again after formatting
+  if (cursorPos > 0 && _textView.textStorage.length > 0) {
+    NSUInteger checkIdx = MIN(cursorPos - 1, _textView.textStorage.length - 1);
+    NSDictionary *attrs = [_textView.textStorage attributesAtIndex:checkIdx
+                                                    effectiveRange:nil];
+    NSLog(@"[MD]   AFTER: attr at %lu: MDBlockType=%@, font=%@",
+          (unsigned long)checkIdx,
+          attrs[MDBlockTypeAttributeName],
+          [attrs[NSFontAttributeName] fontName]);
+  }
+  NSLog(@"[MD]   AFTER typingAttrs MDBlockType=%@",
+        _textView.typingAttributes[MDBlockTypeAttributeName]);
+
   [self emitMarkdownChange];
 }
 
