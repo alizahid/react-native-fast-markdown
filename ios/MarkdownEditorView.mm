@@ -718,6 +718,17 @@ using namespace facebook::react;
   NSString *text = _textView.text;
   if (text.length == 0) return;
 
+  // Only run when the user just typed a word boundary (space,
+  // newline, or is at end of text after a non-whitespace char).
+  // This prevents partial URL detection while still typing.
+  NSRange cursor = _textView.selectedRange;
+  if (cursor.location > 0 && cursor.location <= text.length) {
+    unichar prev = [text characterAtIndex:cursor.location - 1];
+    if (prev != ' ' && prev != '\n' && cursor.location != text.length) {
+      return;
+    }
+  }
+
   NSDataDetector *detector =
       [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink
                                       error:nil];
@@ -728,23 +739,62 @@ using namespace facebook::react;
                         options:0
                           range:NSMakeRange(0, text.length)];
 
-  BOOL added = NO;
+  // Build a set of detected URL ranges
+  NSMutableArray<FormattingRange *> *detected = [NSMutableArray new];
   for (NSTextCheckingResult *match in matches) {
-    NSRange urlRange = match.range;
     NSURL *url = match.URL;
     if (!url) continue;
-
-    NSArray *existing =
-        [_store rangesOfType:FormattingTypeLink intersecting:urlRange];
-    if (existing.count > 0) continue;
-
-    [_store addRange:[FormattingRange rangeWithType:FormattingTypeLink
-                                              range:urlRange
-                                                url:url.absoluteString]];
-    added = YES;
+    [detected addObject:[FormattingRange rangeWithType:FormattingTypeLink
+                                                range:match.range
+                                                  url:url.absoluteString]];
   }
 
-  if (added) [self applyFormatting];
+  // Remove any autodetected links that no longer match (the URL
+  // was edited or deleted). We identify autodetected links as
+  // those whose display text equals the URL.
+  NSArray *existingLinks =
+      [_store rangesOfType:FormattingTypeLink
+              intersecting:NSMakeRange(0, text.length)];
+
+  BOOL changed = NO;
+  for (FormattingRange *existing in existingLinks) {
+    if (existing.range.location + existing.range.length > text.length) continue;
+    NSString *displayText = [text substringWithRange:existing.range];
+
+    // If the display text IS the URL (or starts with http), it's
+    // an autodetected link — check if it still matches a detection
+    BOOL isAutolink = [displayText hasPrefix:@"http://"] ||
+                      [displayText hasPrefix:@"https://"] ||
+                      [displayText isEqualToString:existing.url];
+    if (!isAutolink) continue;
+
+    // See if this autolink is still valid
+    BOOL stillValid = NO;
+    for (FormattingRange *d in detected) {
+      if (NSEqualRanges(d.range, existing.range)) {
+        stillValid = YES;
+        break;
+      }
+    }
+
+    if (!stillValid) {
+      [_store removeRangesOfType:FormattingTypeLink
+                    intersecting:existing.range];
+      changed = YES;
+    }
+  }
+
+  // Add newly detected links
+  for (FormattingRange *d in detected) {
+    NSArray *overlap =
+        [_store rangesOfType:FormattingTypeLink intersecting:d.range];
+    if (overlap.count == 0) {
+      [_store addRange:d];
+      changed = YES;
+    }
+  }
+
+  if (changed) [self applyFormatting];
 }
 
 // ---------------------------------------------------------------
