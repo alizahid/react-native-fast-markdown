@@ -11,6 +11,7 @@ import {
 import {
   type EditorStyleState,
   MarkdownEditor,
+  type MentionTrigger,
   useMarkdownEditor,
 } from 'react-native-markdown'
 
@@ -76,7 +77,9 @@ export function EditorScreen() {
   const [markdown, setMarkdown] = useState(initialMarkdown)
 
   // Mention state
-  const [mentionTrigger, setMentionTrigger] = useState<string | null>(null)
+  const [mentionTrigger, setMentionTrigger] = useState<MentionTrigger | null>(
+    null,
+  )
   const [mentionQuery, setMentionQuery] = useState('')
 
   const handleChangeState = useCallback((state: EditorStyleState) => {

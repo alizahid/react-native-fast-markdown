@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react'
-import { type MarkdownEditorHandle } from './types'
+import { type MarkdownEditorHandle, type MentionTrigger } from './types'
 
 export function useMarkdownEditor() {
   const ref = useRef<MarkdownEditorHandle>(null)
@@ -43,7 +43,7 @@ export function useMarkdownEditor() {
   )
   const removeLink = useCallback(() => ref.current?.removeLink(), [])
   const insertMention = useCallback(
-    (trigger: string, label: string, props: Record<string, string>) =>
+    (trigger: MentionTrigger, label: string, props: Record<string, string>) =>
       ref.current?.insertMention(trigger, label, props),
     [],
   )

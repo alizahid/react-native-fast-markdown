@@ -22,6 +22,7 @@ export type {
   MarkdownListItemStyle,
   MarkdownListStyle,
   MarkdownMentionStyle,
+  MentionTrigger,
   MarkdownParagraphStyle,
   MarkdownSpoilerStyle,
   MarkdownStrikethroughStyle,

@@ -311,6 +311,9 @@ export interface LinkPressEvent {
   url: string
 }
 
+/** The three mention trigger characters. */
+export type MentionTrigger = '@' | '#' | '/'
+
 /** The three mention trigger types. `user` is `@`, `channel` is `#`,
  *  `command` is `/`. */
 export type MentionType = 'user' | 'channel' | 'command'
@@ -385,11 +388,11 @@ export interface MarkdownEditorHandle {
 
   // Mentions — inserts a mention matching the renderer's custom tag
   // format (e.g. <UserMention id="u_james" name="James" />).
-  // trigger: the character that started the mention (@, #, /)
+  // type: the trigger character (@, #, /)
   // label: display text (e.g. "James")
   // props: { id, name, ...extra } — matches MentionPressEvent
   insertMention(
-    trigger: string,
+    trigger: MentionTrigger,
     label: string,
     props: Record<string, string>,
   ): void

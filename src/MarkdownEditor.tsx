@@ -8,6 +8,7 @@ import {
   type EditorStyleState,
   type MarkdownEditorHandle,
   type MarkdownStyle,
+  type MentionTrigger,
 } from './types'
 
 export interface MarkdownEditorProps extends ViewProps {
@@ -32,7 +33,7 @@ export interface MarkdownEditorProps extends ViewProps {
   editable?: boolean
 
   /** Trigger characters that activate mention detection (e.g. ['@', '#', '/']) */
-  mentionTriggers?: Array<string>
+  mentionTriggers?: Array<MentionTrigger>
 
   /** Whether the input supports multiple lines */
   multiline?: boolean
@@ -59,13 +60,16 @@ export interface MarkdownEditorProps extends ViewProps {
   onLinkDetected?: (url: string) => void
 
   /** Called on each keystroke after a trigger — update suggestions */
-  onMentionChange?: (event: { trigger: string; query: string }) => void
+  onMentionChange?: (event: {
+    query: string
+    trigger: MentionTrigger
+  }) => void
 
   /** Called when mention is cancelled — hide suggestions */
-  onMentionEnd?: (trigger: string) => void
+  onMentionEnd?: (trigger: MentionTrigger) => void
 
   /** Called when user types a trigger character — show suggestions */
-  onMentionStart?: (trigger: string) => void
+  onMentionStart?: (trigger: MentionTrigger) => void
 
   /** Placeholder text */
   placeholder?: string
@@ -363,17 +367,19 @@ export const MarkdownEditor = forwardRef<
         onMentionChange
           ? (e) =>
               onMentionChange({
-                trigger: e.nativeEvent.trigger,
+                trigger: e.nativeEvent.trigger as MentionTrigger,
                 query: e.nativeEvent.query,
               })
           : undefined
       }
       onMentionEnd={
-        onMentionEnd ? (e) => onMentionEnd(e.nativeEvent.trigger) : undefined
+        onMentionEnd
+          ? (e) => onMentionEnd(e.nativeEvent.trigger as MentionTrigger)
+          : undefined
       }
       onMentionStart={
         onMentionStart
-          ? (e) => onMentionStart(e.nativeEvent.trigger)
+          ? (e) => onMentionStart(e.nativeEvent.trigger as MentionTrigger)
           : undefined
       }
       placeholder={placeholder}
