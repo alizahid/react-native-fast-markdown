@@ -53,6 +53,9 @@
     [self applyInlineRange:r toTextStorage:textStorage];
   }
 
+  // Apply mention styling from MDMentionTag attributes
+  [self applyMentionStyling:textStorage];
+
   [textStorage endEditing];
 }
 
@@ -123,7 +126,51 @@
     [self applyInlineRange:r toTextStorage:textStorage];
   }
 
+  // Apply mention styling in the dirty range
+  [self applyMentionStylingInRange:dirtyRange textStorage:textStorage];
+
   [textStorage endEditing];
+}
+
+#pragma mark - Mention Styling
+
+- (void)applyMentionStyling:(NSTextStorage *)textStorage {
+  if (textStorage.length == 0) return;
+  [self applyMentionStylingInRange:NSMakeRange(0, textStorage.length)
+                       textStorage:textStorage];
+}
+
+- (void)applyMentionStylingInRange:(NSRange)range
+                       textStorage:(NSTextStorage *)textStorage {
+  [textStorage enumerateAttribute:@"MDMentionTag"
+                          inRange:range
+                          options:0
+                       usingBlock:^(NSString *tag, NSRange mRange,
+                                    BOOL *stop) {
+    if (!tag) return;
+
+    MarkdownElementStyle *style = nil;
+    if ([tag hasPrefix:@"<UserMention"]) {
+      style = self->_styleConfig.mentionUser;
+    } else if ([tag hasPrefix:@"<ChannelMention"]) {
+      style = self->_styleConfig.mentionChannel;
+    } else if ([tag hasPrefix:@"<CommandMention"]) {
+      style = self->_styleConfig.mentionCommand;
+    }
+    if (!style) return;
+
+    if (style.color) {
+      [textStorage addAttribute:NSForegroundColorAttributeName
+                          value:style.color
+                          range:mRange];
+    }
+    UIFont *mFont = [style resolvedFontWithBase:self->_baseFont];
+    if (mFont) {
+      [textStorage addAttribute:NSFontAttributeName
+                          value:mFont
+                          range:mRange];
+    }
+  }];
 }
 
 #pragma mark - Block Formatting
