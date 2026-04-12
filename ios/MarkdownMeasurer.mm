@@ -1,6 +1,7 @@
 #import "MarkdownMeasurer.h"
 
 #import "ASTNodeWrapper.h"
+#import "MarkdownImageSizeCache.h"
 #import "MarkdownParser.hpp"
 #import "MarkdownTableView.h"
 #import "RenderContext.h"
@@ -130,11 +131,40 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   // Block image — paragraphs that contain exactly one image (with
   // only whitespace around it) get a dedicated image segment on the
   // runtime side, so the measurer needs to reserve the same height.
-  if (ImageOnlyParagraphChild(node) != nil) {
+  //
+  // Prefer the natural size cached in MarkdownImageSizeCache: it's
+  // populated either by a previous download or by the caller
+  // pre-seeding it from the `images` prop on <Markdown>. Fall back
+  // to styleConfig.image.height (user override) and finally the
+  // default. When we have a natural size we scale it proportionally
+  // to the available inner width — never scaling up, so tiny images
+  // stay small.
+  if (ASTNodeWrapper *imageChild = ImageOnlyParagraphChild(node)) {
     MarkdownElementStyle *imageStyle = styleConfig.image;
-    CGFloat h = imageStyle.height > 0 ? imageStyle.height
-                                       : kMeasurerDefaultImageHeight;
-    CGSize framed = SizeForBlockStyle(imageStyle, CGSizeMake(innerWidth, h));
+
+    UIEdgeInsets padding = [imageStyle resolvedPaddingInsets];
+    UIEdgeInsets borders = [imageStyle resolvedBorderWidths];
+    UIEdgeInsets margin = [imageStyle resolvedMarginInsets];
+    CGFloat contentWidth = innerWidth - padding.left - padding.right -
+                           borders.left - borders.right - margin.left -
+                           margin.right;
+
+    CGSize natural = [[MarkdownImageSizeCache sharedCache]
+        sizeForURLString:imageChild.imageSrc];
+
+    CGSize contentSize;
+    if (natural.width > 0 && natural.height > 0 && contentWidth > 0) {
+      CGFloat scale =
+          contentWidth < natural.width ? contentWidth / natural.width : 1.0;
+      contentSize = CGSizeMake(natural.width * scale,
+                               natural.height * scale);
+    } else {
+      CGFloat h = imageStyle.height > 0 ? imageStyle.height
+                                         : kMeasurerDefaultImageHeight;
+      contentSize = CGSizeMake(contentWidth, h);
+    }
+
+    CGSize framed = SizeForBlockStyle(imageStyle, contentSize);
     return framed.height;
   }
 

@@ -4,8 +4,10 @@ export type { MarkdownInputProps } from './MarkdownInput'
 export { MarkdownInput } from './MarkdownInput'
 export type {
   EditorStyleState,
+  ImagePressEvent,
   LinkPressEvent,
   MarkdownBlockStyle,
+  MarkdownImageData,
   MarkdownInputHandle,
   MarkdownStyle,
   MarkdownTextStyle,

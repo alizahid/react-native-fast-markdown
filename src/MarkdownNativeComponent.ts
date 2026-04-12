@@ -10,9 +10,19 @@ import {
 
 export interface MarkdownViewNativeProps extends ViewProps {
   customTags?: ReadonlyArray<string>
+  /** Pre-supplied image metadata: when the renderer encounters a
+   *  block-level image whose url matches one of these entries it
+   *  reserves the supplied width / height during measurement so
+   *  there's no layout shift when the image finishes loading. */
+  images?: ReadonlyArray<
+    Readonly<{ url: string; width: Double; height: Double }>
+  >
   markdown: string
 
   // Events
+  onImagePress?: DirectEventHandler<
+    Readonly<{ url: string; width: Double; height: Double }>
+  >
   onLinkLongPress?: DirectEventHandler<Readonly<{ url: string; title: string }>>
   onLinkPress?: DirectEventHandler<Readonly<{ url: string; title: string }>>
   onMentionPress?: DirectEventHandler<

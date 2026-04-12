@@ -150,6 +150,23 @@ export interface TaskListItemPressEvent {
   index: number
 }
 
+/** Pre-supplied image metadata passed to `<Markdown images={...}>`.
+ *  When the renderer encounters a block-level `![alt](url)` whose
+ *  url matches one of these entries, it reserves the supplied
+ *  width / height during measurement — no layout shift when the
+ *  image finishes loading. */
+export interface MarkdownImageData {
+  url: string
+  width: number
+  height: number
+}
+
+export interface ImagePressEvent {
+  url: string
+  width: number
+  height: number
+}
+
 // --- Editor State ---
 
 export interface EditorStyleState {

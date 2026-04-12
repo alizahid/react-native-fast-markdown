@@ -4,18 +4,22 @@
 #import <React/RCTFabricComponentsPlugins.h>
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
+#import <react/renderer/core/ConcreteState.h>
 
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
+#import "MarkdownImageSizeCache.h"
 #import "MarkdownImageView.h"
 #import "MarkdownInternalTextView.h"
+#import "MarkdownMeasurer.h"
 #import "MarkdownMentionOverlay.h"
 #import "MarkdownParser.hpp"
 #import "MarkdownSegmentStackView.h"
 #import "MarkdownSpoilerOverlay.h"
 #import "MarkdownTableView.h"
 #import "MarkdownViewComponentDescriptor.h"
+#import "MarkdownViewState.h"
 #import "RenderContext.h"
 #import "RendererFactory.h"
 #import "StyleAttributes.h"
@@ -41,6 +45,16 @@ using namespace facebook::react;
 
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
+
+  // Captured in updateState:oldState: so markNeedsRemeasure can
+  // dispatch a new state update back to the shadow tree.
+  MarkdownViewShadowNode::ConcreteState::Shared _markdownState;
+
+  // Monotonically increasing token we stamp onto MarkdownViewState
+  // every time we want Yoga to re-run measureContent. Each bump is
+  // enough to make the state data compare as changed, which is the
+  // only thing the reconciler cares about.
+  int64_t _measureRevision;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -59,8 +73,21 @@ using namespace facebook::react;
 
     _spoilerOverlays = [NSMutableArray new];
     _mentionOverlays = [NSMutableArray new];
+
+    // Listen for async image loads so we can dirty the measurer
+    // cache and force Yoga to re-call measureContent with the
+    // newly-known natural sizes.
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(handleImageSizeCacheUpdate:)
+               name:MarkdownImageSizeCacheDidUpdateNotification
+             object:nil];
   }
   return self;
+}
+
+- (void)dealloc {
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)layoutSubviews {
@@ -83,6 +110,13 @@ using namespace facebook::react;
   for (const auto &tag : newViewProps.customTags) {
     [customTags addObject:[NSString stringWithUTF8String:tag.c_str()]];
   }
+
+  // MarkdownViewShadowNode::measureContent seeds
+  // MarkdownImageSizeCache from newViewProps.images on the shadow
+  // thread before the measurer runs, so by the time updateProps:
+  // is called here the cache is already populated. No need to
+  // seed again — addImageSegment will read the same entries when
+  // it creates the image views.
 
   BOOL markdownChanged = ![markdown isEqualToString:_currentMarkdown ?: @""];
   BOOL styleChanged = ![styleJSON isEqualToString:_currentStyleJSON ?: @""];
@@ -254,15 +288,23 @@ using namespace facebook::react;
                    ? [NSURL URLWithString:urlString]
                    : nil;
 
-  CGFloat height =
+  CGFloat fallbackWidth = imageStyle.width;
+  CGFloat fallbackHeight =
       imageStyle.height > 0 ? imageStyle.height : kDefaultImageHeight;
 
   MarkdownBlockView *blockView =
       [[MarkdownBlockView alloc] initWithStyle:imageStyle];
   MarkdownImageView *imageView =
-      [[MarkdownImageView alloc] initWithURL:url height:height];
-  blockView.contentView = imageView;
+      [[MarkdownImageView alloc] initWithURL:url
+                                fallbackWidth:fallbackWidth
+                               fallbackHeight:fallbackHeight];
 
+  __weak __typeof(self) weakSelf = self;
+  imageView.onPress = ^(NSURL *pressedURL, CGSize size) {
+    [weakSelf emitImagePressForURL:pressedURL size:size];
+  };
+
+  blockView.contentView = imageView;
   [stack addArrangedSubview:blockView];
 }
 
@@ -620,6 +662,57 @@ using namespace facebook::react;
       .mentionName = std::string([name UTF8String]),
       .mentionProps = std::string([propsJson UTF8String]),
   });
+}
+
+#pragma mark - Image press
+
+- (void)emitImagePressForURL:(NSURL *)url size:(CGSize)size {
+  if (!_eventEmitter || !url) return;
+  const auto &eventEmitter =
+      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+  eventEmitter.onImagePress({
+      .url = std::string([[url absoluteString] UTF8String]),
+      .width = static_cast<double>(size.width),
+      .height = static_cast<double>(size.height),
+  });
+}
+
+#pragma mark - Remeasure after image load
+
+- (void)handleImageSizeCacheUpdate:(NSNotification *)note {
+  // A block image anywhere in the process just finished loading
+  // (or a caller pre-seeded a new entry). Invalidate the measurer
+  // result cache — entries in it might have been computed against
+  // the old default height — and bump the shadow node's state
+  // revision to force Yoga to re-call measureContent.
+  [MarkdownMeasurer clearCache];
+  [self markNeedsRemeasure];
+}
+
+- (void)updateState:(const facebook::react::State::Shared &)state
+           oldState:(const facebook::react::State::Shared &)oldState {
+  _markdownState =
+      std::static_pointer_cast<const MarkdownViewShadowNode::ConcreteState>(
+          state);
+}
+
+- (void)prepareForRecycle {
+  [super prepareForRecycle];
+  _markdownState.reset();
+}
+
+- (void)markNeedsRemeasure {
+  if (!_markdownState) return;
+
+  _measureRevision += 1;
+  int64_t revision = _measureRevision;
+  _markdownState->updateState(
+      [revision](const MarkdownViewState &oldData)
+          -> std::shared_ptr<const MarkdownViewState> {
+        MarkdownViewState newData = oldData;
+        newData.revision = revision;
+        return std::make_shared<const MarkdownViewState>(newData);
+      });
 }
 
 @end

@@ -3,8 +3,10 @@ import { type StyleProp, StyleSheet, type ViewProps } from 'react-native'
 import MarkdownViewNative from './MarkdownNativeComponent'
 import { normalizeMarkdownStyle } from './normalizeStyle'
 import {
+  type ImagePressEvent,
   type LinkPressEvent,
   type MarkdownBlockStyle,
+  type MarkdownImageData,
   type MarkdownStyle,
   type MentionPressEvent,
   type MentionType,
@@ -17,6 +19,21 @@ export interface MarkdownProps extends Omit<ViewProps, 'style'> {
 
   /** Registered custom HTML-like tag names */
   customTags?: Array<string>
+
+  /** Pre-supplied metadata for block images in the markdown. If the
+   *  renderer encounters a `![alt](url)` whose url matches one of
+   *  these entries, it reserves the supplied width / height during
+   *  layout so the image doesn't push content around when it
+   *  finishes loading. Entries for URLs that don't appear in the
+   *  markdown are ignored. Any image not in this array still loads
+   *  normally and the layout shifts once the natural size is known. */
+  images?: ReadonlyArray<MarkdownImageData>
+
+  /** Called when a block image is tapped. `width` / `height` are the
+   *  best-known natural dimensions at the time of the tap: the
+   *  entry from the `images` prop if present, otherwise the loaded
+   *  image's natural size, otherwise a fallback. */
+  onImagePress?: (event: ImagePressEvent) => void
 
   /** Called when a link is long pressed */
   onLinkLongPress?: (event: LinkPressEvent) => void
@@ -43,7 +60,9 @@ export function Markdown({
   children,
   styles: markdownStyles,
   customTags,
+  images,
   style,
+  onImagePress,
   onLinkPress,
   onLinkLongPress,
   onMentionPress,
@@ -84,7 +103,18 @@ export function Markdown({
     <MarkdownViewNative
       {...viewProps}
       customTags={customTags}
+      images={images}
       markdown={children}
+      onImagePress={
+        onImagePress
+          ? (e) =>
+              onImagePress({
+                url: e.nativeEvent.url,
+                width: e.nativeEvent.width,
+                height: e.nativeEvent.height,
+              })
+          : undefined
+      }
       onLinkLongPress={
         onLinkLongPress
           ? (e) =>
