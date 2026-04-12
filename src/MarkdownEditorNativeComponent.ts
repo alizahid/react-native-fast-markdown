@@ -12,7 +12,6 @@ import {
 
 export interface MarkdownEditorViewNativeProps extends ViewProps {
   autoCapitalize?: string
-  autoComplete?: boolean
   autoCorrect?: boolean
   autoFocus?: boolean
   cursorColor?: string

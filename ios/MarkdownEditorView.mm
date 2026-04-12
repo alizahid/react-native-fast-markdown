@@ -107,6 +107,18 @@ using namespace facebook::react;
       ? UITextSpellCheckingTypeYes
       : UITextSpellCheckingTypeNo;
 
+  // autoCapitalize
+  NSString *cap = [NSString stringWithUTF8String:newProps.autoCapitalize.c_str()];
+  if ([cap isEqualToString:@"characters"]) {
+    _textView.autocapitalizationType = UITextAutocapitalizationTypeAllCharacters;
+  } else if ([cap isEqualToString:@"words"]) {
+    _textView.autocapitalizationType = UITextAutocapitalizationTypeWords;
+  } else if ([cap isEqualToString:@"none"]) {
+    _textView.autocapitalizationType = UITextAutocapitalizationTypeNone;
+  } else {
+    _textView.autocapitalizationType = UITextAutocapitalizationTypeSentences;
+  }
+
   if (!oldProps && newProps.autoFocus) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self->_textView becomeFirstResponder];

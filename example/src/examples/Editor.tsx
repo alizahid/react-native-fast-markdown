@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native'
 import {
@@ -81,6 +82,8 @@ export function EditorScreen() {
       >
         <Text style={styles.label}>EDITOR</Text>
         <View style={styles.editorCard}>
+          <TextInput autoCapitalize="" />
+
           <MarkdownEditor
             autoFocus
             defaultValue={initialMarkdown}
