@@ -403,39 +403,51 @@ using namespace facebook::react;
 
 - (void)toggleBlockType:(NSString *)blockType
          formattingType:(FormattingType)fType {
-  NSRange lineRange = [self currentLineRange];
+  NSRange cursor = _textView.selectedRange;
 
-  // Check if the current paragraph already has this block type
+  // Get the full paragraph range (includes the trailing newline,
+  // unlike currentLineRange which trims it). This works even on
+  // empty lines where the paragraph is just "\n".
+  NSRange paraRange;
+  if (_textView.text.length == 0) {
+    paraRange = NSMakeRange(0, 0);
+  } else {
+    NSUInteger pos = MIN(cursor.location, _textView.text.length - 1);
+    paraRange = [_textView.text paragraphRangeForRange:NSMakeRange(pos, 0)];
+  }
+
+  // Check if this paragraph already has the block type
   BOOL hasBlock = NO;
-  if (lineRange.length > 0) {
+  if (paraRange.length > 0 && paraRange.location < _textView.textStorage.length) {
     NSDictionary *attrs =
-        [_textView.textStorage attributesAtIndex:lineRange.location
+        [_textView.textStorage attributesAtIndex:paraRange.location
                                   effectiveRange:nil];
-    NSString *existing = attrs[MDBlockTypeAttributeName];
-    hasBlock = [existing isEqualToString:blockType];
+    hasBlock = [attrs[MDBlockTypeAttributeName] isEqualToString:blockType];
   }
 
   if (hasBlock) {
-    // Remove block type from the paragraph
-    NSRange paraRange = [_textView.text
-        paragraphRangeForRange:lineRange];
+    // Remove block type
     [_textView.textStorage removeAttribute:MDBlockTypeAttributeName
                                      range:paraRange];
     [_store removeRangesOfType:fType intersecting:paraRange];
   } else {
     // Set block type on the paragraph
-    NSRange paraRange = [_textView.text
-        paragraphRangeForRange:lineRange];
-    [_textView.textStorage addAttribute:MDBlockTypeAttributeName
-                                  value:blockType
-                                  range:paraRange];
-    if (lineRange.length > 0) {
-      [_store addRange:[FormattingRange rangeWithType:fType
-                                               range:lineRange]];
+    if (paraRange.length > 0) {
+      [_textView.textStorage addAttribute:MDBlockTypeAttributeName
+                                    value:blockType
+                                    range:paraRange];
     }
+
+    // Also set it in typing attributes so if the line is empty,
+    // the next character typed inherits the block style
+    NSMutableDictionary *typingAttrs =
+        [_textView.typingAttributes mutableCopy];
+    typingAttrs[MDBlockTypeAttributeName] = blockType;
+    _textView.typingAttributes = typingAttrs;
   }
 
   [self applyFormatting];
+  [self resetTypingAttributes];
   [self detectAndEmitState];
 }
 
