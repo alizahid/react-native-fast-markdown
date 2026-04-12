@@ -195,7 +195,12 @@ export type MarkdownTableCellStyle = Pick<
 > &
   Pick<
     TextStyle,
-    'color' | 'fontFamily' | 'fontSize' | 'fontStyle' | 'fontWeight' | 'textAlign'
+    | 'color'
+    | 'fontFamily'
+    | 'fontSize'
+    | 'fontStyle'
+    | 'fontWeight'
+    | 'textAlign'
   >
 
 /** Inline link. Full text surface — color, font, decoration,
@@ -335,15 +340,15 @@ export interface TaskListItemPressEvent {
  *  width / height during measurement — no layout shift when the
  *  image finishes loading. */
 export interface MarkdownImageData {
+  height: number
   url: string
   width: number
-  height: number
 }
 
 export interface ImagePressEvent {
+  height: number
   url: string
   width: number
-  height: number
 }
 
 // --- Editor State ---
