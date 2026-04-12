@@ -10,6 +10,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) StyleConfig *styleConfig;
 @property (nonatomic, strong) UIFont *baseFont;
 @property (nonatomic, strong) UIColor *baseColor;
+@property (nonatomic) CGFloat baseLineHeight;
+@property (nonatomic) CGFloat paragraphSpacing;
 
 /// Re-applies all formatting from the store to the text storage.
 /// Resets everything to base attributes first, then layers on

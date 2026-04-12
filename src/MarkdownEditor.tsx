@@ -368,6 +368,7 @@ const textPropNames = new Set([
   'fontSize',
   'fontStyle',
   'fontWeight',
+  'gap',
   'letterSpacing',
   'lineHeight',
   'textAlign',

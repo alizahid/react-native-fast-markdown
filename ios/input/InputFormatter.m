@@ -14,10 +14,24 @@
   [textStorage beginEditing];
 
   // 1. Reset to base attributes
-  NSDictionary *baseAttrs = @{
+  NSMutableDictionary *baseAttrs = [@{
     NSFontAttributeName : _baseFont,
     NSForegroundColorAttributeName : _baseColor,
-  };
+  } mutableCopy];
+
+  // Base paragraph style: line height + gap (paragraph spacing)
+  if (_baseLineHeight > 0 || _paragraphSpacing > 0) {
+    NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
+    if (_baseLineHeight > 0) {
+      basePStyle.minimumLineHeight = _baseLineHeight;
+      basePStyle.maximumLineHeight = _baseLineHeight;
+    }
+    if (_paragraphSpacing > 0) {
+      basePStyle.paragraphSpacing = _paragraphSpacing;
+    }
+    baseAttrs[NSParagraphStyleAttributeName] = basePStyle;
+  }
+
   [textStorage setAttributes:baseAttrs range:fullRange];
 
   // 2. Apply block-level formatting first (sets base font for headings)

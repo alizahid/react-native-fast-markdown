@@ -90,6 +90,8 @@ using namespace facebook::react;
     _formatter.styleConfig = _styleConfig;
     _formatter.baseFont = _baseFont;
     _formatter.baseColor = _baseColor;
+    _formatter.baseLineHeight = _styleConfig.base.lineHeight;
+    _formatter.paragraphSpacing = _styleConfig.base.gap;
 
     // Re-apply formatting with new styles if we already have content
     if (_textView.text.length > 0) {
@@ -188,10 +190,26 @@ using namespace facebook::react;
 }
 
 - (void)resetTypingAttributes {
-  _textView.typingAttributes = @{
+  NSMutableDictionary *attrs = [@{
     NSFontAttributeName : _baseFont ?: [UIFont systemFontOfSize:16],
     NSForegroundColorAttributeName : _baseColor ?: [UIColor labelColor],
-  };
+  } mutableCopy];
+
+  CGFloat lineHeight = _styleConfig.base.lineHeight;
+  CGFloat gap = _styleConfig.base.gap;
+  if (lineHeight > 0 || gap > 0) {
+    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+    if (lineHeight > 0) {
+      pStyle.minimumLineHeight = lineHeight;
+      pStyle.maximumLineHeight = lineHeight;
+    }
+    if (gap > 0) {
+      pStyle.paragraphSpacing = gap;
+    }
+    attrs[NSParagraphStyleAttributeName] = pStyle;
+  }
+
+  _textView.typingAttributes = attrs;
 }
 
 // ---------------------------------------------------------------
