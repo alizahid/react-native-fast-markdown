@@ -72,11 +72,12 @@ export type MarkdownBlockStyle = MarkdownViewStyle & MarkdownTextStyle
  *  produce a box whose aspect ratio differs from the image's
  *  natural aspect ratio.
  *
+ *  - `cover` (default): the block is sized to (maxWidth, maxHeight)
+ *    exactly and the image is scaled to fill, cropping whatever
+ *    overflows.
  *  - `contain`: the block shrinks to the image's natural aspect
  *    ratio fitted within (maxWidth, maxHeight). No cropping, no
- *    empty space. Default.
- *  - `cover`: the block is sized to (maxWidth, maxHeight) exactly
- *    and the image is scaled to fill, cropping whatever overflows. */
+ *    empty space. */
 export type MarkdownImageStyle = MarkdownViewStyle & {
   objectFit?: 'contain' | 'cover'
 }

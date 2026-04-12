@@ -58,14 +58,14 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
 
     _imageView = [[UIImageView alloc] initWithFrame:CGRectZero];
     // Match the content mode to the caller's objectFit choice.
-    // Only "cover" produces cropping — everything else (nil,
-    // "contain", unknown) preserves the full image. The block
-    // sizeThatFits cascade already sizes the block to match the
-    // desired aspect ratio, so for the default case there's
-    // nothing to crop or letterbox either way.
-    _imageView.contentMode = [_objectFit isEqualToString:@"cover"]
-                                 ? UIViewContentModeScaleAspectFill
-                                 : UIViewContentModeScaleAspectFit;
+    // Default is "cover" (scaleAspectFill) — the image fills its
+    // reserved rect and crops whatever overflows. Callers who
+    // want the full image preserved, with empty space when the
+    // aspect ratio doesn't match, opt in with objectFit:
+    // 'contain'.
+    _imageView.contentMode = [_objectFit isEqualToString:@"contain"]
+                                 ? UIViewContentModeScaleAspectFit
+                                 : UIViewContentModeScaleAspectFill;
     _imageView.clipsToBounds = YES;
     _imageView.backgroundColor = [UIColor clearColor];
     [self addSubview:_imageView];
@@ -122,13 +122,14 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
                         objectFit:(NSString *)objectFit {
   if (natural.width <= 0 || natural.height <= 0) return CGSizeZero;
 
-  // With `cover` and BOTH max constraints set the block is sized
-  // to the max box exactly — the image inside is scaled to fill
-  // via UIViewContentModeScaleAspectFill, cropping whatever
-  // overflows. With only one max constraint (or with `contain`
-  // / nil objectFit) the block keeps the natural aspect ratio
-  // scaled to fit within whichever constraints are present.
-  BOOL cover = [objectFit isEqualToString:@"cover"];
+  // Default objectFit is "cover": when BOTH max constraints are
+  // set, the block is sized to (maxWidth, maxHeight) exactly and
+  // the image is scaled to fill via UIViewContentModeScaleAspectFill,
+  // cropping whatever overflows. With objectFit "contain" — or
+  // with only one max constraint — the block keeps the natural
+  // aspect ratio scaled to fit within whichever constraints are
+  // present.
+  BOOL cover = ![objectFit isEqualToString:@"contain"];
   CGFloat w;
   CGFloat h;
   if (cover && maxWidth > 0 && maxHeight > 0) {

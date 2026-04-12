@@ -144,11 +144,15 @@
     _cornerMaskLayer = nil;
   }
 
-  // Border curve (continuous / circular)
-  if ([_style.borderCurve isEqualToString:@"continuous"]) {
-    _boxView.layer.cornerCurve = kCACornerCurveContinuous;
-  } else {
+  // Border curve (continuous / circular). Defaults to continuous
+  // — the native iOS squircle — so every block view (codeBlock,
+  // blockquote, image, …) gets smooth corners without the caller
+  // having to opt in on each style. Callers who want old-school
+  // circular arcs can set `borderCurve: 'circular'` explicitly.
+  if ([_style.borderCurve isEqualToString:@"circular"]) {
     _boxView.layer.cornerCurve = kCACornerCurveCircular;
+  } else {
+    _boxView.layer.cornerCurve = kCACornerCurveContinuous;
   }
 
   [self bringBorderSubviewsToFront];
