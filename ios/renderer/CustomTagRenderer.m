@@ -7,6 +7,7 @@
 NSString *const MarkdownCustomTagKey = @"MarkdownCustomTag";
 NSString *const MarkdownCustomTagPropsKey = @"MarkdownCustomTagProps";
 NSString *const MarkdownSpoilerRangeKey = @"MarkdownSpoilerRange";
+NSString *const MarkdownSpoilerIsBlockKey = @"MarkdownSpoilerIsBlock";
 NSString *const MarkdownMentionKey = @"MarkdownMention";
 
 // Built-in mention tags.

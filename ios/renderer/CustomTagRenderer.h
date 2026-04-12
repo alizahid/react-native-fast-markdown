@@ -19,5 +19,13 @@ extern NSString *const MarkdownSpoilerRangeKey;
 /// that fires onMentionPress on tap.
 extern NSString *const MarkdownMentionKey;
 
+/// When set (to @YES) alongside MarkdownSpoilerRangeKey on a spoiler
+/// range, signals that the spoiler is block-level — i.e. the entire
+/// top-level segment is the spoiler, not an inline span inside a
+/// paragraph. MarkdownSpoilerOverlay uses this to render the
+/// overlay as one solid rectangle instead of a staircase polygon
+/// that follows the text contour.
+extern NSString *const MarkdownSpoilerIsBlockKey;
+
 @interface CustomTagRenderer : NSObject <NodeRenderer>
 @end

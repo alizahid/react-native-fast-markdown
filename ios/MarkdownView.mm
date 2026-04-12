@@ -210,6 +210,26 @@ using namespace facebook::react;
 
   if (content.length == 0) return;
 
+  // If this top-level segment is itself a CustomTag node (e.g. a
+  // block-level <Spoiler>…</Spoiler>), stamp every spoiler range in
+  // the rendered string with MarkdownSpoilerIsBlockKey so the
+  // overlay system draws a solid rectangle instead of a staircase
+  // polygon that follows the text contour.
+  if (node.nodeType == MDNodeTypeCustomTag) {
+    NSMutableAttributedString *mut = [content mutableCopy];
+    [mut enumerateAttribute:MarkdownSpoilerRangeKey
+                    inRange:NSMakeRange(0, mut.length)
+                    options:0
+                 usingBlock:^(id value, NSRange range, BOOL *stop) {
+      if (value) {
+        [mut addAttribute:MarkdownSpoilerIsBlockKey
+                    value:@YES
+                    range:range];
+      }
+    }];
+    content = [mut copy];
+  }
+
   // Wrap in a block view + text view
   MarkdownBlockView *blockView = [[MarkdownBlockView alloc] initWithStyle:blockStyle];
 

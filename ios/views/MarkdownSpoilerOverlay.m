@@ -143,6 +143,22 @@ static UIColor *MarkdownSpoilerPressedColor(UIColor *color) {
   for (NSString *spoilerId in spoilerRanges) {
     BOOL isRevealed = [_revealedIds containsObject:spoilerId];
 
+    // Block-level spoilers get a single rectangular overlay instead
+    // of a staircase polygon. MarkdownView stamps
+    // MarkdownSpoilerIsBlockKey on the range when the top-level
+    // segment is itself a CustomTag (i.e. a standalone
+    // <Spoiler>…</Spoiler>).
+    BOOL isBlock = NO;
+    NSArray<NSValue *> *chunkRanges = spoilerRanges[spoilerId];
+    if (chunkRanges.count > 0) {
+      NSRange firstRange = [chunkRanges[0] rangeValue];
+      id blockFlag = [attrText attribute:MarkdownSpoilerIsBlockKey
+                                 atIndex:firstRange.location
+                          effectiveRange:NULL];
+      isBlock = [blockFlag isKindOfClass:[NSNumber class]] &&
+                [blockFlag boolValue];
+    }
+
     NSMutableArray<NSValue *> *perLineRects = [NSMutableArray new];
 
     for (NSValue *rangeValue in spoilerRanges[spoilerId]) {
@@ -204,27 +220,42 @@ static UIColor *MarkdownSpoilerPressedColor(UIColor *color) {
 
     if (perLineRects.count == 0) continue;
 
-    // Sort by y (safety — normally already in order) then extend
-    // each rect's bottom down to the next rect's top, filling the
-    // inter-line leading gap so adjacent lines visually connect
-    // without losing the tight top/bottom hug on the outermost
-    // edges.
-    [perLineRects sortUsingComparator:^NSComparisonResult(NSValue *a,
-                                                          NSValue *b) {
-      CGFloat ay = a.CGRectValue.origin.y;
-      CGFloat by = b.CGRectValue.origin.y;
-      if (ay < by) return NSOrderedAscending;
-      if (ay > by) return NSOrderedDescending;
-      return NSOrderedSame;
-    }];
-    for (NSUInteger i = 0; i + 1 < perLineRects.count; i++) {
-      CGRect curr = [perLineRects[i] CGRectValue];
-      CGRect next = [perLineRects[i + 1] CGRectValue];
-      CGFloat desiredBottom = next.origin.y;
-      if (desiredBottom > CGRectGetMaxY(curr)) {
-        curr.size.height = desiredBottom - curr.origin.y;
-        [perLineRects replaceObjectAtIndex:i
-                                withObject:[NSValue valueWithCGRect:curr]];
+    if (isBlock) {
+      // Block-level spoilers: collapse every per-line rect into a
+      // single union rectangle so the overlay is one flat cover
+      // instead of a staircase. The widest line sets the width,
+      // the first/last line set top/bottom. shapePathForRects:
+      // fast-paths single-rect input to a plain rounded rect.
+      CGRect bounds = [perLineRects[0] CGRectValue];
+      for (NSValue *v in perLineRects) {
+        bounds = CGRectUnion(bounds, v.CGRectValue);
+      }
+      [perLineRects removeAllObjects];
+      [perLineRects addObject:[NSValue valueWithCGRect:bounds]];
+    } else {
+      // Inline spoilers: sort by y (safety — normally already in
+      // order) then extend each rect's bottom down to the next
+      // rect's top, filling the inter-line leading gap so adjacent
+      // lines visually connect without losing the tight top/bottom
+      // hug on the outermost edges.
+      [perLineRects
+          sortUsingComparator:^NSComparisonResult(NSValue *a, NSValue *b) {
+            CGFloat ay = a.CGRectValue.origin.y;
+            CGFloat by = b.CGRectValue.origin.y;
+            if (ay < by) return NSOrderedAscending;
+            if (ay > by) return NSOrderedDescending;
+            return NSOrderedSame;
+          }];
+      for (NSUInteger i = 0; i + 1 < perLineRects.count; i++) {
+        CGRect curr = [perLineRects[i] CGRectValue];
+        CGRect next = [perLineRects[i + 1] CGRectValue];
+        CGFloat desiredBottom = next.origin.y;
+        if (desiredBottom > CGRectGetMaxY(curr)) {
+          curr.size.height = desiredBottom - curr.origin.y;
+          [perLineRects
+              replaceObjectAtIndex:i
+                        withObject:[NSValue valueWithCGRect:curr]];
+        }
       }
     }
 
