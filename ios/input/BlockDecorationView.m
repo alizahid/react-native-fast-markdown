@@ -24,7 +24,8 @@
 
   NSLayoutManager *layoutManager = textView.layoutManager;
   NSTextContainer *textContainer = textView.textContainer;
-  CGPoint origin = textView.textContainerInset;
+  UIEdgeInsets insets = textView.textContainerInset;
+  CGPoint origin = CGPointMake(insets.left, insets.top);
 
   for (FormattingRange *r in store.allRanges) {
     MarkdownElementStyle *style = nil;
