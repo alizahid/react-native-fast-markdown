@@ -27,19 +27,48 @@
   UIEdgeInsets insets = textView.textContainerInset;
   CGPoint origin = CGPointMake(insets.left, insets.top);
 
+  // Collect and merge adjacent/overlapping block ranges by type
+  // so they draw as one continuous visual block.
+  NSMutableArray<FormattingRange *> *blockRanges = [NSMutableArray new];
   for (FormattingRange *r in store.allRanges) {
+    if (r.type != FormattingTypeBlockquote &&
+        r.type != FormattingTypeCodeBlock) continue;
+    if (NSMaxRange(r.range) > textView.textStorage.length) continue;
+    [blockRanges addObject:r];
+  }
+
+  // Merge ranges of the same type that are adjacent (touching or
+  // separated by just a newline)
+  NSMutableArray<FormattingRange *> *merged = [NSMutableArray new];
+  for (FormattingRange *r in blockRanges) {
+    BOOL didMerge = NO;
+    for (FormattingRange *m in merged) {
+      if (m.type != r.type) continue;
+      NSUInteger mEnd = NSMaxRange(m.range);
+      NSUInteger rStart = r.range.location;
+      // Adjacent or overlapping (allow 1 char gap for newline)
+      if (rStart <= mEnd + 1 && r.range.location >= m.range.location) {
+        NSUInteger newEnd = MAX(mEnd, NSMaxRange(r.range));
+        m.range = NSMakeRange(m.range.location, newEnd - m.range.location);
+        didMerge = YES;
+        break;
+      }
+    }
+    if (!didMerge) {
+      [merged addObject:[r copy]];
+    }
+  }
+
+  for (FormattingRange *r in merged) {
     MarkdownElementStyle *style = nil;
 
     if (r.type == FormattingTypeBlockquote) {
       style = styleConfig.blockquote;
     } else if (r.type == FormattingTypeCodeBlock) {
       style = styleConfig.codeBlock;
-    } else {
-      continue;
     }
 
     if (!style) continue;
-    if (NSMaxRange(r.range) > textView.textStorage.length) continue;
 
     // Get the bounding rect for this range's glyphs
     NSRange glyphRange =
