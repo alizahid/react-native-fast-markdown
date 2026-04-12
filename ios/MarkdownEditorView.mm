@@ -10,13 +10,12 @@
 #import "FormattingStore.h"
 #import "InputFormatter.h"
 #import "InputParser.h"
-#import "MarkdownLayoutManager.h"
 #import "MarkdownSerializer.h"
 #import "StyleConfig.h"
 
 using namespace facebook::react;
 
-@interface MarkdownEditorView () <UITextViewDelegate, NSTextStorageDelegate>
+@interface MarkdownEditorView () <UITextViewDelegate>
 @end
 
 @implementation MarkdownEditorView {
@@ -28,11 +27,6 @@ using namespace facebook::react;
 
   FormattingStore *_store;
   InputFormatter *_formatter;
-  MarkdownLayoutManager *_layoutManager;
-
-  // Dirty ranges collected from NSTextStorageDelegate. Only
-  // these ranges are reset + re-styled on each text change.
-  NSMutableArray<NSValue *> *_dirtyRanges;
 
   BOOL _suppressFormatting;
 }
@@ -48,27 +42,12 @@ using namespace facebook::react;
     _store = [FormattingStore new];
     _formatter = [InputFormatter new];
 
-    // Use TextKit 1 with a custom layout manager for block
-    // decorations (background fills, left borders).
-    _layoutManager = [MarkdownLayoutManager new];
-    NSTextStorage *textStorage = [NSTextStorage new];
-    [textStorage addLayoutManager:_layoutManager];
-    NSTextContainer *textContainer =
-        [[NSTextContainer alloc] initWithSize:CGSizeZero];
-    textContainer.widthTracksTextView = YES;
-    textContainer.heightTracksTextView = NO;
-    [_layoutManager addTextContainer:textContainer];
-
-    _textView = [[UITextView alloc] initWithFrame:self.bounds
-                                    textContainer:textContainer];
+    _textView = [[UITextView alloc] initWithFrame:self.bounds];
     _textView.delegate = self;
-    _textView.textStorage.delegate = self;
     _textView.autocorrectionType = UITextAutocorrectionTypeDefault;
     _textView.scrollEnabled = YES;
     _textView.backgroundColor = [UIColor clearColor];
     [self addSubview:_textView];
-
-    _dirtyRanges = [NSMutableArray new];
   }
   return self;
 }
@@ -103,7 +82,6 @@ using namespace facebook::react;
     _formatter.baseColor = _baseColor;
     _formatter.baseLineHeight = _styleConfig.base.lineHeight;
     _formatter.paragraphSpacing = _styleConfig.base.gap;
-    _layoutManager.styleConfig = _styleConfig;
 
     // Re-apply formatting with new styles if we already have content
     if (_textView.text.length > 0) {
@@ -181,54 +159,8 @@ using namespace facebook::react;
 }
 
 - (NSString *)exportMarkdown {
-  // Sync block ranges from paragraph attributes into the store
-  // before export. Blocks continued via Enter are in the
-  // attributed string but may not be in the FormattingStore.
-  [self syncBlockRangesFromAttributes];
-
   return [MarkdownSerializer serializePlainText:_textView.text
                                      withStore:_store];
-}
-
-/// Reads MDBlockTypeAttributeName from the text storage and
-/// ensures the FormattingStore has matching block ranges.
-- (void)syncBlockRangesFromAttributes {
-  NSTextStorage *ts = _textView.textStorage;
-  if (ts.length == 0) return;
-
-  // Remove all existing code block and blockquote ranges
-  NSArray *codeBlocks =
-      [_store rangesOfType:FormattingTypeCodeBlock
-              intersecting:NSMakeRange(0, ts.length)];
-  for (FormattingRange *r in codeBlocks) {
-    [_store removeRangesOfType:FormattingTypeCodeBlock intersecting:r.range];
-  }
-  NSArray *bqRanges =
-      [_store rangesOfType:FormattingTypeBlockquote
-              intersecting:NSMakeRange(0, ts.length)];
-  for (FormattingRange *r in bqRanges) {
-    [_store removeRangesOfType:FormattingTypeBlockquote intersecting:r.range];
-  }
-
-  // Rebuild from paragraph attributes
-  [ts enumerateAttribute:MDBlockTypeAttributeName
-                 inRange:NSMakeRange(0, ts.length)
-                 options:0
-              usingBlock:^(NSString *value, NSRange range, BOOL *stop) {
-    if (!value) return;
-
-    FormattingType fType;
-    if ([value isEqualToString:MDBlockTypeCodeBlock]) {
-      fType = FormattingTypeCodeBlock;
-    } else if ([value isEqualToString:MDBlockTypeBlockquote]) {
-      fType = FormattingTypeBlockquote;
-    } else {
-      return;
-    }
-
-    [self->_store addRange:[FormattingRange rangeWithType:fType
-                                                   range:range]];
-  }];
 }
 
 // ---------------------------------------------------------------
@@ -241,103 +173,9 @@ using namespace facebook::react;
   [_formatter applyAllFormatting:_store toTextStorage:_textView.textStorage];
 }
 
-/// Incremental re-style — only the dirty ranges collected from
-/// NSTextStorageDelegate. Block attributes outside these ranges
-/// are never touched.
-- (void)applyDirtyFormatting {
-  if (_suppressFormatting) return;
-  if (_dirtyRanges.count == 0) return;
 
-  NSTextStorage *ts = _textView.textStorage;
-  if (ts.length == 0) return;
-
-  // Merge and expand dirty ranges to paragraph boundaries
-  NSMutableIndexSet *dirtyChars = [NSMutableIndexSet new];
-  for (NSValue *v in _dirtyRanges) {
-    NSRange r = v.rangeValue;
-    if (r.location > ts.length) continue;
-    if (NSMaxRange(r) > ts.length) {
-      r.length = ts.length - r.location;
-    }
-    if (r.location < ts.length) {
-      NSRange paraRange = [ts.string paragraphRangeForRange:r];
-      [dirtyChars addIndexesInRange:paraRange];
-    }
-  }
-  [_dirtyRanges removeAllObjects];
-
-  // Propagate block attributes: if a dirty paragraph doesn't
-  // have MDBlockTypeAttributeName but the preceding paragraph
-  // does, extend the block attribute. This handles Enter inside
-  // a code block — UITextView creates a new paragraph that may
-  // not have the attribute yet.
-  [dirtyChars enumerateRangesUsingBlock:^(NSRange range, BOOL *stop) {
-    [self propagateBlockAttributeInRange:range textStorage:ts];
-  }];
-
-  // Re-style each contiguous dirty region
-  [dirtyChars enumerateRangesUsingBlock:^(NSRange range, BOOL *stop) {
-    [self->_formatter applyFormattingInRange:range
-                                      store:self->_store
-                              toTextStorage:ts];
-  }];
-}
-
-/// If the paragraph before `range` has a block attribute and
-/// paragraphs within `range` don't, extend the attribute.
-- (void)propagateBlockAttributeInRange:(NSRange)range
-                           textStorage:(NSTextStorage *)ts {
-  if (range.location == 0) return;
-
-  // Check the character just before this range
-  NSUInteger prevIdx = range.location - 1;
-  NSDictionary *prevAttrs = [ts attributesAtIndex:prevIdx
-                                   effectiveRange:nil];
-  NSString *prevBlock = prevAttrs[MDBlockTypeAttributeName];
-  if (!prevBlock) return;
-
-  // Walk paragraphs in the range and extend the attribute
-  NSString *text = ts.string;
-  NSUInteger pos = range.location;
-  while (pos < NSMaxRange(range) && pos < text.length) {
-    NSRange paraRange = [text paragraphRangeForRange:NSMakeRange(pos, 0)];
-
-    // Check if this paragraph already has the attribute
-    NSDictionary *attrs = [ts attributesAtIndex:paraRange.location
-                                 effectiveRange:nil];
-    if (![attrs[MDBlockTypeAttributeName] isEqualToString:prevBlock]) {
-      [ts addAttribute:MDBlockTypeAttributeName
-                 value:prevBlock
-                 range:paraRange];
-    }
-
-    pos = NSMaxRange(paraRange);
-  }
-}
 
 - (void)resetTypingAttributes {
-  // If the cursor is inside a block, inherit the block's styling.
-  // For a selection, check the selection start. For a cursor,
-  // check the character before it.
-  NSRange sel = _textView.selectedRange;
-  NSUInteger idx;
-  if (sel.length > 0) {
-    idx = sel.location; // start of selection
-  } else {
-    idx = sel.location > 0 ? sel.location - 1 : 0;
-  }
-  if (idx >= _textView.textStorage.length && _textView.textStorage.length > 0) {
-    idx = _textView.textStorage.length - 1;
-  }
-
-  NSDictionary *currentAttrs = nil;
-  if (_textView.textStorage.length > 0) {
-    currentAttrs = [_textView.textStorage attributesAtIndex:idx
-                                             effectiveRange:nil];
-  }
-
-  NSString *blockType = currentAttrs[MDBlockTypeAttributeName];
-
   NSMutableDictionary *attrs = [@{
     NSFontAttributeName : _baseFont ?: [UIFont systemFontOfSize:16],
     NSForegroundColorAttributeName : _baseColor ?: [UIColor labelColor],
@@ -351,39 +189,8 @@ using namespace facebook::react;
     pStyle.minimumLineHeight = lineHeight;
     pStyle.maximumLineHeight = lineHeight;
   }
-
-  if ([blockType isEqualToString:MDBlockTypeCodeBlock]) {
-    MarkdownElementStyle *style = _styleConfig.codeBlock;
-    UIFont *codeFont =
-        [style resolvedFontWithBase:_baseFont]
-            ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
-                                          weight:UIFontWeightRegular];
-    attrs[NSFontAttributeName] = codeFont;
-    if (style.color) {
-      attrs[NSForegroundColorAttributeName] = style.color;
-    }
-    attrs[MDBlockTypeAttributeName] = MDBlockTypeCodeBlock;
-    // No paragraph spacing inside code blocks
-    pStyle.paragraphSpacing = 0;
-    CGFloat pad = style.padding;
-    if (pad > 0) {
-      pStyle.firstLineHeadIndent = pad;
-      pStyle.headIndent = pad;
-      pStyle.tailIndent = -pad;
-    }
-  } else if ([blockType isEqualToString:MDBlockTypeBlockquote]) {
-    MarkdownElementStyle *style = _styleConfig.blockquote;
-    if (style.color) {
-      attrs[NSForegroundColorAttributeName] = style.color;
-    }
-    UIFont *bqFont = [style resolvedFontWithBase:_baseFont];
-    if (bqFont) attrs[NSFontAttributeName] = bqFont;
-    attrs[MDBlockTypeAttributeName] = MDBlockTypeBlockquote;
+  if (gap > 0) {
     pStyle.paragraphSpacing = gap;
-  } else {
-    if (gap > 0) {
-      pStyle.paragraphSpacing = gap;
-    }
   }
 
   attrs[NSParagraphStyleAttributeName] = pStyle;
@@ -476,101 +283,6 @@ using namespace facebook::react;
   }
 
   [self applyFullFormatting];
-  [self detectAndEmitState];
-}
-
-- (void)toggleBlockquote {
-  [self toggleBlockType:MDBlockTypeBlockquote
-       formattingType:FormattingTypeBlockquote];
-}
-
-- (void)toggleCodeBlock {
-  [self toggleBlockType:MDBlockTypeCodeBlock
-       formattingType:FormattingTypeCodeBlock];
-}
-
-- (void)toggleBlockType:(NSString *)blockType
-         formattingType:(FormattingType)fType {
-  NSRange cursor = _textView.selectedRange;
-  NSLog(@"[MD] toggleBlockType:%@ cursor={%lu,%lu} text.length=%lu",
-        blockType,
-        (unsigned long)cursor.location,
-        (unsigned long)cursor.length,
-        (unsigned long)_textView.text.length);
-
-  // Get the paragraph range at the cursor.
-  NSRange paraRange = NSMakeRange(cursor.location, 0);
-  if (_textView.text.length > 0 && cursor.location < _textView.text.length) {
-    paraRange = [_textView.text
-        paragraphRangeForRange:NSMakeRange(cursor.location, 0)];
-  }
-  // If cursor is at text.length (after trailing \n), paraRange
-  // stays {cursor.location, 0} — an empty paragraph. We'll only
-  // set typing attributes for this case.
-
-  // Check if this paragraph already has the block type
-  BOOL hasBlock = NO;
-  if (paraRange.length > 0 && paraRange.location < _textView.textStorage.length) {
-    NSDictionary *attrs =
-        [_textView.textStorage attributesAtIndex:paraRange.location
-                                  effectiveRange:nil];
-    hasBlock = [attrs[MDBlockTypeAttributeName] isEqualToString:blockType];
-  }
-
-  if (hasBlock) {
-    // Remove block type from the full paragraph
-    [_textView.textStorage removeAttribute:MDBlockTypeAttributeName
-                                     range:paraRange];
-    [_store removeRangesOfType:fType intersecting:paraRange];
-
-    [self applyFullFormatting];
-    [self resetTypingAttributes];
-  } else {
-    // Set block type on the full paragraph (including \n)
-    if (paraRange.length > 0) {
-      [_textView.textStorage addAttribute:MDBlockTypeAttributeName
-                                    value:blockType
-                                    range:paraRange];
-    }
-
-    [self applyFullFormatting];
-
-    // Set typing attributes WITH the block type AFTER
-    // applyFullFormatting — resetTypingAttributes would check
-    // the cursor position and should now find the attribute,
-    // but we force it to be safe.
-    [self resetTypingAttributes];
-
-    // Force the block type into typing attributes regardless
-    // (handles empty lines where paraRange.length == 0)
-    NSMutableDictionary *typingAttrs =
-        [_textView.typingAttributes mutableCopy];
-    typingAttrs[MDBlockTypeAttributeName] = blockType;
-
-    // Also set the correct font/paragraph for code blocks
-    if ([blockType isEqualToString:MDBlockTypeCodeBlock]) {
-      MarkdownElementStyle *style = _styleConfig.codeBlock;
-      UIFont *codeFont =
-          [style resolvedFontWithBase:_baseFont]
-              ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
-                                            weight:UIFontWeightRegular];
-      typingAttrs[NSFontAttributeName] = codeFont;
-      if (style.color) {
-        typingAttrs[NSForegroundColorAttributeName] = style.color;
-      }
-      NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-      pStyle.paragraphSpacing = 0;
-      CGFloat pad = style.padding;
-      if (pad > 0) {
-        pStyle.firstLineHeadIndent = pad;
-        pStyle.headIndent = pad;
-      }
-      typingAttrs[NSParagraphStyleAttributeName] = pStyle;
-    }
-
-    _textView.typingAttributes = typingAttrs;
-  }
-
   [self detectAndEmitState];
 }
 
@@ -721,20 +433,6 @@ using namespace facebook::react;
     }
   }
 
-  // --- Blockquote: "> " at start of line ---
-  if (localCursor >= 2 && [line hasPrefix:@"> "]) {
-    // Don't trigger if the line already has blockquote formatting
-    NSArray *existing = [_store rangesOfType:FormattingTypeBlockquote
-                                intersecting:lineRange];
-    if (existing.count == 0) {
-      [self autoConvertBlockPrefix:@"> "
-                         lineStart:lineStart
-                          lineText:line
-                              type:FormattingTypeBlockquote];
-      return;
-    }
-  }
-
   // --- Unordered list: "- " or "* " at start of line ---
   if (localCursor >= 2 &&
       ([line hasPrefix:@"- "] || [line hasPrefix:@"* "])) {
@@ -827,25 +525,7 @@ using namespace facebook::react;
     [_store.pendingStyles addObject:@(type)];
   }
 
-  // Mark the line as dirty for re-styling
-  [_dirtyRanges addObject:[NSValue valueWithRange:newLineRange]];
-  [self applyDirtyFormatting];
-
-  // Set typing attributes for blockquotes so the paragraph indent
-  // is visible immediately, even on an empty line
-  if (type == FormattingTypeBlockquote) {
-    NSMutableDictionary *attrs = [_textView.typingAttributes mutableCopy];
-    NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-    pStyle.firstLineHeadIndent = 16;
-    pStyle.headIndent = 16;
-    attrs[NSParagraphStyleAttributeName] = pStyle;
-
-    MarkdownElementStyle *bqStyle = _styleConfig.blockquote;
-    if (bqStyle.color) {
-      attrs[NSForegroundColorAttributeName] = bqStyle.color;
-    }
-    _textView.typingAttributes = attrs;
-  }
+  [self applyFullFormatting];
 
   // Restore cursor
   NSUInteger newCursor = lineStart + bulletLen + contentOffset;
@@ -917,9 +597,7 @@ using namespace facebook::react;
         _textView.selectedRange =
             NSMakeRange(searchPos + content.length, 0);
 
-        NSRange codeLineRange = [self lineRangeAt:searchPos];
-        [_dirtyRanges addObject:[NSValue valueWithRange:codeLineRange]];
-        [self applyDirtyFormatting];
+        [self applyFullFormatting];
         [self emitMarkdownChange];
         return;
       }
@@ -1208,16 +886,12 @@ using namespace facebook::react;
     [self toggleInlineType:FormattingTypeStrikethrough];
   } else if ([commandName isEqualToString:@"toggleCode"]) {
     [self toggleInlineType:FormattingTypeCode];
-  } else if ([commandName isEqualToString:@"toggleCodeBlock"]) {
-    [self toggleCodeBlock];
   } else if ([commandName isEqualToString:@"toggleHeading"]) {
     [self toggleHeading:[args[0] integerValue]];
   } else if ([commandName isEqualToString:@"toggleOrderedList"]) {
     [self toggleList:FormattingTypeOrderedList];
   } else if ([commandName isEqualToString:@"toggleUnorderedList"]) {
     [self toggleList:FormattingTypeUnorderedList];
-  } else if ([commandName isEqualToString:@"toggleBlockquote"]) {
-    [self toggleBlockquote];
   } else if ([commandName isEqualToString:@"insertLink"]) {
     NSString *url = args[0];
     NSString *text = args.count > 1 ? args[1] : @"";
@@ -1319,9 +993,6 @@ using namespace facebook::react;
   NSUInteger deleted = range.length;
   NSUInteger inserted = text.length;
 
-  // Block continuation is handled natively by UITextView's
-  // paragraph attribute propagation (MDBlockTypeAttributeName).
-  // The FormattingStore only needs adjustment for inline ranges.
   [_store adjustForEditAt:range.location
             deletedLength:deleted
            insertedLength:inserted];
@@ -1350,81 +1021,15 @@ using namespace facebook::react;
 }
 
 // ---------------------------------------------------------------
-#pragma mark - NSTextStorageDelegate
-// ---------------------------------------------------------------
-
-- (void)textStorage:(NSTextStorage *)textStorage
-    didProcessEditing:(NSTextStorageEditActions)editedMask
-                range:(NSRange)editedRange
-       changeInLength:(NSInteger)delta {
-  if (_suppressFormatting) return;
-  if (!(editedMask & NSTextStorageEditedCharacters)) return;
-
-  // Shift existing dirty ranges to account for the edit
-  NSMutableArray *shifted = [NSMutableArray new];
-  for (NSValue *v in _dirtyRanges) {
-    NSRange r = v.rangeValue;
-    if (NSMaxRange(r) <= editedRange.location) {
-      // Before the edit — no change
-      [shifted addObject:v];
-    } else if (r.location >= editedRange.location) {
-      // After the edit — shift
-      NSInteger newLoc = (NSInteger)r.location + delta;
-      if (newLoc >= 0) {
-        [shifted addObject:[NSValue valueWithRange:
-            NSMakeRange((NSUInteger)newLoc, r.length)]];
-      }
-    }
-    // Overlapping ranges are dropped — the editedRange replaces them
-  }
-  [shifted addObject:[NSValue valueWithRange:editedRange]];
-  _dirtyRanges = shifted;
-}
-
-// ---------------------------------------------------------------
 #pragma mark - UITextViewDelegate
 // ---------------------------------------------------------------
 
 - (void)textViewDidChange:(UITextView *)textView {
   if (_suppressFormatting) return;
 
-  NSUInteger cursorPos = _textView.selectedRange.location;
-  NSLog(@"[MD] textViewDidChange cursor=%lu text.length=%lu",
-        (unsigned long)cursorPos,
-        (unsigned long)_textView.text.length);
-
-  // Check MDBlockType at cursor
-  if (cursorPos > 0 && _textView.textStorage.length > 0) {
-    NSUInteger checkIdx = MIN(cursorPos - 1, _textView.textStorage.length - 1);
-    NSDictionary *attrs = [_textView.textStorage attributesAtIndex:checkIdx
-                                                    effectiveRange:nil];
-    NSLog(@"[MD]   attr at %lu: MDBlockType=%@, font=%@",
-          (unsigned long)checkIdx,
-          attrs[MDBlockTypeAttributeName],
-          [attrs[NSFontAttributeName] fontName]);
-  }
-
-  // Check typing attributes
-  NSLog(@"[MD]   typingAttrs MDBlockType=%@",
-        _textView.typingAttributes[MDBlockTypeAttributeName]);
-
   [self detectAutoFormatting];
-  [self applyDirtyFormatting];
+  [self applyFullFormatting];
   [self resetTypingAttributes];
-
-  // Check again after formatting
-  if (cursorPos > 0 && _textView.textStorage.length > 0) {
-    NSUInteger checkIdx = MIN(cursorPos - 1, _textView.textStorage.length - 1);
-    NSDictionary *attrs = [_textView.textStorage attributesAtIndex:checkIdx
-                                                    effectiveRange:nil];
-    NSLog(@"[MD]   AFTER: attr at %lu: MDBlockType=%@, font=%@",
-          (unsigned long)checkIdx,
-          attrs[MDBlockTypeAttributeName],
-          [attrs[NSFontAttributeName] fontName]);
-  }
-  NSLog(@"[MD]   AFTER typingAttrs MDBlockType=%@",
-        _textView.typingAttributes[MDBlockTypeAttributeName]);
-
   [self emitMarkdownChange];
 }
 

@@ -131,8 +131,6 @@ export function EditorScreen() {
             label="OL"
             onPress={editor.toggleOrderedList}
           />
-          <ToolbarButton label="BQ" onPress={editor.toggleBlockquote} />
-          <ToolbarButton label="```" onPress={editor.toggleCodeBlock} />
           <ToolbarButton
             active={styleState.link !== null}
             label="Link"

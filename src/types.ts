@@ -389,12 +389,10 @@ export interface MarkdownEditorHandle {
   removeLink(): void
   setSelection(start: number, end: number): void
   setValue(markdown: string): void
-  toggleBlockquote(): void
 
   // Formatting toggles
   toggleBold(): void
   toggleCode(): void
-  toggleCodeBlock(): void
 
   // Block formatting
   toggleHeading(level: number): void

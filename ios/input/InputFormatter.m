@@ -1,7 +1,6 @@
 #import "InputFormatter.h"
 #import "FormattingRange.h"
 #import "FormattingStore.h"
-#import "MarkdownLayoutManager.h"
 #import "StyleConfig.h"
 
 @implementation InputFormatter
@@ -21,10 +20,6 @@
       ? _paragraphSpacing
       : _styleConfig.base.gap;
 
-  // 1. Reset base text attributes WITHOUT clearing MDBlockType.
-  // We overwrite font, color, paragraph style, and clear inline
-  // decorations, but preserve the block type attribute so
-  // UITextView's paragraph propagation stays intact.
   NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
   if (lineHeight > 0) {
     basePStyle.minimumLineHeight = lineHeight;
@@ -34,21 +29,6 @@
     basePStyle.paragraphSpacing = gap;
   }
 
-  // Collect existing block type attributes BEFORE resetting,
-  // since addAttribute for standard attrs won't clear custom
-  // attrs but we want to be explicit about preserving them.
-  NSMutableDictionary<NSNumber *, NSString *> *existingBlocks =
-      [NSMutableDictionary new];
-  [textStorage enumerateAttribute:MDBlockTypeAttributeName
-                          inRange:fullRange
-                          options:0
-                       usingBlock:^(NSString *value, NSRange range,
-                                    BOOL *stop) {
-    if (value) {
-      existingBlocks[@(range.location)] = value;
-    }
-  }];
-
   [textStorage addAttribute:NSFontAttributeName value:_baseFont range:fullRange];
   [textStorage addAttribute:NSForegroundColorAttributeName value:_baseColor range:fullRange];
   [textStorage addAttribute:NSParagraphStyleAttributeName value:basePStyle range:fullRange];
@@ -56,34 +36,7 @@
   [textStorage removeAttribute:NSStrikethroughStyleAttributeName range:fullRange];
   [textStorage removeAttribute:NSStrikethroughColorAttributeName range:fullRange];
 
-  // Restore block type attributes from both the store and the
-  // text storage (covers blocks set via toggleBlockType that
-  // might not be in the store yet).
-  for (NSNumber *locNum in existingBlocks) {
-    NSUInteger loc = locNum.unsignedIntegerValue;
-    if (loc >= textStorage.length) continue;
-    NSRange paraRange = [textStorage.string
-        paragraphRangeForRange:NSMakeRange(loc, 0)];
-    [textStorage addAttribute:MDBlockTypeAttributeName
-                        value:existingBlocks[locNum]
-                        range:paraRange];
-  }
-
-  for (FormattingRange *r in store.allRanges) {
-    NSString *blockType = nil;
-    if (r.type == FormattingTypeCodeBlock) {
-      blockType = MDBlockTypeCodeBlock;
-    } else if (r.type == FormattingTypeBlockquote) {
-      blockType = MDBlockTypeBlockquote;
-    }
-    if (!blockType) continue;
-    if (NSMaxRange(r.range) > textStorage.length) continue;
-    [textStorage addAttribute:MDBlockTypeAttributeName
-                        value:blockType
-                        range:r.range];
-  }
-
-  // 2. Apply block-level formatting from the store
+  // Apply block-level formatting from the store
   for (FormattingRange *r in store.allRanges) {
     if (![FormattingRange isBlockType:r.type]) continue;
     if (NSMaxRange(r.range) > textStorage.length) continue;
@@ -93,14 +46,7 @@
                       gap:gap];
   }
 
-  // 3. Apply block formatting from paragraph attributes (blocks
-  //    that were continued via Enter — they're in the attributed
-  //    string but not in the FormattingStore)
-  [self applyBlockTypesFromAttributes:textStorage
-                           lineHeight:lineHeight
-                                  gap:gap];
-
-  // 4. Apply inline formatting on top
+  // Apply inline formatting on top
   for (FormattingRange *r in store.allRanges) {
     if (![FormattingRange isInlineType:r.type]) continue;
     if (NSMaxRange(r.range) > textStorage.length) continue;
@@ -131,9 +77,6 @@
 
   [textStorage beginEditing];
 
-  // 1. Reset ONLY the dirty range to base attributes, but
-  //    preserve MDBlockTypeAttributeName so paragraph propagation
-  //    stays intact.
   NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
   if (lineHeight > 0) {
     basePStyle.minimumLineHeight = lineHeight;
@@ -159,7 +102,7 @@
   [textStorage removeAttribute:NSStrikethroughColorAttributeName
                          range:dirtyRange];
 
-  // 2. Re-apply block formatting that intersects the dirty range
+  // Re-apply block formatting that intersects the dirty range
   for (FormattingRange *r in store.allRanges) {
     if (![FormattingRange isBlockType:r.type]) continue;
     NSRange intersection = NSIntersectionRange(r.range, dirtyRange);
@@ -171,28 +114,7 @@
                       gap:gap];
   }
 
-  // 3. Re-apply block formatting from paragraph attributes
-  //    (blocks continued via Enter that aren't in the store)
-  [textStorage enumerateAttribute:MDBlockTypeAttributeName
-                          inRange:dirtyRange
-                          options:0
-                       usingBlock:^(NSString *value, NSRange range,
-                                    BOOL *stop) {
-    if (!value) return;
-    if ([value isEqualToString:MDBlockTypeCodeBlock]) {
-      [self applyCodeBlockStyling:range
-                    toTextStorage:textStorage
-                       lineHeight:lineHeight
-                              gap:gap];
-    } else if ([value isEqualToString:MDBlockTypeBlockquote]) {
-      [self applyBlockquoteStyling:range
-                     toTextStorage:textStorage
-                        lineHeight:lineHeight
-                               gap:gap];
-    }
-  }];
-
-  // 4. Re-apply inline formatting that intersects the dirty range
+  // Re-apply inline formatting that intersects the dirty range
   for (FormattingRange *r in store.allRanges) {
     if (![FormattingRange isInlineType:r.type]) continue;
     NSRange intersection = NSIntersectionRange(r.range, dirtyRange);
@@ -202,30 +124,6 @@
   }
 
   [textStorage endEditing];
-}
-
-- (void)applyBlockTypesFromAttributes:(NSTextStorage *)textStorage
-                           lineHeight:(CGFloat)lineHeight
-                                  gap:(CGFloat)gap {
-  [textStorage enumerateAttribute:MDBlockTypeAttributeName
-                          inRange:NSMakeRange(0, textStorage.length)
-                          options:0
-                       usingBlock:^(NSString *value, NSRange range,
-                                    BOOL *stop) {
-    if (!value) return;
-
-    if ([value isEqualToString:MDBlockTypeCodeBlock]) {
-      [self applyCodeBlockStyling:range
-                    toTextStorage:textStorage
-                       lineHeight:lineHeight
-                              gap:gap];
-    } else if ([value isEqualToString:MDBlockTypeBlockquote]) {
-      [self applyBlockquoteStyling:range
-                     toTextStorage:textStorage
-                        lineHeight:lineHeight
-                               gap:gap];
-    }
-  }];
 }
 
 #pragma mark - Block Formatting
@@ -261,27 +159,11 @@
     break;
   }
 
-  case FormattingTypeBlockquote: {
-    [textStorage addAttribute:MDBlockTypeAttributeName
-                        value:MDBlockTypeBlockquote
-                        range:r.range];
-    [self applyBlockquoteStyling:r.range
-                   toTextStorage:textStorage
-                      lineHeight:lineHeight
-                             gap:gap];
+  case FormattingTypeBlockquote:
+  case FormattingTypeCodeBlock:
+    // Block-level code blocks and blockquotes are not rendered
+    // in the editor. They are only used by the parser/serializer.
     break;
-  }
-
-  case FormattingTypeCodeBlock: {
-    [textStorage addAttribute:MDBlockTypeAttributeName
-                        value:MDBlockTypeCodeBlock
-                        range:r.range];
-    [self applyCodeBlockStyling:r.range
-                  toTextStorage:textStorage
-                     lineHeight:lineHeight
-                            gap:gap];
-    break;
-  }
 
   case FormattingTypeOrderedList:
   case FormattingTypeUnorderedList:
@@ -290,83 +172,6 @@
   default:
     break;
   }
-}
-
-- (void)applyCodeBlockStyling:(NSRange)range
-                toTextStorage:(NSTextStorage *)textStorage
-                   lineHeight:(CGFloat)lineHeight
-                          gap:(CGFloat)gap {
-  MarkdownElementStyle *style = _styleConfig.codeBlock;
-  UIFont *codeFont =
-      [style resolvedFontWithBase:_baseFont]
-          ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
-                                        weight:UIFontWeightRegular];
-  [textStorage addAttribute:NSFontAttributeName
-                      value:codeFont
-                      range:range];
-  if (style.color) {
-    [textStorage addAttribute:NSForegroundColorAttributeName
-                        value:style.color
-                        range:range];
-  }
-
-  // Code blocks use tight line spacing internally — no paragraph
-  // spacing between lines within the block. The padding is only
-  // visual (drawn by the layout manager).
-  CGFloat pad = style.padding;
-  NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-  if (pad > 0) {
-    pStyle.firstLineHeadIndent = pad;
-    pStyle.headIndent = pad;
-    pStyle.tailIndent = -pad;
-  }
-  if (lineHeight > 0) {
-    pStyle.minimumLineHeight = lineHeight;
-    pStyle.maximumLineHeight = lineHeight;
-  }
-  // No paragraphSpacing — lines inside code blocks are tight
-  pStyle.paragraphSpacing = 0;
-  [textStorage addAttribute:NSParagraphStyleAttributeName
-                      value:pStyle
-                      range:range];
-}
-
-- (void)applyBlockquoteStyling:(NSRange)range
-                 toTextStorage:(NSTextStorage *)textStorage
-                    lineHeight:(CGFloat)lineHeight
-                           gap:(CGFloat)gap {
-  MarkdownElementStyle *style = _styleConfig.blockquote;
-  if (style.color) {
-    [textStorage addAttribute:NSForegroundColorAttributeName
-                        value:style.color
-                        range:range];
-  }
-  UIFont *bqFont = [style resolvedFontWithBase:_baseFont];
-  if (bqFont) {
-    [textStorage addAttribute:NSFontAttributeName
-                        value:bqFont
-                        range:range];
-  }
-
-  CGFloat indent = style.borderLeftWidth + style.padding +
-                   style.paddingLeft + style.paddingHorizontal;
-  if (indent <= 0) indent = 16;
-
-  NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-  pStyle.firstLineHeadIndent = indent;
-  pStyle.headIndent = indent;
-  if (lineHeight > 0) {
-    pStyle.minimumLineHeight = lineHeight;
-    pStyle.maximumLineHeight = lineHeight;
-  }
-  pStyle.paragraphSpacingBefore = style.padding + style.paddingTop +
-                                  style.paddingVertical;
-  CGFloat bqPadBottom = style.padding + style.paddingBottom +
-                        style.paddingVertical;
-  pStyle.paragraphSpacing = MAX(bqPadBottom, gap);
-  [textStorage addAttribute:NSParagraphStyleAttributeName
-                      value:pStyle
-                      range:range];
 }
 
 #pragma mark - Inline Formatting

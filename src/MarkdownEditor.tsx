@@ -223,11 +223,6 @@ export const MarkdownEditor = forwardRef<
           Commands.toggleCode(nativeRef.current)
         }
       },
-      toggleCodeBlock() {
-        if (nativeRef.current) {
-          Commands.toggleCodeBlock(nativeRef.current)
-        }
-      },
       toggleHeading(level: number) {
         if (nativeRef.current) {
           Commands.toggleHeading(nativeRef.current, level)
@@ -241,11 +236,6 @@ export const MarkdownEditor = forwardRef<
       toggleUnorderedList() {
         if (nativeRef.current) {
           Commands.toggleUnorderedList(nativeRef.current)
-        }
-      },
-      toggleBlockquote() {
-        if (nativeRef.current) {
-          Commands.toggleBlockquote(nativeRef.current)
         }
       },
       insertLink(url: string, text?: string) {
