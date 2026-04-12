@@ -486,6 +486,11 @@ using namespace facebook::react;
 - (void)toggleBlockType:(NSString *)blockType
          formattingType:(FormattingType)fType {
   NSRange cursor = _textView.selectedRange;
+  NSLog(@"[MD] toggleBlockType:%@ cursor={%lu,%lu} text.length=%lu",
+        blockType,
+        (unsigned long)cursor.location,
+        (unsigned long)cursor.length,
+        (unsigned long)_textView.text.length);
 
   // Get the paragraph range at the cursor.
   NSRange paraRange = NSMakeRange(cursor.location, 0);
@@ -506,29 +511,57 @@ using namespace facebook::react;
     hasBlock = [attrs[MDBlockTypeAttributeName] isEqualToString:blockType];
   }
 
+  NSLog(@"[MD]   paraRange={%lu,%lu} hasBlock=%d",
+        (unsigned long)paraRange.location,
+        (unsigned long)paraRange.length,
+        hasBlock);
+
   if (hasBlock) {
     // Remove block type
     [_textView.textStorage removeAttribute:MDBlockTypeAttributeName
                                      range:paraRange];
     [_store removeRangesOfType:fType intersecting:paraRange];
+    NSLog(@"[MD]   REMOVED block");
   } else {
     // Set block type on the paragraph
     if (paraRange.length > 0) {
       [_textView.textStorage addAttribute:MDBlockTypeAttributeName
                                     value:blockType
                                     range:paraRange];
+      NSLog(@"[MD]   SET block on range {%lu,%lu}",
+            (unsigned long)paraRange.location,
+            (unsigned long)paraRange.length);
+    } else {
+      NSLog(@"[MD]   paraRange.length==0, only setting typingAttrs");
     }
 
-    // Also set it in typing attributes so if the line is empty,
-    // the next character typed inherits the block style
+    // Also set it in typing attributes
     NSMutableDictionary *typingAttrs =
         [_textView.typingAttributes mutableCopy];
     typingAttrs[MDBlockTypeAttributeName] = blockType;
     _textView.typingAttributes = typingAttrs;
   }
 
+  // Verify the attribute was set
+  if (paraRange.length > 0 && paraRange.location < _textView.textStorage.length) {
+    NSDictionary *check = [_textView.textStorage attributesAtIndex:paraRange.location
+                                                    effectiveRange:nil];
+    NSLog(@"[MD]   VERIFY after set: MDBlockType=%@", check[MDBlockTypeAttributeName]);
+  }
+
   [self applyFullFormatting];
+
+  // Verify after applyFullFormatting
+  if (paraRange.length > 0 && paraRange.location < _textView.textStorage.length) {
+    NSDictionary *check = [_textView.textStorage attributesAtIndex:paraRange.location
+                                                    effectiveRange:nil];
+    NSLog(@"[MD]   VERIFY after applyFull: MDBlockType=%@", check[MDBlockTypeAttributeName]);
+  }
+
   [self resetTypingAttributes];
+  NSLog(@"[MD]   VERIFY typingAttrs: MDBlockType=%@",
+        _textView.typingAttributes[MDBlockTypeAttributeName]);
+
   [self detectAndEmitState];
 }
 
