@@ -559,13 +559,26 @@ using namespace facebook::react;
 }
 
 - (UITextView *)makeTextViewWithAttributedText:(NSAttributedString *)text {
-  MarkdownInternalTextView *textView = [[MarkdownInternalTextView alloc] init];
+  // Create with TextKit 1 from the start. The spoiler and mention
+  // overlays need NSLayoutManager access for glyph-level rect
+  // queries. If we let UITextView start in TextKit 2 mode, the
+  // first .layoutManager access triggers a noisy compatibility
+  // mode fallback warning.
+  NSTextStorage *storage = [[NSTextStorage alloc] initWithAttributedString:text];
+  NSLayoutManager *layoutManager = [[NSLayoutManager alloc] init];
+  [storage addLayoutManager:layoutManager];
+  NSTextContainer *container = [[NSTextContainer alloc] initWithSize:CGSizeZero];
+  container.widthTracksTextView = YES;
+  [layoutManager addTextContainer:container];
+
+  MarkdownInternalTextView *textView =
+      [[MarkdownInternalTextView alloc] initWithFrame:CGRectZero
+                                        textContainer:container];
   // Empty linkTextAttributes tells UITextView not to override the
   // attributed string's own color / underline / etc. on ranges that
   // have NSLinkAttributeName set. Otherwise it forces its tint color
   // and ignores whatever our LinkRenderer put on the string.
   textView.linkTextAttributes = @{};
-  textView.attributedText = text;
   textView.editable = NO;
   textView.scrollEnabled = NO;
   textView.textContainerInset = UIEdgeInsetsZero;
