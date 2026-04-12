@@ -7,6 +7,11 @@
 #import "StyleAttributes.h"
 #import "StyleConfig.h"
 
+// Must match kDefaultImageHeight in MarkdownView.mm — both the
+// runtime build and the shadow-thread measurement need to reserve
+// the same height for a block image before its URL has loaded.
+static const CGFloat kMeasurerDefaultImageHeight = 200.0;
+
 static NSCache<NSString *, NSValue *> *sMeasureCache(void) {
   static dispatch_once_t once;
   static NSCache<NSString *, NSValue *> *cache;
@@ -45,6 +50,35 @@ static MarkdownElementStyle *BlockStyleForNodeType(
     default:
       return nil;
   }
+}
+
+/// Mirror of MarkdownView.imageOnlyParagraphChild: — returns the
+/// single Image child of a top-level paragraph whose only
+/// non-whitespace content is an image. Keeping this in sync with
+/// the runtime path is how the shadow-thread measurement agrees
+/// with the built view's actual height.
+static ASTNodeWrapper *ImageOnlyParagraphChild(ASTNodeWrapper *node) {
+  if (node.nodeType != MDNodeTypeParagraph) return nil;
+
+  ASTNodeWrapper *imageChild = nil;
+  NSCharacterSet *whitespace =
+      [NSCharacterSet whitespaceAndNewlineCharacterSet];
+  for (ASTNodeWrapper *child in node.children) {
+    if (child.nodeType == MDNodeTypeImage) {
+      if (imageChild) return nil;
+      imageChild = child;
+    } else if (child.nodeType == MDNodeTypeText) {
+      NSString *trimmed =
+          [child.content stringByTrimmingCharactersInSet:whitespace];
+      if (trimmed.length > 0) return nil;
+    } else if (child.nodeType == MDNodeTypeSoftBreak ||
+               child.nodeType == MDNodeTypeLineBreak) {
+      continue;
+    } else {
+      return nil;
+    }
+  }
+  return imageChild;
 }
 
 /// Returns the total box size (content + padding + borders + margins)
@@ -92,6 +126,17 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
                                     CGFloat innerWidth,
                                     NSDictionary *inheritedAttrs) {
   MDNodeType type = node.nodeType;
+
+  // Block image — paragraphs that contain exactly one image (with
+  // only whitespace around it) get a dedicated image segment on the
+  // runtime side, so the measurer needs to reserve the same height.
+  if (ImageOnlyParagraphChild(node) != nil) {
+    MarkdownElementStyle *imageStyle = styleConfig.image;
+    CGFloat h = imageStyle.height > 0 ? imageStyle.height
+                                       : kMeasurerDefaultImageHeight;
+    CGSize framed = SizeForBlockStyle(imageStyle, CGSizeMake(innerWidth, h));
+    return framed.height;
+  }
 
   if (type == MDNodeTypeThematicBreak) {
     MarkdownElementStyle *style = styleConfig.thematicBreak;

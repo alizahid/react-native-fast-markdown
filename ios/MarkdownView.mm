@@ -8,6 +8,7 @@
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
+#import "MarkdownImageView.h"
 #import "MarkdownInternalTextView.h"
 #import "MarkdownMentionOverlay.h"
 #import "MarkdownParser.hpp"
@@ -19,6 +20,11 @@
 #import "RendererFactory.h"
 #import "StyleAttributes.h"
 #import "StyleConfig.h"
+
+// Default height reserved for a block image before the URL has
+// finished loading. If the user sets styleConfig.image.height this
+// is overridden per segment.
+static const CGFloat kDefaultImageHeight = 200.0;
 
 using namespace facebook::react;
 
@@ -168,6 +174,18 @@ using namespace facebook::react;
            inheritedAttrs:(NSDictionary *)inheritedAttrs {
   MDNodeType type = node.nodeType;
 
+  // `![alt](url)` on its own line parses as Paragraph { Image } —
+  // hand that to the dedicated image-segment path so we render it
+  // as a real UIImageView with async loading instead of flattening
+  // it through the attributed-string pipeline.
+  ASTNodeWrapper *imageChild = [self imageOnlyParagraphChild:node];
+  if (imageChild) {
+    [self addImageSegment:imageChild
+                  toStack:stack
+              styleConfig:styleConfig];
+    return;
+  }
+
   if (type == MDNodeTypeTable) {
     [self addTableSegment:node toStack:stack styleConfig:styleConfig];
   } else if (type == MDNodeTypeThematicBreak) {
@@ -191,6 +209,61 @@ using namespace facebook::react;
                    customTags:customTags
                inheritedAttrs:inheritedAttrs];
   }
+}
+
+/// Returns the single Image child of a top-level paragraph whose
+/// only non-whitespace content is an image. `![alt](url)` on its
+/// own line is exactly this shape. Returns nil for anything else
+/// (paragraphs with mixed inline content, paragraphs with multiple
+/// images, non-paragraph nodes) — those fall through to the
+/// regular text-block path where inline images stay as placeholders.
+- (nullable ASTNodeWrapper *)imageOnlyParagraphChild:(ASTNodeWrapper *)node {
+  if (node.nodeType != MDNodeTypeParagraph) return nil;
+
+  ASTNodeWrapper *imageChild = nil;
+  NSCharacterSet *whitespace =
+      [NSCharacterSet whitespaceAndNewlineCharacterSet];
+  for (ASTNodeWrapper *child in node.children) {
+    if (child.nodeType == MDNodeTypeImage) {
+      if (imageChild) return nil; // more than one image — punt
+      imageChild = child;
+    } else if (child.nodeType == MDNodeTypeText) {
+      NSString *trimmed =
+          [child.content stringByTrimmingCharactersInSet:whitespace];
+      if (trimmed.length > 0) return nil; // real text next to image
+    } else if (child.nodeType == MDNodeTypeSoftBreak ||
+               child.nodeType == MDNodeTypeLineBreak) {
+      // Soft / hard breaks are fine — they're just whitespace in
+      // the source markdown.
+      continue;
+    } else {
+      return nil; // some other inline element — render as text
+    }
+  }
+
+  return imageChild;
+}
+
+- (void)addImageSegment:(ASTNodeWrapper *)imageNode
+                toStack:(MarkdownSegmentStackView *)stack
+            styleConfig:(StyleConfig *)styleConfig {
+  MarkdownElementStyle *imageStyle = styleConfig.image;
+
+  NSString *urlString = imageNode.imageSrc;
+  NSURL *url = urlString.length > 0
+                   ? [NSURL URLWithString:urlString]
+                   : nil;
+
+  CGFloat height =
+      imageStyle.height > 0 ? imageStyle.height : kDefaultImageHeight;
+
+  MarkdownBlockView *blockView =
+      [[MarkdownBlockView alloc] initWithStyle:imageStyle];
+  MarkdownImageView *imageView =
+      [[MarkdownImageView alloc] initWithURL:url height:height];
+  blockView.contentView = imageView;
+
+  [stack addArrangedSubview:blockView];
 }
 
 - (void)addTextBlockSegment:(ASTNodeWrapper *)node
