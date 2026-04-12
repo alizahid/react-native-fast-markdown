@@ -31,7 +31,6 @@ using namespace facebook::react;
   MarkdownLayoutManager *_layoutManager;
 
   BOOL _suppressFormatting;
-  BOOL _lastWasEmptyBlockEnter;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -901,86 +900,6 @@ using namespace facebook::react;
   return YES;
 }
 
-#pragma mark - Block Continuation on Enter
-
-/// Called from shouldChangeTextInRange: when Enter is pressed.
-/// If the cursor is inside a code block or blockquote paragraph,
-/// pressing Enter on an empty line twice breaks out.
-- (BOOL)handleNewlineInBlock:(NSRange)range {
-  NSString *text = _textView.text;
-  if (text.length == 0) return NO;
-  if (range.location > text.length) return NO;
-
-  // Check if the current paragraph has a block type attribute
-  NSUInteger checkIdx = range.location > 0 ? range.location - 1 : 0;
-  if (checkIdx >= text.length) checkIdx = text.length - 1;
-
-  NSDictionary *attrs =
-      [_textView.textStorage attributesAtIndex:checkIdx
-                                effectiveRange:nil];
-  NSString *blockType = attrs[MDBlockTypeAttributeName];
-  if (!blockType) {
-    _lastWasEmptyBlockEnter = NO;
-    return NO;
-  }
-
-  // Get the current line content
-  NSRange lineRange = [text lineRangeForRange:range];
-  if (lineRange.length > 0 &&
-      [text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
-    lineRange.length--;
-  }
-  NSString *line = [text substringWithRange:lineRange];
-  NSString *trimmed = [line stringByTrimmingCharactersInSet:
-      [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-
-  BOOL lineIsEmpty = trimmed.length == 0;
-
-  if (lineIsEmpty && _lastWasEmptyBlockEnter) {
-    // Second Enter on empty line — break out
-    _lastWasEmptyBlockEnter = NO;
-
-    // Delete the empty line and preceding newline
-    NSUInteger deleteStart = lineRange.location;
-    NSUInteger deleteEnd = NSMaxRange(lineRange);
-    if (deleteStart > 0 &&
-        [text characterAtIndex:deleteStart - 1] == '\n') {
-      deleteStart--;
-    }
-    NSRange deleteRange = NSMakeRange(deleteStart, deleteEnd - deleteStart);
-
-    _suppressFormatting = YES;
-    [_textView.textStorage deleteCharactersInRange:deleteRange];
-    [_store adjustForEditAt:deleteStart
-              deletedLength:deleteRange.length
-             insertedLength:0];
-    _suppressFormatting = NO;
-
-    // Remove the block attribute from the cursor position onward
-    // so new text doesn't inherit the block style
-    _textView.selectedRange = NSMakeRange(deleteStart, 0);
-
-    // Clear block type from typing attributes
-    NSMutableDictionary *typingAttrs =
-        [_textView.typingAttributes mutableCopy];
-    [typingAttrs removeObjectForKey:MDBlockTypeAttributeName];
-    _textView.typingAttributes = typingAttrs;
-
-    [self applyFormatting];
-    [self resetTypingAttributes];
-    [self emitMarkdownChange];
-    return YES;
-  }
-
-  if (lineIsEmpty) {
-    _lastWasEmptyBlockEnter = YES;
-  } else {
-    _lastWasEmptyBlockEnter = NO;
-  }
-
-  return NO;
-}
-
 #pragma mark - Autolink Detection
 
 - (void)detectAutolinks {
@@ -1249,17 +1168,11 @@ using namespace facebook::react;
             replacementText:(NSString *)text {
   if (_suppressFormatting) return YES;
 
-  // Handle enter key inside lists and blocks
+  // Handle enter key inside lists
   if ([text isEqualToString:@"\n"]) {
     if ([self handleNewlineInList:range]) {
       return NO;
     }
-    if ([self handleNewlineInBlock:range]) {
-      return NO;
-    }
-  } else {
-    // Any non-Enter input resets the double-Enter tracker
-    _lastWasEmptyBlockEnter = NO;
   }
 
   NSUInteger deleted = range.length;
