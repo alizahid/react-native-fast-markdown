@@ -173,6 +173,27 @@
                           into:(NSMutableString *)md {
   if (content.length == 0) return;
 
+  // Check for autolinks first — if the display text IS a URL,
+  // emit it bare without [text](url) wrapping. We handle these
+  // separately so they don't generate events.
+  NSMutableIndexSet *autolinkChars = [NSMutableIndexSet new];
+  for (FormattingRange *r in store.allRanges) {
+    if (r.type != FormattingTypeLink) continue;
+    NSRange intersection = NSIntersectionRange(r.range, sourceRange);
+    if (intersection.length == 0) continue;
+
+    NSString *displayText =
+        [content substringWithRange:
+            NSMakeRange(intersection.location - sourceRange.location,
+                        intersection.length)];
+    if ([displayText hasPrefix:@"http://"] ||
+        [displayText hasPrefix:@"https://"]) {
+      [autolinkChars addIndexesInRange:
+          NSMakeRange(intersection.location - sourceRange.location,
+                      intersection.length)];
+    }
+  }
+
   // Build events for inline ranges that intersect this line
   NSMutableArray<_MSEvent *> *events = [NSMutableArray new];
 
@@ -182,9 +203,15 @@
     NSRange intersection = NSIntersectionRange(r.range, sourceRange);
     if (intersection.length == 0) continue;
 
-    // Clamp to line bounds and convert to local offsets
     NSUInteger localStart = intersection.location - sourceRange.location;
     NSUInteger localEnd = localStart + intersection.length;
+
+    // Skip autolinks — they're emitted as bare text
+    if (r.type == FormattingTypeLink &&
+        [autolinkChars containsIndexesInRange:
+            NSMakeRange(localStart, intersection.length)]) {
+      continue;
+    }
 
     _MSEvent *open = [_MSEvent new];
     open.position = localStart;
