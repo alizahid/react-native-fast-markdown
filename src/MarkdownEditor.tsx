@@ -107,30 +107,51 @@ export const MarkdownEditor = forwardRef<
   const nativeRef =
     React.useRef<React.ElementRef<typeof MarkdownEditorViewNative>>(null)
 
-  // Merge the style prop into styles as the `base` key — same
-  // pattern as the Markdown renderer so both components share
-  // identical default text styling (color, fontSize, lineHeight)
-  // and outer container styles (padding, gap).
+  // Split the style prop: text properties go into the markdown
+  // styles as the `base` key (same as the renderer), layout
+  // properties stay on the native view's style prop.
   const { style, ...restViewProps } = viewProps
-  const effectiveStyle = useMemo(() => {
-    const flatStyle = StyleSheet.flatten([
-      {
-        color: 'rgb(16, 15, 15)',
-        fontSize: 14,
-        lineHeight: 20,
-      },
-      style,
-    ])
 
-    if (Object.keys(flatStyle).length === 0 && !markdownStyles) {
-      return
+  const textPropNames = new Set([
+    'color',
+    'fontFamily',
+    'fontSize',
+    'fontStyle',
+    'fontWeight',
+    'letterSpacing',
+    'lineHeight',
+    'textAlign',
+    'textDecorationColor',
+    'textDecorationLine',
+    'textDecorationStyle',
+  ])
+
+  const { textStyle, layoutStyle } = useMemo(() => {
+    const flat = StyleSheet.flatten(style) || {}
+    const text: Record<string, unknown> = {
+      color: 'rgb(16, 15, 15)',
+      fontSize: 14,
+      lineHeight: 20,
+    }
+    const layout: Record<string, unknown> = {}
+
+    for (const [key, value] of Object.entries(flat)) {
+      if (textPropNames.has(key)) {
+        text[key] = value
+      } else {
+        layout[key] = value
+      }
     }
 
+    return { textStyle: text, layoutStyle: layout }
+  }, [style])
+
+  const effectiveStyle = useMemo(() => {
     return {
       ...markdownStyles,
-      base: flatStyle,
+      base: textStyle,
     } as MarkdownStyle
-  }, [markdownStyles, style])
+  }, [markdownStyles, textStyle])
 
   const serializedStyles = useMemo(
     () => normalizeMarkdownStyle(effectiveStyle),
@@ -280,6 +301,7 @@ export const MarkdownEditor = forwardRef<
   return (
     <MarkdownEditorViewNative
       {...restViewProps}
+      style={layoutStyle}
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}
