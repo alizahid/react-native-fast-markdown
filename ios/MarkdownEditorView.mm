@@ -1166,37 +1166,16 @@ using namespace facebook::react;
   NSUInteger deleted = range.length;
   NSUInteger inserted = text.length;
 
-  // For block types, check if the cursor is at the end boundary
-  // of a block range BEFORE adjusting. If so, we need to expand
-  // the range to include the new text. adjustForEditAt uses
-  // strict < so text at the end boundary doesn't expand — correct
-  // for inline ranges but wrong for blocks where typing at the
-  // end of a code block should stay inside it.
-  NSMutableArray<NSNumber *> *blockTypesToExpand = [NSMutableArray new];
-  if (inserted > 0) {
-    for (FormattingRange *r in _store.allRanges) {
-      if (![FormattingRange isBlockType:r.type]) continue;
-      // Cursor is at the end of this block range
-      if (range.location == NSMaxRange(r.range)) {
-        [blockTypesToExpand addObject:@(r.type)];
-      }
-    }
-  }
-
-  // Adjust all existing ranges for this edit
+  // Adjust all existing ranges for this edit.
+  // adjustForEditAt expands ranges when the edit is strictly
+  // inside them (case 3) but NOT at the boundary — this is the
+  // enriched pattern where boundary behavior is controlled by
+  // pending styles. For block types this means typing at the END
+  // of a code block doesn't auto-expand it; the user stays in
+  // the block only while the cursor is inside the range.
   [_store adjustForEditAt:range.location
             deletedLength:deleted
            insertedLength:inserted];
-
-  // Expand block ranges that had the cursor at their end
-  if (blockTypesToExpand.count > 0 && inserted > 0) {
-    NSRange insertedRange = NSMakeRange(range.location, inserted);
-    for (NSNumber *typeNum in blockTypesToExpand) {
-      FormattingType type = (FormattingType)typeNum.integerValue;
-      [_store addRange:[FormattingRange rangeWithType:type
-                                                range:insertedRange]];
-    }
-  }
 
   // Apply pending styles to the inserted text
   if (inserted > 0) {
