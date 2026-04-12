@@ -34,6 +34,21 @@
     basePStyle.paragraphSpacing = gap;
   }
 
+  // Collect existing block type attributes BEFORE resetting,
+  // since addAttribute for standard attrs won't clear custom
+  // attrs but we want to be explicit about preserving them.
+  NSMutableDictionary<NSNumber *, NSString *> *existingBlocks =
+      [NSMutableDictionary new];
+  [textStorage enumerateAttribute:MDBlockTypeAttributeName
+                          inRange:fullRange
+                          options:0
+                       usingBlock:^(NSString *value, NSRange range,
+                                    BOOL *stop) {
+    if (value) {
+      existingBlocks[@(range.location)] = value;
+    }
+  }];
+
   [textStorage addAttribute:NSFontAttributeName value:_baseFont range:fullRange];
   [textStorage addAttribute:NSForegroundColorAttributeName value:_baseColor range:fullRange];
   [textStorage addAttribute:NSParagraphStyleAttributeName value:basePStyle range:fullRange];
@@ -41,7 +56,19 @@
   [textStorage removeAttribute:NSStrikethroughStyleAttributeName range:fullRange];
   [textStorage removeAttribute:NSStrikethroughColorAttributeName range:fullRange];
 
-  // Also set MDBlockType from the store for freshly imported/toggled blocks
+  // Restore block type attributes from both the store and the
+  // text storage (covers blocks set via toggleBlockType that
+  // might not be in the store yet).
+  for (NSNumber *locNum in existingBlocks) {
+    NSUInteger loc = locNum.unsignedIntegerValue;
+    if (loc >= textStorage.length) continue;
+    NSRange paraRange = [textStorage.string
+        paragraphRangeForRange:NSMakeRange(loc, 0)];
+    [textStorage addAttribute:MDBlockTypeAttributeName
+                        value:existingBlocks[locNum]
+                        range:paraRange];
+  }
+
   for (FormattingRange *r in store.allRanges) {
     NSString *blockType = nil;
     if (r.type == FormattingTypeCodeBlock) {
