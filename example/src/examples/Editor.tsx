@@ -98,23 +98,33 @@ export function EditorScreen() {
 
   // Mention suggestions
   const suggestions = useMemo(() => {
-    if (!mentionTrigger) return []
+    if (!mentionTrigger) {
+      return []
+    }
 
     const query = mentionQuery.toLowerCase()
     let items: Array<{ id: string; name: string }> = []
 
-    if (mentionTrigger === '@') items = mockUsers
-    else if (mentionTrigger === '#') items = mockChannels
-    else if (mentionTrigger === '/') items = mockCommands
+    if (mentionTrigger === '@') {
+      items = mockUsers
+    } else if (mentionTrigger === '#') {
+      items = mockChannels
+    } else if (mentionTrigger === '/') {
+      items = mockCommands
+    }
 
-    if (query.length === 0) return items
+    if (query.length === 0) {
+      return items
+    }
 
     return items.filter((item) => item.name.toLowerCase().includes(query))
   }, [mentionTrigger, mentionQuery])
 
   const handleSelectMention = useCallback(
     (item: { id: string; name: string }) => {
-      if (!mentionTrigger) return
+      if (!mentionTrigger) {
+        return
+      }
 
       editor.insertMention(mentionTrigger, item.name, {
         id: item.id,
@@ -233,8 +243,8 @@ export function EditorScreen() {
             <View style={styles.suggestionsContainer}>
               <FlatList
                 data={suggestions}
-                keyExtractor={(item) => item.id}
                 keyboardShouldPersistTaps="always"
+                keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                   <Pressable
                     onPress={() => handleSelectMention(item)}
