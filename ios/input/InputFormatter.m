@@ -83,9 +83,26 @@
                           value:bqFont
                           range:r.range];
     }
+    if (style.backgroundColor) {
+      [textStorage addAttribute:NSBackgroundColorAttributeName
+                          value:style.backgroundColor
+                          range:r.range];
+    }
+
+    // Use borderLeftWidth + padding as indent to approximate the
+    // block view's left border. The actual border line is drawn
+    // by the layout manager.
+    CGFloat indent = style.borderLeftWidth + style.padding +
+                     style.paddingLeft + style.paddingHorizontal;
+    if (indent <= 0) indent = 16;
+
     NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
-    pStyle.firstLineHeadIndent = 16;
-    pStyle.headIndent = 16;
+    pStyle.firstLineHeadIndent = indent;
+    pStyle.headIndent = indent;
+    pStyle.paragraphSpacingBefore = style.padding + style.paddingTop +
+                                    style.paddingVertical;
+    pStyle.paragraphSpacing = style.padding + style.paddingBottom +
+                              style.paddingVertical;
     [textStorage addAttribute:NSParagraphStyleAttributeName
                         value:pStyle
                         range:r.range];
@@ -109,6 +126,19 @@
     if (style.color) {
       [textStorage addAttribute:NSForegroundColorAttributeName
                           value:style.color
+                          range:r.range];
+    }
+
+    CGFloat pad = style.padding;
+    if (pad > 0) {
+      NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
+      pStyle.firstLineHeadIndent = pad;
+      pStyle.headIndent = pad;
+      pStyle.tailIndent = -pad;
+      pStyle.paragraphSpacingBefore = pad;
+      pStyle.paragraphSpacing = pad;
+      [textStorage addAttribute:NSParagraphStyleAttributeName
+                          value:pStyle
                           range:r.range];
     }
     break;
