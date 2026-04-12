@@ -214,18 +214,29 @@ export type MarkdownCodeStyle = MarkdownInlineTextStyle
  *  doesn't read any style props. */
 export type MarkdownMentionStyle = MarkdownInlineTextStyle
 
-/** Bold / strong span. Only `color` is read — the renderer derives
- *  the bold trait from whatever font is currently in effect and
- *  layers the color on top. */
-export type MarkdownStrongStyle = Pick<TextStyle, 'color'>
+/** Bold / strong span. Full inline text surface. The renderer
+ *  applies a bold trait to the current font by default — set
+ *  `fontWeight` (or `fontFamily`) to opt out and pick your own
+ *  weight instead, e.g. `{ fontWeight: '500' }` for medium. */
+export type MarkdownStrongStyle = MarkdownInlineTextStyle
 
-/** Italic / emphasis span. Only `color` is read — the renderer
- *  derives the italic trait from the current font. */
-export type MarkdownEmphasisStyle = Pick<TextStyle, 'color'>
+/** Italic / emphasis span. Full inline text surface. The renderer
+ *  applies an italic trait to the current font by default — set
+ *  `fontStyle: 'normal'` (or `fontFamily`) to opt out. */
+export type MarkdownEmphasisStyle = MarkdownInlineTextStyle
 
-/** Strikethrough span. Only `color` is read — both the glyphs and
- *  the strike line pick up the same color. */
-export type MarkdownStrikethroughStyle = Pick<TextStyle, 'color'>
+/** Strikethrough span. Full inline text surface. The strike line is
+ *  drawn automatically; its color falls back through
+ *  `textDecorationColor` → `color` → default, and its pattern
+ *  (single / double / dotted / dashed) is picked from
+ *  `textDecorationStyle`. */
+export type MarkdownStrikethroughStyle = MarkdownInlineTextStyle
+
+/** Underline span. Full inline text surface. The underline is drawn
+ *  automatically; its color falls back through `textDecorationColor`
+ *  → `color` → default, and its pattern (single / double / dotted
+ *  / dashed) is picked from `textDecorationStyle`. */
+export type MarkdownUnderlineStyle = MarkdownInlineTextStyle
 
 /** Spoiler overlay. Only `backgroundColor` (the overlay fill) and
  *  `borderRadius` (the overlay corner radius) are read — the
@@ -274,11 +285,13 @@ export interface MarkdownStyle {
   mentionChannel?: MarkdownMentionStyle
   mentionCommand?: MarkdownMentionStyle
 
-  // Inline — color-only (bold / italic / strikethrough traits are
-  // derived from the token itself, not from this style)
+  // Inline emphasis. Bold / italic / strike / underline traits are
+  // applied by default; set `fontWeight`, `fontStyle` or
+  // `textDecorationLine` explicitly to override.
   strong?: MarkdownStrongStyle
   emphasis?: MarkdownEmphasisStyle
   strikethrough?: MarkdownStrikethroughStyle
+  underline?: MarkdownUnderlineStyle
 
   // Special
   spoiler?: MarkdownSpoilerStyle
