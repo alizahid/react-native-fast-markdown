@@ -67,10 +67,11 @@ object MarkdownMeasurer {
             val layout = StaticLayout.Builder
                 .obtain(spannable, 0, spannable.length, textPaint, widthPx)
                 .setLineSpacing(lineSpacingExtra, 1f)
-                .setIncludePad(true) // matches TextView default
+                .setIncludePad(false) // matches MarkdownView.includeFontPadding = false
                 .build()
 
-            val measuredHeight = layout.height.toFloat() / density
+            // Round UP to avoid sub-pixel clipping from dp↔px conversion
+            val measuredHeight = Math.ceil(layout.height.toDouble() / density).toFloat()
             return floatArrayOf(width, measuredHeight)
         }
     }

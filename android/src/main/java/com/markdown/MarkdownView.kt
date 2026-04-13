@@ -24,6 +24,9 @@ class MarkdownView(context: Context) : TextView(context) {
         setTextIsSelectable(false)
         movementMethod = LinkMovementMethod.getInstance()
         highlightColor = 0
+        // Disable extra font padding so the rendered height matches
+        // the StaticLayout measurement in MarkdownMeasurer exactly.
+        includeFontPadding = false
         // Prevent the TextView from scrolling internally — the user
         // wraps MarkdownView in their own ScrollView if needed.
         isVerticalScrollBarEnabled = false
