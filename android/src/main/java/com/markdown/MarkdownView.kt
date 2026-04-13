@@ -1,6 +1,7 @@
 package com.markdown
 
 import android.content.Context
+import android.text.method.LinkMovementMethod
 import android.widget.TextView
 import com.markdown.parser.ParserBridge
 import com.markdown.renderer.MarkdownRenderer
@@ -22,6 +23,10 @@ class MarkdownView(context: Context) : TextView(context) {
         isFocusable = false
         isClickable = false
         setTextIsSelectable(false)
+        // Enable link tapping (URLSpan)
+        movementMethod = LinkMovementMethod.getInstance()
+        // Don't override link colors — let our ForegroundColorSpan win
+        highlightColor = 0
     }
 
     fun setMarkdown(markdown: String) {
@@ -34,7 +39,30 @@ class MarkdownView(context: Context) : TextView(context) {
         if (styleJSON == currentStyleJSON) return
         currentStyleJSON = styleJSON
         styleConfig = StyleConfig.fromJSON(styleJSON)
+        applyBaseTextStyle()
         renderMarkdown()
+    }
+
+    /**
+     * Apply the base text style from the style config to the
+     * TextView itself — font size, color, typeface. This gives
+     * all rendered text a default look that individual spans can
+     * override.
+     */
+    private fun applyBaseTextStyle() {
+        val base = styleConfig.text
+        textSize = base.resolvedFontSize()
+        if (base.color != null) {
+            setTextColor(base.color)
+        }
+        typeface = base.resolveTypeface()
+        if (base.lineHeight > 0) {
+            val lineHeightPx = base.lineHeight * resources.displayMetrics.density
+            val fontHeight = paint.getFontMetricsInt(null).toFloat()
+            if (lineHeightPx > fontHeight) {
+                setLineSpacing(lineHeightPx - fontHeight, 1f)
+            }
+        }
     }
 
     fun setCustomTags(tags: List<String>) {

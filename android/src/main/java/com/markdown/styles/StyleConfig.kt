@@ -1,5 +1,6 @@
 package com.markdown.styles
 
+import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import org.json.JSONObject
@@ -11,12 +12,22 @@ data class ElementStyle(
     val fontStyle: String? = null,
     val fontFamily: String? = null,
     val lineHeight: Float = 0f,
+    val letterSpacing: Float = 0f,
     val textDecorationLine: String? = null,
+    val textDecorationColor: Int? = null,
+    val textDecorationStyle: String? = null,
     val textAlign: String? = null,
     val color: Int? = null,
 
     // View (container)
     val backgroundColor: Int? = null,
+
+    // Layout
+    val gap: Float = 0f,
+    val width: Float = 0f,
+    val height: Float = 0f,
+    val maxWidth: Float = 0f,
+    val maxHeight: Float = 0f,
 
     // Padding
     val padding: Float = 0f,
@@ -28,7 +39,13 @@ data class ElementStyle(
     val paddingRight: Float = 0f,
 
     // Margin
+    val margin: Float = 0f,
+    val marginHorizontal: Float = 0f,
     val marginVertical: Float = 0f,
+    val marginTop: Float = 0f,
+    val marginBottom: Float = 0f,
+    val marginLeft: Float = 0f,
+    val marginRight: Float = 0f,
 
     // Border
     val borderColor: Int? = null,
@@ -42,10 +59,6 @@ data class ElementStyle(
     val borderTopWidth: Float = 0f,
     val borderBottomColor: Int? = null,
     val borderBottomWidth: Float = 0f,
-
-    // Size
-    val height: Float = 0f,
-    val width: Float = 0f,
 ) {
     fun resolveTypeface(): Typeface {
         val base = when (fontFamily) {
@@ -64,7 +77,124 @@ data class ElementStyle(
         return Typeface.create(base, style)
     }
 
+    /** Resolve typeface cascading over a base typeface. */
+    fun resolveTypefaceWithBase(base: Typeface?): Typeface {
+        val family = when (fontFamily) {
+            "monospace", "Menlo" -> Typeface.MONOSPACE
+            "serif" -> Typeface.SERIF
+            null, "" -> base ?: Typeface.DEFAULT
+            else -> base ?: Typeface.DEFAULT
+        }
+
+        val isBold = fontWeight == "bold" || fontWeight == "600" || fontWeight == "700"
+        val isItalic = fontStyle == "italic"
+
+        // If neither weight nor style is set, preserve the base style
+        if (!isBold && !isItalic && fontWeight == null && fontStyle == null) {
+            return if (fontFamily != null && fontFamily.isNotEmpty()) family else (base ?: Typeface.DEFAULT)
+        }
+
+        val style = when {
+            isBold && isItalic -> Typeface.BOLD_ITALIC
+            isBold -> Typeface.BOLD
+            isItalic -> Typeface.ITALIC
+            else -> Typeface.NORMAL
+        }
+
+        return Typeface.create(family, style)
+    }
+
     fun resolvedFontSize(): Float = if (fontSize > 0) fontSize else 16f
+
+    // --- Padding resolution (cascade: specific > directional > general) ---
+
+    fun resolvedPaddingTop(): Float = when {
+        paddingTop > 0f -> paddingTop
+        paddingVertical > 0f -> paddingVertical
+        padding > 0f -> padding
+        else -> 0f
+    }
+
+    fun resolvedPaddingBottom(): Float = when {
+        paddingBottom > 0f -> paddingBottom
+        paddingVertical > 0f -> paddingVertical
+        padding > 0f -> padding
+        else -> 0f
+    }
+
+    fun resolvedPaddingLeft(): Float = when {
+        paddingLeft > 0f -> paddingLeft
+        paddingHorizontal > 0f -> paddingHorizontal
+        padding > 0f -> padding
+        else -> 0f
+    }
+
+    fun resolvedPaddingRight(): Float = when {
+        paddingRight > 0f -> paddingRight
+        paddingHorizontal > 0f -> paddingHorizontal
+        padding > 0f -> padding
+        else -> 0f
+    }
+
+    // --- Margin resolution (same cascade) ---
+
+    fun resolvedMarginTop(): Float = when {
+        marginTop > 0f -> marginTop
+        marginVertical > 0f -> marginVertical
+        margin > 0f -> margin
+        else -> 0f
+    }
+
+    fun resolvedMarginBottom(): Float = when {
+        marginBottom > 0f -> marginBottom
+        marginVertical > 0f -> marginVertical
+        margin > 0f -> margin
+        else -> 0f
+    }
+
+    fun resolvedMarginLeft(): Float = when {
+        marginLeft > 0f -> marginLeft
+        marginHorizontal > 0f -> marginHorizontal
+        margin > 0f -> margin
+        else -> 0f
+    }
+
+    fun resolvedMarginRight(): Float = when {
+        marginRight > 0f -> marginRight
+        marginHorizontal > 0f -> marginHorizontal
+        margin > 0f -> margin
+        else -> 0f
+    }
+
+    // --- Border resolution (cascade: specific > general) ---
+
+    fun resolvedBorderTopWidth(): Float =
+        if (borderTopWidth > 0f) borderTopWidth else borderWidth
+
+    fun resolvedBorderBottomWidth(): Float =
+        if (borderBottomWidth > 0f) borderBottomWidth else borderWidth
+
+    fun resolvedBorderLeftWidth(): Float =
+        if (borderLeftWidth > 0f) borderLeftWidth else borderWidth
+
+    fun resolvedBorderRightWidth(): Float =
+        if (borderRightWidth > 0f) borderRightWidth else borderWidth
+
+    fun resolvedBorderTopColor(): Int? =
+        borderTopColor ?: borderColor
+
+    fun resolvedBorderBottomColor(): Int? =
+        borderBottomColor ?: borderColor
+
+    fun resolvedBorderLeftColor(): Int? =
+        borderLeftColor ?: borderColor
+
+    fun resolvedBorderRightColor(): Int? =
+        borderRightColor ?: borderColor
+
+    fun hasAnyBorder(): Boolean =
+        resolvedBorderTopWidth() > 0f || resolvedBorderBottomWidth() > 0f ||
+            resolvedBorderLeftWidth() > 0f || resolvedBorderRightWidth() > 0f
 
     companion object {
         fun fromJSON(json: JSONObject?): ElementStyle {
@@ -75,10 +205,18 @@ data class ElementStyle(
                 fontStyle = json.optString("fontStyle", null),
                 fontFamily = json.optString("fontFamily", null),
                 lineHeight = json.optDouble("lineHeight", 0.0).toFloat(),
+                letterSpacing = json.optDouble("letterSpacing", 0.0).toFloat(),
                 textDecorationLine = json.optString("textDecorationLine", null),
+                textDecorationColor = parseColor(json.opt("textDecorationColor")),
+                textDecorationStyle = json.optString("textDecorationStyle", null),
                 textAlign = json.optString("textAlign", null),
                 color = parseColor(json.opt("color")),
                 backgroundColor = parseColor(json.opt("backgroundColor")),
+                gap = json.optDouble("gap", 0.0).toFloat(),
+                width = json.optDouble("width", 0.0).toFloat(),
+                height = json.optDouble("height", 0.0).toFloat(),
+                maxWidth = json.optDouble("maxWidth", 0.0).toFloat(),
+                maxHeight = json.optDouble("maxHeight", 0.0).toFloat(),
                 padding = json.optDouble("padding", 0.0).toFloat(),
                 paddingHorizontal = json.optDouble("paddingHorizontal", 0.0).toFloat(),
                 paddingVertical = json.optDouble("paddingVertical", 0.0).toFloat(),
@@ -86,7 +224,13 @@ data class ElementStyle(
                 paddingBottom = json.optDouble("paddingBottom", 0.0).toFloat(),
                 paddingLeft = json.optDouble("paddingLeft", 0.0).toFloat(),
                 paddingRight = json.optDouble("paddingRight", 0.0).toFloat(),
+                margin = json.optDouble("margin", 0.0).toFloat(),
+                marginHorizontal = json.optDouble("marginHorizontal", 0.0).toFloat(),
                 marginVertical = json.optDouble("marginVertical", 0.0).toFloat(),
+                marginTop = json.optDouble("marginTop", 0.0).toFloat(),
+                marginBottom = json.optDouble("marginBottom", 0.0).toFloat(),
+                marginLeft = json.optDouble("marginLeft", 0.0).toFloat(),
+                marginRight = json.optDouble("marginRight", 0.0).toFloat(),
                 borderColor = parseColor(json.opt("borderColor")),
                 borderWidth = json.optDouble("borderWidth", 0.0).toFloat(),
                 borderRadius = json.optDouble("borderRadius", 0.0).toFloat(),
@@ -98,8 +242,6 @@ data class ElementStyle(
                 borderTopWidth = json.optDouble("borderTopWidth", 0.0).toFloat(),
                 borderBottomColor = parseColor(json.opt("borderBottomColor")),
                 borderBottomWidth = json.optDouble("borderBottomWidth", 0.0).toFloat(),
-                height = json.optDouble("height", 0.0).toFloat(),
-                width = json.optDouble("width", 0.0).toFloat(),
             )
         }
 
@@ -115,6 +257,7 @@ data class ElementStyle(
 
 data class StyleConfig(
     /** Base text style — applies to all text unless overridden */
+    val base: ElementStyle = ElementStyle(),
     val text: ElementStyle = ElementStyle(),
     val heading1: ElementStyle = ElementStyle(),
     val heading2: ElementStyle = ElementStyle(),
@@ -130,6 +273,7 @@ data class StyleConfig(
     val codeBlock: ElementStyle = ElementStyle(),
     val link: ElementStyle = ElementStyle(),
     val blockquote: ElementStyle = ElementStyle(),
+    val list: ElementStyle = ElementStyle(),
     val listItem: ElementStyle = ElementStyle(),
     val listBullet: ElementStyle = ElementStyle(),
     val table: ElementStyle = ElementStyle(),
@@ -160,6 +304,7 @@ data class StyleConfig(
             return try {
                 val obj = JSONObject(json)
                 StyleConfig(
+                    base = ElementStyle.fromJSON(obj.optJSONObject("base")),
                     text = ElementStyle.fromJSON(obj.optJSONObject("text")),
                     heading1 = ElementStyle.fromJSON(obj.optJSONObject("heading1")),
                     heading2 = ElementStyle.fromJSON(obj.optJSONObject("heading2")),
@@ -175,6 +320,7 @@ data class StyleConfig(
                     codeBlock = ElementStyle.fromJSON(obj.optJSONObject("codeBlock")),
                     link = ElementStyle.fromJSON(obj.optJSONObject("link")),
                     blockquote = ElementStyle.fromJSON(obj.optJSONObject("blockquote")),
+                    list = ElementStyle.fromJSON(obj.optJSONObject("list")),
                     listItem = ElementStyle.fromJSON(obj.optJSONObject("listItem")),
                     listBullet = ElementStyle.fromJSON(obj.optJSONObject("listBullet")),
                     table = ElementStyle.fromJSON(obj.optJSONObject("table")),
