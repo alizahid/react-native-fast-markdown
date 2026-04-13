@@ -47,6 +47,8 @@ class MarkdownView(context: Context) : TextView(context) {
         currentStyleJSON = styleJSON
         styleConfig = StyleConfig.fromJSON(styleJSON)
         applyBaseTextStyle()
+        // Clear renderer cache since styles changed
+        MarkdownRenderer.clearCache()
         renderMarkdown()
     }
 
@@ -75,6 +77,10 @@ class MarkdownView(context: Context) : TextView(context) {
             text = ""
             return
         }
+
+        // Ensure base style is applied before rendering (setMarkdown
+        // can be called before setMarkdownStyle by the prop order).
+        applyBaseTextStyle()
 
         val markdown = currentMarkdown
         val config = styleConfig

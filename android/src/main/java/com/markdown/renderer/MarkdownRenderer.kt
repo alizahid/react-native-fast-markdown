@@ -26,6 +26,8 @@ class MarkdownRenderer private constructor(private val density: Float) {
 
         /** Create a renderer for shadow-thread measurement (no Context needed). */
         fun createForMeasurement(density: Float): MarkdownRenderer = MarkdownRenderer(density)
+
+        fun clearCache() = cache.evictAll()
     }
 
     private fun dp(value: Float): Float = value * density
@@ -293,22 +295,42 @@ class MarkdownRenderer private constructor(private val density: Float) {
     private fun renderThematicBreak(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
         ensureBlockSeparator(builder, ctx)
         val style = ctx.styleConfig.thematicBreak
+
+        // Margin above
+        val marginTop = dpInt(style.resolvedMarginTop())
+        if (marginTop > 0) {
+            val mStart = builder.length
+            builder.append("\u200B\n")
+            builder.setSpan(GapSpan(marginTop), mStart, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+
+        // The line itself — draw via BlockBackgroundSpan on a single space
         val start = builder.length
-        // Use a thin line of block chars — the BlockBackgroundSpan will draw the actual line
-        builder.append("\u200B") // zero-width space as content anchor
+        builder.append(" ")
         val end = builder.length
 
         val color = style.backgroundColor ?: Color.LTGRAY
-        val height = if (style.height > 0) dp(style.height) else dp(1f)
+        val lineHeight = if (style.height > 0) dp(style.height) else dp(1f)
 
         builder.setSpan(
             BlockBackgroundSpan(
                 backgroundColor = color,
-                paddingTop = height / 2f,
-                paddingBottom = height / 2f,
+                paddingTop = lineHeight / 2f,
+                paddingBottom = lineHeight / 2f,
             ),
             start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
         )
+        // Force the text line to be minimal height
+        builder.setSpan(AbsoluteSizeSpan(1, true), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+
+        // Margin below
+        val marginBottom = dpInt(style.resolvedMarginBottom())
+        if (marginBottom > 0) {
+            builder.append("\n")
+            val mStart = builder.length
+            builder.append("\u200B\n")
+            builder.setSpan(GapSpan(marginBottom), mStart, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
     }
 
     private fun renderTableRow(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
