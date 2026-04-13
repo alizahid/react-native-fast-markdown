@@ -19,13 +19,10 @@ class MarkdownView(context: Context) : TextView(context) {
     private var styleConfig: StyleConfig = StyleConfig()
 
     init {
-        // Configure as non-editable display text
         isFocusable = false
         isClickable = false
         setTextIsSelectable(false)
-        // Enable link tapping (URLSpan)
         movementMethod = LinkMovementMethod.getInstance()
-        // Don't override link colors — let our ForegroundColorSpan win
         highlightColor = 0
     }
 
@@ -43,12 +40,6 @@ class MarkdownView(context: Context) : TextView(context) {
         renderMarkdown()
     }
 
-    /**
-     * Apply the base text style from the style config to the
-     * TextView itself — font size, color, typeface. This gives
-     * all rendered text a default look that individual spans can
-     * override.
-     */
     private fun applyBaseTextStyle() {
         val base = styleConfig.base
         textSize = base.resolvedFontSize()
@@ -77,29 +68,23 @@ class MarkdownView(context: Context) : TextView(context) {
 
         val markdown = currentMarkdown
         val config = styleConfig
-        // Built-in custom tags — always recognized so users don't have to
-        // register them via the customTags prop. Matches iOS MarkdownView.
         val builtInTags = listOf("UserMention", "ChannelMention", "Command", "Spoiler")
         val effectiveTags = (builtInTags + customTags).distinct()
         val tags = effectiveTags.toSet()
 
-        // Short content: render synchronously
         if (markdown.length < 500) {
             val ast = ParserBridge.parse(markdown, effectiveTags)
             val spannable = renderer.renderCached(markdown, ast, config, tags)
             text = spannable
-            requestLayout()
             return
         }
 
-        // Longer content: render on background thread
         executor.execute {
             val ast = ParserBridge.parse(markdown, effectiveTags)
             val spannable = renderer.renderCached(markdown, ast, config, tags)
             post {
                 if (markdown == currentMarkdown) {
                     text = spannable
-                    requestLayout()
                 }
             }
         }

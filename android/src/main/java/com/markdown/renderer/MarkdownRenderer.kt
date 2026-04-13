@@ -16,13 +16,16 @@ import com.markdown.styles.ElementStyle
 import com.markdown.styles.StyleConfig
 import kotlin.math.roundToInt
 
-class MarkdownRenderer(private val context: Context) {
+class MarkdownRenderer private constructor(private val density: Float) {
+
+    constructor(context: Context) : this(context.resources.displayMetrics.density)
 
     companion object {
         private val cache = LruCache<String, SpannableStringBuilder>(128)
-    }
 
-    private val density = context.resources.displayMetrics.density
+        /** Create a renderer for shadow-thread measurement (no Context needed). */
+        fun createForMeasurement(density: Float): MarkdownRenderer = MarkdownRenderer(density)
+    }
 
     private fun dp(value: Float): Float = value * density
     private fun dpInt(value: Float): Int = (value * density).roundToInt()
