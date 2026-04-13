@@ -24,6 +24,16 @@ class MarkdownView(context: Context) : TextView(context) {
         setTextIsSelectable(false)
         movementMethod = LinkMovementMethod.getInstance()
         highlightColor = 0
+        // Prevent the TextView from scrolling internally — the user
+        // wraps MarkdownView in their own ScrollView if needed.
+        isVerticalScrollBarEnabled = false
+        isHorizontalScrollBarEnabled = false
+        overScrollMode = OVER_SCROLL_NEVER
+    }
+
+    override fun scrollTo(x: Int, y: Int) {
+        // No-op — block internal scrolling that LinkMovementMethod
+        // triggers when clicking links near the bottom.
     }
 
     fun setMarkdown(markdown: String) {

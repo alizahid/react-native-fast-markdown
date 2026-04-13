@@ -11,6 +11,7 @@ import com.markdown.parser.ASTNode
 import com.markdown.renderer.spans.BlockBackgroundSpan
 import com.markdown.renderer.spans.BlockQuoteSpan
 import com.markdown.renderer.spans.CustomLineHeightSpan
+import com.markdown.renderer.spans.GapSpan
 import com.markdown.renderer.spans.LetterSpacingSpan
 import com.markdown.styles.ElementStyle
 import com.markdown.styles.StyleConfig
@@ -101,7 +102,7 @@ class MarkdownRenderer private constructor(private val density: Float) {
     // ── Block-level rendering ──────────────────────────────────────
 
     private fun renderParagraph(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
-        ensureBlockSeparator(builder)
+        ensureBlockSeparator(builder, ctx)
         val start = builder.length
         val style = ctx.styleConfig.paragraph
         renderChildren(node, builder, ctx)
@@ -109,7 +110,7 @@ class MarkdownRenderer private constructor(private val density: Float) {
     }
 
     private fun renderHeading(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
-        ensureBlockSeparator(builder)
+        ensureBlockSeparator(builder, ctx)
         val start = builder.length
         val style = ctx.styleConfig.styleForHeadingLevel(node.headingLevel)
         renderChildren(node, builder, ctx)
@@ -127,7 +128,7 @@ class MarkdownRenderer private constructor(private val density: Float) {
     }
 
     private fun renderCodeBlock(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
-        ensureBlockSeparator(builder)
+        ensureBlockSeparator(builder, ctx)
         val start = builder.length
         val style = ctx.styleConfig.codeBlock
         renderChildren(node, builder, ctx)
@@ -173,7 +174,7 @@ class MarkdownRenderer private constructor(private val density: Float) {
     }
 
     private fun renderBlockquote(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
-        ensureBlockSeparator(builder)
+        ensureBlockSeparator(builder, ctx)
         val start = builder.length
         val style = ctx.styleConfig.blockquote
 
@@ -290,7 +291,7 @@ class MarkdownRenderer private constructor(private val density: Float) {
     }
 
     private fun renderThematicBreak(node: ASTNode, builder: SpannableStringBuilder, ctx: RenderContext) {
-        ensureBlockSeparator(builder)
+        ensureBlockSeparator(builder, ctx)
         val style = ctx.styleConfig.thematicBreak
         val start = builder.length
         // Use a thin line of block chars — the BlockBackgroundSpan will draw the actual line
@@ -496,14 +497,22 @@ class MarkdownRenderer private constructor(private val density: Float) {
     }
 
     /**
-     * Ensure there's a blank line between block elements.
-     * Uses \n as separator between blocks.
+     * Insert a gap-sized separator between block elements. The gap
+     * comes from styleConfig.base.gap (default 8dp, matching iOS).
+     * A newline is appended with a GapSpan that controls its height.
      */
-    private fun ensureBlockSeparator(builder: SpannableStringBuilder) {
+    private fun ensureBlockSeparator(builder: SpannableStringBuilder, ctx: RenderContext) {
         if (builder.isEmpty()) return
-        val last = builder[builder.length - 1]
-        if (last != '\n') {
+        // Make sure previous content ends with a newline
+        if (builder[builder.length - 1] != '\n') {
             builder.append("\n")
+        }
+        // Add a gap line between blocks
+        val gapDp = ctx.styleConfig.base.gap
+        if (gapDp > 0f) {
+            val start = builder.length
+            builder.append("\n")
+            builder.setSpan(GapSpan(dpInt(gapDp)), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
 
