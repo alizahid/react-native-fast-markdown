@@ -1,30 +1,36 @@
-// Override the codegen-generated ComponentDescriptors.h to use our
-// custom MarkdownViewShadowNode (with measureContent) instead of
-// the default ConcreteViewShadowNode.
+// Override the codegen-generated ComponentDescriptors.h to inject
+// our custom MarkdownViewShadowNode (with measureContent) instead
+// of the default ConcreteViewShadowNode.
+//
+// This file lives at a path that shadows the codegen-generated one.
+// The app's cmake (via autolinking) compiles the codegen C++ which
+// includes <react/renderer/components/MarkdownViewSpec/ComponentDescriptors.h>.
+// Because the library's jni/ dir is on the include path, this file
+// gets found first.
 #pragma once
 
 #include <react/renderer/core/ConcreteComponentDescriptor.h>
 #include <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #include <react/renderer/components/MarkdownViewSpec/Props.h>
 #include <react/renderer/components/view/ConcreteViewShadowNode.h>
-#include "MarkdownViewShadowNode.h"
 
-// Include the generated descriptors for MarkdownEditorView which
-// uses the default shadow node (no custom measurement needed).
-// We only override MarkdownView's descriptor here.
+// Pull in our custom shadow node (header-only, inline measureContent).
+#include "../../../../MarkdownViewShadowNode.h"
+
 namespace facebook::react {
 
+// Symbol definitions (must appear in exactly one compilation unit).
+inline const char MarkdownViewComponentName[] = "MarkdownView";
+inline const char MarkdownEditorViewComponentName[] = "MarkdownEditorView";
+
+// MarkdownView — uses our custom shadow node with Yoga measurement.
 class MarkdownViewComponentDescriptor final
     : public ConcreteComponentDescriptor<MarkdownViewShadowNode> {
  public:
   using ConcreteComponentDescriptor::ConcreteComponentDescriptor;
 };
 
-// MarkdownEditorView uses the default codegen shadow node — no
-// measurement override needed. We must still provide its descriptor
-// here since we're replacing the generated ComponentDescriptors.h.
-extern const char MarkdownEditorViewComponentName[];
-
+// MarkdownEditorView — standard codegen shadow node (no custom measurement).
 class MarkdownEditorViewShadowNode final
     : public ConcreteViewShadowNode<
           MarkdownEditorViewComponentName,

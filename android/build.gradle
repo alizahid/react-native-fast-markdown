@@ -13,10 +13,6 @@ android {
 
   compileSdkVersion safeExtGet('compileSdkVersion', 35)
 
-  buildFeatures {
-    prefab true
-  }
-
   defaultConfig {
     minSdkVersion safeExtGet('minSdkVersion', 24)
     targetSdkVersion safeExtGet('targetSdkVersion', 35)

@@ -25,40 +25,26 @@ target_include_directories(markdown_parser PUBLIC
 )
 target_link_libraries(markdown_parser md4c)
 
-# --- React Native dependencies for Fabric shadow node ---
-find_package(ReactAndroid REQUIRED CONFIG)
-find_package(fbjni REQUIRED CONFIG)
-
+# --- Main shared library (JNI parser bridge only) ---
+# The Fabric shadow node (MarkdownViewShadowNode) is header-only
+# and gets compiled by the app's cmake via the codegen include of
+# our ComponentDescriptors.h override.
 find_library(log-lib log)
 
-# --- Main shared library ---
 add_library(react-native-markdown SHARED
   MarkdownParserJNI.cpp
-  MarkdownViewShadowNode.cpp
-)
-
-# Our include dir comes first so our ComponentDescriptors.h
-# overrides the codegen-generated one (injects custom shadow node).
-target_include_directories(react-native-markdown BEFORE PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
 target_link_libraries(react-native-markdown
   markdown_parser
   md4c
-  fbjni::fbjni
-  ReactAndroid::react_render_core
-  ReactAndroid::react_render_componentregistry
-  ReactAndroid::react_debug
-  ReactAndroid::react_utils
-  ReactAndroid::jsi
-  ReactAndroid::yoga
   ${log-lib}
 )
 
-# Link the codegen-generated library if it exists (provides Props,
-# EventEmitters, and the default ComponentDescriptors). The target
-# is created by the React Native Gradle plugin after codegen runs.
-if(TARGET react_codegen_MarkdownViewSpec)
-  target_link_libraries(react-native-markdown react_codegen_MarkdownViewSpec)
-endif()
+# Expose our jni/ directory on the INTERFACE include path so that
+# when the codegen target links against us, it finds our custom
+# ComponentDescriptors.h (at react/renderer/components/MarkdownViewSpec/)
+# before the codegen-generated default.
+target_include_directories(react-native-markdown
+  INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
+)
