@@ -499,21 +499,26 @@ class MarkdownRenderer private constructor(private val density: Float) {
     /**
      * Insert a gap-sized separator between block elements. The gap
      * comes from styleConfig.base.gap (default 8dp, matching iOS).
-     * A newline is appended with a GapSpan that controls its height.
+     *
+     * Uses a single newline with a GapSpan that forces the line to
+     * be exactly gap pixels tall — this is the vertical space between
+     * adjacent blocks. The previous block's content already handles
+     * its own trailing newline, so we only add the gap line.
      */
     private fun ensureBlockSeparator(builder: SpannableStringBuilder, ctx: RenderContext) {
         if (builder.isEmpty()) return
-        // Make sure previous content ends with a newline
+
+        // Ensure the previous block ended with a newline
         if (builder[builder.length - 1] != '\n') {
             builder.append("\n")
         }
-        // Add a gap line between blocks
+
+        // Insert a gap line whose height = gap dp
         val gapDp = ctx.styleConfig.base.gap
-        if (gapDp > 0f) {
-            val start = builder.length
-            builder.append("\n")
-            builder.setSpan(GapSpan(dpInt(gapDp)), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
+        val gapPx = dpInt(if (gapDp > 0f) gapDp else 8f)
+        val start = builder.length
+        builder.append("\u200B\n") // zero-width space + newline so the span has content to attach to
+        builder.setSpan(GapSpan(gapPx), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
 
     // ── Render context ─────────────────────────────────────────────
