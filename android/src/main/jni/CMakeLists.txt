@@ -30,14 +30,10 @@ add_library(react-native-markdown SHARED
   MarkdownParserJNI.cpp
 )
 
+find_library(log-lib log)
+
 target_link_libraries(react-native-markdown
   markdown_parser
   md4c
-  fbjni
-  react_nativemodule_core
-  react_render_core
-  react_render_componentregistry
-  react_codegen_MarkdownViewSpec
-  jsi
-  yoga
+  ${log-lib}
 )

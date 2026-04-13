@@ -1,10 +1,8 @@
-#include <fbjni/fbjni.h>
 #include <jni.h>
 
 #include "ASTNode.hpp"
 #include "MarkdownParser.hpp"
 
-using namespace facebook::jni;
 using namespace markdown;
 
 namespace {
