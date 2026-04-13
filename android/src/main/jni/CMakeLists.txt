@@ -40,3 +40,13 @@ target_link_libraries(react-native-markdown
   md4c
   ${log-lib}
 )
+
+# Make our jni/ directory available on the include path so that
+# the codegen target finds our custom ComponentDescriptors.h
+# (with custom shadow node) alongside the generated one.
+# This is an INTERFACE property — it propagates to any target that
+# links against react-native-markdown (including the codegen target
+# when the autolinking cmake wires them together).
+target_include_directories(react-native-markdown
+  INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
+)

@@ -2,7 +2,9 @@ package com.markdown
 
 import android.content.Context
 import android.text.method.LinkMovementMethod
+import android.view.View.MeasureSpec
 import android.widget.TextView
+import com.facebook.react.uimanager.PixelUtil
 import com.markdown.parser.ParserBridge
 import com.markdown.renderer.MarkdownRenderer
 import com.markdown.styles.StyleConfig
@@ -32,6 +34,16 @@ class MarkdownView(context: Context) : TextView(context) {
         isVerticalScrollBarEnabled = false
         isHorizontalScrollBarEnabled = false
         overScrollMode = OVER_SCROLL_NEVER
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        // Let TextView compute its natural content height, then use
+        // it regardless of Yoga's height constraint. This ensures
+        // the view is never clipped — Yoga may underestimate height
+        // if the custom shadow node measurement isn't active.
+        val widthSpec = widthMeasureSpec
+        val unconstrainedHeight = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+        super.onMeasure(widthSpec, unconstrainedHeight)
     }
 
     override fun scrollTo(x: Int, y: Int) {
