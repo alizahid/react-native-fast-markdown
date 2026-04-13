@@ -201,15 +201,15 @@ data class ElementStyle(
             if (json == null) return ElementStyle()
             return ElementStyle(
                 fontSize = json.optDouble("fontSize", 0.0).toFloat(),
-                fontWeight = json.optString("fontWeight", null),
-                fontStyle = json.optString("fontStyle", null),
-                fontFamily = json.optString("fontFamily", null),
+                fontWeight = optStringOrNull(json, "fontWeight"),
+                fontStyle = optStringOrNull(json, "fontStyle"),
+                fontFamily = optStringOrNull(json, "fontFamily"),
                 lineHeight = json.optDouble("lineHeight", 0.0).toFloat(),
                 letterSpacing = json.optDouble("letterSpacing", 0.0).toFloat(),
-                textDecorationLine = json.optString("textDecorationLine", null),
+                textDecorationLine = optStringOrNull(json, "textDecorationLine"),
                 textDecorationColor = parseColor(json.opt("textDecorationColor")),
-                textDecorationStyle = json.optString("textDecorationStyle", null),
-                textAlign = json.optString("textAlign", null),
+                textDecorationStyle = optStringOrNull(json, "textDecorationStyle"),
+                textAlign = optStringOrNull(json, "textAlign"),
                 color = parseColor(json.opt("color")),
                 backgroundColor = parseColor(json.opt("backgroundColor")),
                 gap = json.optDouble("gap", 0.0).toFloat(),
@@ -243,6 +243,10 @@ data class ElementStyle(
                 borderBottomColor = parseColor(json.opt("borderBottomColor")),
                 borderBottomWidth = json.optDouble("borderBottomWidth", 0.0).toFloat(),
             )
+        }
+
+        private fun optStringOrNull(json: JSONObject, key: String): String? {
+            return if (json.has(key) && !json.isNull(key)) json.optString(key) else null
         }
 
         private fun parseColor(value: Any?): Int? {
