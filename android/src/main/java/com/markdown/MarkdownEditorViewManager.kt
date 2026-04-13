@@ -27,6 +27,8 @@ class MarkdownEditorViewManager : SimpleViewManager<MarkdownEditorView>(),
         return MarkdownEditorView(context)
     }
 
+    // --- Props ---
+
     @ReactProp(name = "defaultValue")
     override fun setDefaultValue(view: MarkdownEditorView, value: String?) {
         if (value != null && view.text.isEmpty()) {
@@ -41,7 +43,7 @@ class MarkdownEditorViewManager : SimpleViewManager<MarkdownEditorView>(),
 
     @ReactProp(name = "placeholderTextColor")
     override fun setPlaceholderTextColor(view: MarkdownEditorView, value: String?) {
-        // Apply placeholder color
+        // TODO: apply placeholder color
     }
 
     @ReactProp(name = "styles")
@@ -82,17 +84,47 @@ class MarkdownEditorViewManager : SimpleViewManager<MarkdownEditorView>(),
 
     @ReactProp(name = "autoCapitalize")
     override fun setAutoCapitalize(view: MarkdownEditorView, value: String?) {
-        // Apply auto-capitalize setting
+        // TODO: apply auto-capitalize
+    }
+
+    @ReactProp(name = "autoCorrect", defaultBoolean = true)
+    override fun setAutoCorrect(view: MarkdownEditorView, value: Boolean) {
+        // TODO: apply auto-correct
     }
 
     @ReactProp(name = "cursorColor")
     override fun setCursorColor(view: MarkdownEditorView, value: String?) {
-        // Apply cursor color
+        // TODO: apply cursor color
     }
 
     @ReactProp(name = "selectionColor")
     override fun setSelectionColor(view: MarkdownEditorView, value: String?) {
-        // Apply selection color
+        // TODO: apply selection color
+    }
+
+    @ReactProp(name = "contentInsetTop", defaultDouble = 0.0)
+    override fun setContentInsetTop(view: MarkdownEditorView, value: Double) {
+        // TODO: apply content inset
+    }
+
+    @ReactProp(name = "contentInsetLeft", defaultDouble = 0.0)
+    override fun setContentInsetLeft(view: MarkdownEditorView, value: Double) {
+        // TODO: apply content inset
+    }
+
+    @ReactProp(name = "contentInsetRight", defaultDouble = 0.0)
+    override fun setContentInsetRight(view: MarkdownEditorView, value: Double) {
+        // TODO: apply content inset
+    }
+
+    @ReactProp(name = "contentInsetBottom", defaultDouble = 0.0)
+    override fun setContentInsetBottom(view: MarkdownEditorView, value: Double) {
+        // TODO: apply content inset
+    }
+
+    @ReactProp(name = "mentionTriggers")
+    override fun setMentionTriggers(view: MarkdownEditorView, value: ReadableArray?) {
+        // TODO: configure mention trigger characters
     }
 
     // --- Commands ---
@@ -120,14 +152,17 @@ class MarkdownEditorViewManager : SimpleViewManager<MarkdownEditorView>(),
     override fun toggleHeading(view: MarkdownEditorView, level: Int) = view.toggleHeading(level)
     override fun toggleOrderedList(view: MarkdownEditorView) = view.toggleOrderedList()
     override fun toggleUnorderedList(view: MarkdownEditorView) = view.toggleUnorderedList()
-    override fun toggleBlockquote(view: MarkdownEditorView) = view.toggleBlockquote()
 
     override fun insertLink(view: MarkdownEditorView, url: String, text: String) {
         view.insertLink(url, text)
     }
 
     override fun removeLink(view: MarkdownEditorView) = view.removeLink()
-    override fun insertMention(view: MarkdownEditorView, user: String) = view.insertMention(user)
+
+    override fun insertMention(view: MarkdownEditorView, trigger: String, label: String, propsJson: String) {
+        view.insertMention(trigger, label, propsJson)
+    }
+
     override fun insertSpoiler(view: MarkdownEditorView) = view.insertSpoiler()
 
     override fun insertCustomTag(view: MarkdownEditorView, tag: String, propsJson: String) {

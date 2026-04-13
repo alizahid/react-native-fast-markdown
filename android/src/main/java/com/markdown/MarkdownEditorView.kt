@@ -79,8 +79,26 @@ class MarkdownEditorView(context: Context) : EditText(context) {
         applyMarkdownFormatting()
     }
 
-    fun insertMention(user: String) {
-        replaceSelection("<Mention user=\"$user\" />")
+    fun insertMention(trigger: String, label: String, propsJson: String) {
+        val tag = when (trigger) {
+            "#" -> "ChannelMention"
+            "/" -> "Command"
+            else -> "UserMention"
+        }
+        try {
+            val props = org.json.JSONObject(propsJson)
+            val sb = StringBuilder("<$tag")
+            sb.append(" name=\"$label\"")
+            val keys = props.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                sb.append(" $key=\"${props.getString(key)}\"")
+            }
+            sb.append(" />")
+            replaceSelection(sb.toString())
+        } catch (_: Exception) {
+            replaceSelection("<$tag name=\"$label\" />")
+        }
     }
 
     fun insertSpoiler() {

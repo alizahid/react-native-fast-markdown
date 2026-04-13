@@ -47,4 +47,9 @@ class MarkdownViewManager : SimpleViewManager<MarkdownView>(),
         }
         view.setCustomTags(tags)
     }
+
+    @ReactProp(name = "images")
+    override fun setImages(view: MarkdownView, value: ReadableArray?) {
+        // Image metadata for layout reservation — deferred to image support
+    }
 }
