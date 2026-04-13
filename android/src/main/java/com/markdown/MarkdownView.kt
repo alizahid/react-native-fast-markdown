@@ -50,7 +50,7 @@ class MarkdownView(context: Context) : TextView(context) {
      * override.
      */
     private fun applyBaseTextStyle() {
-        val base = styleConfig.text
+        val base = styleConfig.base
         textSize = base.resolvedFontSize()
         if (base.color != null) {
             setTextColor(base.color)
@@ -88,6 +88,7 @@ class MarkdownView(context: Context) : TextView(context) {
             val ast = ParserBridge.parse(markdown, effectiveTags)
             val spannable = renderer.renderCached(markdown, ast, config, tags)
             text = spannable
+            requestLayout()
             return
         }
 
@@ -98,6 +99,7 @@ class MarkdownView(context: Context) : TextView(context) {
             post {
                 if (markdown == currentMarkdown) {
                     text = spannable
+                    requestLayout()
                 }
             }
         }
