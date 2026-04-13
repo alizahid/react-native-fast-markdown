@@ -40,11 +40,3 @@ target_link_libraries(react-native-markdown
   md4c
   ${log-lib}
 )
-
-# Expose our jni/ directory on the INTERFACE include path so that
-# when the codegen target links against us, it finds our custom
-# ComponentDescriptors.h (at react/renderer/components/MarkdownViewSpec/)
-# before the codegen-generated default.
-target_include_directories(react-native-markdown
-  INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}
-)

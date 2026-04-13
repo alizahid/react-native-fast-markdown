@@ -51,3 +51,26 @@ dependencies {
   implementation "com.facebook.react:react-android"
   implementation "org.jetbrains.kotlin:kotlin-stdlib:${safeExtGet('kotlinVersion', '1.9.22')}"
 }
+
+// After codegen generates the default ComponentDescriptors.h, replace
+// it with ours which injects a custom shadow node with measureContent.
+// This is the only reliable way because the codegen cmake's own include
+// path always takes precedence over the library's INTERFACE include dirs.
+tasks.configureEach { task ->
+  if (task.name.startsWith("generateCodegen")) {
+    task.doLast {
+      def src = file("src/main/jni/react/renderer/components/MarkdownViewSpec/ComponentDescriptors.h")
+      def dst = file("${buildDir}/generated/source/codegen/jni/react/renderer/components/MarkdownViewSpec/ComponentDescriptors.h")
+      if (src.exists() && dst.parentFile.exists()) {
+        dst.text = src.text
+        // Also copy the shadow node header next to the descriptor
+        def shadowSrc = file("src/main/jni/MarkdownViewShadowNode.h")
+        def shadowDst = new File(dst.parentFile, "MarkdownViewShadowNode.h")
+        if (shadowSrc.exists()) {
+          shadowDst.text = shadowSrc.text
+        }
+        logger.lifecycle("Replaced codegen ComponentDescriptors.h with custom shadow node version")
+      }
+    }
+  }
+}
