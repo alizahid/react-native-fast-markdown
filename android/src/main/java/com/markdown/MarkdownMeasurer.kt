@@ -16,15 +16,14 @@ import com.markdown.styles.StyleConfig
  */
 object MarkdownMeasurer {
 
-    // Shared TextPaint — StaticLayout is thread-safe for measurement.
-    // We sync on this to avoid concurrent mutation of the paint.
     private val textPaint = TextPaint().apply {
         isAntiAlias = true
     }
 
     /**
-     * Measure markdown content. Returns [width, height] as floats.
-     * Called from JNI (MarkdownMeasurerJNI.cpp).
+     * Measure markdown content. Returns [width, height] as floats
+     * in density-independent pixels.
+     * Called from JNI (MarkdownViewShadowNode).
      */
     @JvmStatic
     fun measure(
@@ -44,9 +43,6 @@ object MarkdownMeasurer {
 
         val ast = ParserBridge.parse(markdown, effectiveTags)
 
-        // We need a Context-free renderer for shadow-thread measurement.
-        // MarkdownRenderer takes Context only for density — we pass it
-        // explicitly here via the TextPaint.
         val renderer = MarkdownRenderer.createForMeasurement(density)
         val spannable = renderer.render(ast, styleConfig, effectiveTags.toSet())
 
@@ -57,8 +53,21 @@ object MarkdownMeasurer {
             textPaint.textSize = base.resolvedFontSize() * density
             textPaint.typeface = base.resolveTypeface()
 
+            // Compute line spacing to match what applyBaseTextStyle()
+            // sets on the real TextView via setLineSpacing().
+            var lineSpacingExtra = 0f
+            if (base.lineHeight > 0) {
+                val lineHeightPx = base.lineHeight * density
+                val fontHeight = textPaint.getFontMetricsInt(null).toFloat()
+                if (lineHeightPx > fontHeight) {
+                    lineSpacingExtra = lineHeightPx - fontHeight
+                }
+            }
+
             val layout = StaticLayout.Builder
                 .obtain(spannable, 0, spannable.length, textPaint, widthPx)
+                .setLineSpacing(lineSpacingExtra, 1f)
+                .setIncludePad(true) // matches TextView default
                 .build()
 
             val measuredHeight = layout.height.toFloat() / density
