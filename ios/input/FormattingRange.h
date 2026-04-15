@@ -18,6 +18,7 @@ typedef NS_ENUM(NSInteger, FormattingType) {
   FormattingTypeBlockquote,
   FormattingTypeOrderedList,
   FormattingTypeUnorderedList,
+  FormattingTypeSpoiler,
 };
 
 @interface FormattingRange : NSObject <NSCopying>

@@ -31,6 +31,7 @@
   case FormattingTypeStrikethrough:
   case FormattingTypeCode:
   case FormattingTypeLink:
+  case FormattingTypeSpoiler:
     return YES;
   default:
     return NO;

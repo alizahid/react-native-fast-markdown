@@ -1167,6 +1167,8 @@ using namespace facebook::react;
     NSString *label = args[1];
     NSString *propsJSON = args.count > 2 ? args[2] : @"{}";
     [self insertMentionWithTrigger:trigger label:label propsJSON:propsJSON];
+  } else if ([commandName isEqualToString:@"toggleSpoiler"]) {
+    [self toggleInlineType:FormattingTypeSpoiler];
   } else if ([commandName isEqualToString:@"insertSpoiler"]) {
     // TODO
   } else if ([commandName isEqualToString:@"insertCustomTag"]) {
@@ -1190,6 +1192,7 @@ using namespace facebook::react;
   BOOL strike =
       [_store isEffectivelyActive:FormattingTypeStrikethrough atIndex:idx];
   BOOL code = [_store isEffectivelyActive:FormattingTypeCode atIndex:idx];
+  BOOL spoiler = [_store isEffectivelyActive:FormattingTypeSpoiler atIndex:idx];
 
   NSString *linkUrl = [_store effectiveLinkAtIndex:idx] ?: @"";
 
@@ -1218,6 +1221,7 @@ using namespace facebook::react;
       .italic = italic,
       .strikethrough = strike,
       .code = code,
+      .spoiler = spoiler,
       .linkUrl = std::string([linkUrl UTF8String]),
       .heading = static_cast<int>(heading),
       .list = std::string([listType UTF8String]),

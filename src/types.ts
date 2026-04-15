@@ -372,6 +372,7 @@ export interface EditorStyleState {
   italic: boolean
   link: { url: string } | null
   list: 'ordered' | 'unordered' | null
+  spoiler: boolean
   strikethrough: boolean
 }
 
@@ -409,6 +410,7 @@ export interface MarkdownEditorHandle {
   toggleHeading(level: number): void
   toggleItalic(): void
   toggleOrderedList(): void
+  toggleSpoiler(): void
   toggleStrikethrough(): void
   toggleUnorderedList(): void
 }

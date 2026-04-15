@@ -307,6 +307,7 @@
   case FormattingTypeItalic: return @"*";
   case FormattingTypeStrikethrough: return @"~~";
   case FormattingTypeCode: return @"`";
+  case FormattingTypeSpoiler: return @"||";
   default: return @"";
   }
 }

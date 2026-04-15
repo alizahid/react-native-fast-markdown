@@ -47,6 +47,7 @@ export function useMarkdownEditor() {
       ref.current?.insertMention(trigger, label, props),
     [],
   )
+  const toggleSpoiler = useCallback(() => ref.current?.toggleSpoiler(), [])
   const insertSpoiler = useCallback(() => ref.current?.insertSpoiler(), [])
   const insertCustomTag = useCallback(
     (tag: string, props?: Record<string, string>) =>
@@ -71,6 +72,7 @@ export function useMarkdownEditor() {
     insertLink,
     removeLink,
     insertMention,
+    toggleSpoiler,
     insertSpoiler,
     insertCustomTag,
   }

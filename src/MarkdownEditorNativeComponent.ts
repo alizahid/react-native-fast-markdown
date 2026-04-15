@@ -34,6 +34,7 @@ export interface MarkdownEditorViewNativeProps extends ViewProps {
       italic: boolean
       strikethrough: boolean
       code: boolean
+      spoiler: boolean
       linkUrl: string
       heading: Int32
       list: string
@@ -101,6 +102,9 @@ interface NativeCommands {
   toggleOrderedList: (
     viewRef: React.ElementRef<MarkdownEditorViewComponent>,
   ) => void
+  toggleSpoiler: (
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
+  ) => void
   toggleStrikethrough: (
     viewRef: React.ElementRef<MarkdownEditorViewComponent>,
   ) => void
@@ -121,6 +125,7 @@ export const Commands = codegenNativeCommands<NativeCommands>({
     'toggleCode',
     'toggleHeading',
     'toggleOrderedList',
+    'toggleSpoiler',
     'toggleUnorderedList',
     'insertLink',
     'removeLink',
