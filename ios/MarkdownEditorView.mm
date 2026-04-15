@@ -297,6 +297,7 @@ using namespace facebook::react;
     }
 
     [self applyFullFormatting];
+    [self emitMarkdownChange];
   }
 
   [self detectAndEmitState];
@@ -345,6 +346,7 @@ using namespace facebook::react;
 
   [self applyFullFormatting];
   [self detectAndEmitState];
+  [self emitMarkdownChange];
 }
 
 - (void)toggleList:(FormattingType)listType {
