@@ -4,7 +4,7 @@
     "strict": true,
     "jsx": "preserve",
     "paths": {
-      "react-native-markdown": ["../src/index"]
+      "react-native-fast-markdown": ["../src/index"]
     }
   }
 }

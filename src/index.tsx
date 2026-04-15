@@ -22,7 +22,6 @@ export type {
   MarkdownListItemStyle,
   MarkdownListStyle,
   MarkdownMentionStyle,
-  MentionTrigger,
   MarkdownParagraphStyle,
   MarkdownSpoilerStyle,
   MarkdownStrikethroughStyle,
@@ -34,6 +33,7 @@ export type {
   MarkdownTableStyle,
   MarkdownThematicBreakStyle,
   MentionPressEvent,
+  MentionTrigger,
   MentionType,
   TaskListItemPressEvent,
 } from './types'

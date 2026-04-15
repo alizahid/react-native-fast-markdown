@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "paths": {
-      "react-native-markdown": ["./src/index"]
+      "react-native-fast-markdown": ["./src/index"]
     },
     "esModuleInterop": true,
     "jsx": "react-jsx",

@@ -60,10 +60,7 @@ export interface MarkdownEditorProps extends ViewProps {
   onLinkDetected?: (url: string) => void
 
   /** Called on each keystroke after a trigger — update suggestions */
-  onMentionChange?: (event: {
-    query: string
-    trigger: MentionTrigger
-  }) => void
+  onMentionChange?: (event: { query: string; trigger: MentionTrigger }) => void
 
   /** Called when mention is cancelled — hide suggestions */
   onMentionEnd?: (trigger: MentionTrigger) => void

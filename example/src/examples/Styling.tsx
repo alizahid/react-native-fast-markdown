@@ -3,7 +3,7 @@ import {
   Markdown,
   type MarkdownBaseStyle,
   type MarkdownStyle,
-} from 'react-native-markdown'
+} from 'react-native-fast-markdown'
 
 const sampleMarkdown = `\
 # Styled Heading

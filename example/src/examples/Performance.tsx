@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { FlatList, StyleSheet, Text, View } from 'react-native'
-import { Markdown, type MarkdownStyle } from 'react-native-markdown'
+import { Markdown, type MarkdownStyle } from 'react-native-fast-markdown'
 
 const templates = [
   '**Message from user:** Hello everyone! Check out this [link](https://example.com). What do you think?',
