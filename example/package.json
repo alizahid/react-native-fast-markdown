@@ -3,23 +3,23 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "ios": "expo run:ios",
     "postinstall": "rm -rf node_modules/react-native-fast-markdown && ln -s ../.. node_modules/react-native-fast-markdown",
+    "ios": "expo run:ios",
     "prebuild": "expo prebuild",
     "start": "expo start"
   },
   "dependencies": {
     "@react-navigation/native": "^7.2.2",
-    "@react-navigation/native-stack": "^7.14.10",
-    "expo": "~55.0.13",
+    "@react-navigation/native-stack": "^7.14.11",
+    "expo": "~55.0.15",
     "react": "19.2.0",
     "react-native": "0.83.4",
     "react-native-safe-area-context": "~5.6.2",
     "react-native-screens": "~4.23.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.26.0",
-    "@types/react": "~19.2.10",
-    "typescript": "~5.9.2"
+    "@babel/core": "^7.29.0",
+    "@types/react": "~19.2.14",
+    "typescript": "5"
   }
 }
