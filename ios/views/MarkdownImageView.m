@@ -76,8 +76,8 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
   dispatch_once(&once, ^{
     cache = [[NSCache alloc] init];
     cache.name = @"MarkdownImageDataCache";
-    cache.countLimit = 128;
-    cache.totalCostLimit = 32 * 1024 * 1024; // 32 MB
+    cache.countLimit = 1000;
+    cache.totalCostLimit = 1024 * 1024 * 1024; // 1 GB
   });
   return cache;
 }
