@@ -399,7 +399,6 @@ export interface MarkdownEditorHandle {
   ): void
   insertSpoiler(): void
   removeLink(): void
-  toggleSpoiler(): void
   setSelection(start: number, end: number): void
   setValue(markdown: string): void
 
@@ -411,6 +410,7 @@ export interface MarkdownEditorHandle {
   toggleHeading(level: number): void
   toggleItalic(): void
   toggleOrderedList(): void
+  toggleSpoiler(): void
   toggleStrikethrough(): void
   toggleUnorderedList(): void
 }
