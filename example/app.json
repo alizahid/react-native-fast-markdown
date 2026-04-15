@@ -8,6 +8,9 @@
     "ios": {
       "bundleIdentifier": "com.alizahid.markdown.example",
       "supportsTablet": true
+    },
+    "android": {
+      "package": "com.alizahid.markdown.example"
     }
   }
 }

@@ -16,6 +16,10 @@ This line has ^superscript or ^(superscript with spaces) inside it.
 
 Here's a [link to GitHub](https://github.com) and an autolink: https://example.com
 
+GIPHY
+
+![](https://media.giphy.com/media/l3q2XhfQ8oCkm1Ts4/giphy.gif)
+
 Large image
 
 ![A placeholder image](https://picsum.photos/2000/2000)
