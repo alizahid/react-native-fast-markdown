@@ -579,8 +579,9 @@ ASTNode MarkdownParser::parse(const std::string &markdown,
   parser.debug_log = nullptr;
   parser.syntax = nullptr;
 
-  md_parse(processed.c_str(), static_cast<MD_SIZE>(processed.size()), &parser,
-           &ctx);
+  int result = md_parse(processed.c_str(),
+                        static_cast<MD_SIZE>(processed.size()), &parser, &ctx);
+  (void)result; // -1 on OOM; tree is still usable up to the failure point
 
   // Flush any remaining HTML
   flushPendingHtml(ctx);

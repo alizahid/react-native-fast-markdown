@@ -17,9 +17,11 @@ static const void *kMentionDataKey = &kMentionDataKey;
   NSMutableArray<MarkdownPressableOverlayView *> *_overlays;
 
   // Short-circuit cache — see MarkdownSpoilerOverlay for the
-  // reasoning.
+  // reasoning. Uses hash + length instead of a weak pointer to
+  // avoid false cache hits from address reuse after deallocation.
   CGFloat _cachedWidth;
-  __weak NSAttributedString *_cachedText;
+  NSUInteger _cachedTextHash;
+  NSUInteger _cachedTextLength;
 }
 
 - (instancetype)initWithTextView:(UITextView *)textView {
@@ -28,7 +30,8 @@ static const void *kMentionDataKey = &kMentionDataKey;
     _textView = textView;
     _overlays = [NSMutableArray new];
     _cachedWidth = 0;
-    _cachedText = nil;
+    _cachedTextHash = 0;
+    _cachedTextLength = 0;
   }
   return self;
 }
@@ -39,7 +42,8 @@ static const void *kMentionDataKey = &kMentionDataKey;
   }
   [_overlays removeAllObjects];
   _cachedWidth = 0;
-  _cachedText = nil;
+  _cachedTextHash = 0;
+  _cachedTextLength = 0;
 }
 
 - (void)updateOverlays {
@@ -59,11 +63,16 @@ static const void *kMentionDataKey = &kMentionDataKey;
   }
 
   // Short-circuit the rebuild when nothing we care about changed.
-  if (fabs(width - _cachedWidth) < 0.5 && attrText == _cachedText) {
+  NSUInteger textHash = attrText.hash;
+  NSUInteger textLength = attrText.length;
+  if (fabs(width - _cachedWidth) < 0.5 &&
+      textHash == _cachedTextHash &&
+      textLength == _cachedTextLength) {
     return;
   }
   _cachedWidth = width;
-  _cachedText = attrText;
+  _cachedTextHash = textHash;
+  _cachedTextLength = textLength;
 
   NSLayoutManager *layoutManager = textView.layoutManager;
   NSTextContainer *textContainer = textView.textContainer;

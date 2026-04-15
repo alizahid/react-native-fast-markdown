@@ -25,7 +25,7 @@
   }
 
   // Letter spacing (kerning)
-  if (style.letterSpacing != 0) {
+  if (!isnan(style.letterSpacing) && style.letterSpacing != 0) {
     attrs[NSKernAttributeName] = @(style.letterSpacing);
   }
 

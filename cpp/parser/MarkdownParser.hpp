@@ -22,6 +22,12 @@ public:
 
 private:
   struct ParseContext {
+    // Tracks the current ancestry path in the AST.  Each pointer
+    // lives in a DIFFERENT parent->children vector, so push_back on
+    // the deepest level never invalidates shallower pointers.
+    // INVARIANT: a pointer into vector V is always popped from the
+    // stack before a new sibling is pushed to V.  This is guaranteed
+    // by md4c's strict enter/leave nesting.
     std::vector<ASTNode *> stack;
     ASTNode root;
     const ParseOptions *options = nullptr;

@@ -23,11 +23,12 @@
 
   NSMutableString *md = [NSMutableString new];
 
-  // Collect code block ranges for fence wrapping
-  NSMutableIndexSet *codeBlockChars = [NSMutableIndexSet new];
+  // Collect code block ranges — stored as NSRange values, not per-
+  // character indices, so memory is O(range count) not O(text length).
+  NSMutableArray<NSValue *> *codeBlockRanges = [NSMutableArray new];
   for (FormattingRange *r in store.allRanges) {
     if (r.type == FormattingTypeCodeBlock) {
-      [codeBlockChars addIndexesInRange:r.range];
+      [codeBlockRanges addObject:[NSValue valueWithRange:r.range]];
     }
   }
 
@@ -45,8 +46,17 @@
     if (lineIdx > 0) [md appendString:@"\n"];
 
     // Check if this line is in a code block
-    BOOL lineInCodeBlock = lineRange.length > 0 &&
-        [codeBlockChars containsIndex:lineRange.location];
+    BOOL lineInCodeBlock = NO;
+    if (lineRange.length > 0) {
+      for (NSValue *rv in codeBlockRanges) {
+        NSRange cbr = rv.rangeValue;
+        if (lineRange.location >= cbr.location &&
+            lineRange.location < NSMaxRange(cbr)) {
+          lineInCodeBlock = YES;
+          break;
+        }
+      }
+    }
 
     // Emit opening fence when entering code block
     if (lineInCodeBlock && !inCodeBlock) {
@@ -151,11 +161,15 @@
     if ([line hasPrefix:@"\u2022 "]) return 2;
     if ([line hasPrefix:@"\u2022"]) return 1;
   } else if (type == FormattingTypeOrderedList) {
-    // "N. " pattern
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^\\d+\\.\\s"
-                             options:0
-                               error:nil];
+    // "N. " pattern — static regex avoids recompilation per line
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^\\d+\\.\\s"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0

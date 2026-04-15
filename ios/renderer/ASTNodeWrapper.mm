@@ -8,6 +8,7 @@
 }
 
 - (instancetype)initWithOpaqueNode:(const void *)node {
+  if (!node) return nil;
   self = [super init];
   if (self) {
     _cppNode = static_cast<const markdown::ASTNode *>(node);

@@ -45,7 +45,8 @@ static UIColor *MarkdownSpoilerPressedColor(UIColor *color) {
   // ancestor view). A rebuild is only needed when the text view's
   // width or attributed text actually changed.
   CGFloat _cachedWidth;
-  __weak NSAttributedString *_cachedText;
+  NSUInteger _cachedTextHash;
+  NSUInteger _cachedTextLength;
 }
 
 - (instancetype)initWithTextView:(UITextView *)textView {
@@ -56,7 +57,8 @@ static UIColor *MarkdownSpoilerPressedColor(UIColor *color) {
     _revealedIds = [NSMutableSet new];
     _overlayColor = [UIColor labelColor];
     _cachedWidth = 0;
-    _cachedText = nil;
+    _cachedTextHash = 0;
+    _cachedTextLength = 0;
   }
   return self;
 }
@@ -67,7 +69,8 @@ static UIColor *MarkdownSpoilerPressedColor(UIColor *color) {
   }
   [_overlays removeAllObjects];
   _cachedWidth = 0;
-  _cachedText = nil;
+  _cachedTextHash = 0;
+  _cachedTextLength = 0;
 }
 
 - (void)updateOverlays {
@@ -88,15 +91,20 @@ static UIColor *MarkdownSpoilerPressedColor(UIColor *color) {
   }
 
   // Skip the rebuild when layoutSubviews fires without a change we
-  // care about. We compare attributedText by pointer identity
-  // because MarkdownView always rebuilds a fresh NSAttributedString
-  // when the markdown or style JSON changes, so same-pointer means
-  // same content.
-  if (fabs(width - _cachedWidth) < 0.5 && attrText == _cachedText) {
+  // care about. We compare by hash + length instead of a weak
+  // pointer — a weak reference to a deallocated object can match
+  // a newly allocated one at the same address, producing a false
+  // cache hit.
+  NSUInteger textHash = attrText.hash;
+  NSUInteger textLength = attrText.length;
+  if (fabs(width - _cachedWidth) < 0.5 &&
+      textHash == _cachedTextHash &&
+      textLength == _cachedTextLength) {
     return;
   }
   _cachedWidth = width;
-  _cachedText = attrText;
+  _cachedTextHash = textHash;
+  _cachedTextLength = textLength;
 
   NSLayoutManager *layoutManager = textView.layoutManager;
   NSTextContainer *textContainer = textView.textContainer;

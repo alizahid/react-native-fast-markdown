@@ -2,6 +2,7 @@
 
 @implementation FormattingStore {
   NSMutableArray<FormattingRange *> *_ranges;
+  NSArray<FormattingRange *> *_cachedAllRanges;
 }
 
 - (instancetype)init {
@@ -19,14 +20,18 @@
 // ---------------------------------------------------------------
 
 - (NSArray<FormattingRange *> *)allRanges {
-  return [_ranges copy];
+  if (!_cachedAllRanges) {
+    _cachedAllRanges = [_ranges copy];
+  }
+  return _cachedAllRanges;
 }
 
 - (BOOL)hasType:(FormattingType)type atIndex:(NSUInteger)index {
   for (FormattingRange *r in _ranges) {
-    if (r.type == type &&
-        index >= r.range.location &&
-        index < NSMaxRange(r.range)) {
+    // Ranges are sorted by location — once we pass the index, no
+    // subsequent range can contain it.
+    if (r.range.location > index) break;
+    if (r.type == type && index < NSMaxRange(r.range)) {
       return YES;
     }
   }
@@ -36,7 +41,8 @@
 - (NSArray<FormattingRange *> *)rangesAtIndex:(NSUInteger)index {
   NSMutableArray *result = [NSMutableArray new];
   for (FormattingRange *r in _ranges) {
-    if (index >= r.range.location && index < NSMaxRange(r.range)) {
+    if (r.range.location > index) break;
+    if (index < NSMaxRange(r.range)) {
       [result addObject:r];
     }
   }
@@ -47,6 +53,8 @@
                                 intersecting:(NSRange)range {
   NSMutableArray *result = [NSMutableArray new];
   for (FormattingRange *r in _ranges) {
+    // Past the query range — no more intersections possible.
+    if (r.range.location >= NSMaxRange(range)) break;
     if (r.type == type && NSIntersectionRange(r.range, range).length > 0) {
       [result addObject:r];
     }
@@ -61,13 +69,22 @@
 - (void)addRange:(FormattingRange *)range {
   if (range.range.length == 0) return;
 
-  // Merge with adjacent/overlapping ranges of the same type
+  // Merge with adjacent/overlapping ranges of the same type.
+  // For links, only merge when the URLs match — merging links with
+  // different URLs would silently discard one of them.
   NSMutableArray *toRemove = [NSMutableArray new];
   NSUInteger mergedStart = range.range.location;
   NSUInteger mergedEnd = NSMaxRange(range.range);
 
   for (FormattingRange *existing in _ranges) {
     if (existing.type != range.type) continue;
+
+    // Don't merge link ranges with different URLs
+    if (range.type == FormattingTypeLink &&
+        range.url && existing.url &&
+        ![range.url isEqualToString:existing.url]) {
+      continue;
+    }
 
     NSUInteger eStart = existing.range.location;
     NSUInteger eEnd = NSMaxRange(existing.range);
@@ -135,6 +152,7 @@
 
 - (void)removeAll {
   [_ranges removeAllObjects];
+  [self invalidateCache];
 }
 
 // ---------------------------------------------------------------
@@ -207,6 +225,7 @@
     if (r.range.length == 0) [empty addObject:r];
   }
   [_ranges removeObjectsInArray:empty];
+  [self invalidateCache];
 }
 
 // ---------------------------------------------------------------
@@ -247,6 +266,10 @@
 #pragma mark - Internal
 // ---------------------------------------------------------------
 
+- (void)invalidateCache {
+  _cachedAllRanges = nil;
+}
+
 - (void)sortRanges {
   [_ranges sortUsingComparator:^NSComparisonResult(FormattingRange *a,
                                                     FormattingRange *b) {
@@ -258,6 +281,7 @@
     return a.range.length > b.range.length ? NSOrderedAscending
                                            : NSOrderedDescending;
   }];
+  [self invalidateCache];
 }
 
 @end

@@ -28,10 +28,11 @@
     }
   }
 
-  // Build indent
-  NSString *indent = @"";
+  // Build indent — use NSMutableString to avoid O(n²) from
+  // immutable string concatenation in the loop.
+  NSMutableString *indent = [NSMutableString new];
   for (NSInteger i = 1; i < context.listDepth; i++) {
-    indent = [indent stringByAppendingString:@"    "];
+    [indent appendString:@"    "];
   }
 
   // Build bullet/number

@@ -89,10 +89,6 @@ export function Markdown({
       style,
     ])
 
-    if (Object.keys(flatStyle).length === 0 && !markdownStyles) {
-      return
-    }
-
     return {
       ...markdownStyles,
       base: flatStyle,
