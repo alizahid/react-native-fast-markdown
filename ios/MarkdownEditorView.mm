@@ -68,6 +68,11 @@ using namespace facebook::react;
 
 - (void)updateProps:(const Props::Shared &)props
            oldProps:(const Props::Shared &)oldProps {
+  // Re-attach delegate after prepareForRecycle cleared it.
+  if (!_textView.delegate) {
+    _textView.delegate = self;
+  }
+
   const auto &newProps =
       *std::static_pointer_cast<const MarkdownEditorViewProps>(props);
 
@@ -1336,6 +1341,27 @@ using namespace facebook::react;
   const auto &emitter =
       static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
   emitter.onEditorBlur({.focused = false});
+}
+
+#pragma mark - Fabric Recycling
+
+- (void)prepareForRecycle {
+  [super prepareForRecycle];
+
+  // Clear delegate to break the strong reference from textView → self.
+  _textView.delegate = nil;
+
+  // Reset editor content and formatting state
+  _suppressFormatting = YES;
+  _textView.text = @"";
+  _suppressFormatting = NO;
+  [_store removeAll];
+
+  // Reset mention tracking — stale triggers from a previous use
+  // would fire spurious onMentionChange events.
+  _activeMentionTrigger = nil;
+  _mentionStartPos = 0;
+  _mentionTriggers = nil;
 }
 
 @end

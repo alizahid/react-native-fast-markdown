@@ -6,6 +6,8 @@
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
 #import <react/renderer/core/ConcreteState.h>
 
+#include <atomic>
+
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
@@ -60,7 +62,7 @@ using namespace facebook::react;
   // every time we want Yoga to re-run measureContent. Each bump is
   // enough to make the state data compare as changed, which is the
   // only thing the reconciler cares about.
-  int64_t _measureRevision;
+  std::atomic<int64_t> _measureRevision;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -103,6 +105,16 @@ using namespace facebook::react;
 
 - (void)updateProps:(const Props::Shared &)props
            oldProps:(const Props::Shared &)oldProps {
+  // Re-register the image-size notification after prepareForRecycle
+  // removed the observer.
+  if (!_currentMarkdown) {
+    [[NSNotificationCenter defaultCenter]
+        addObserver:self
+           selector:@selector(handleImageSizeCacheUpdate:)
+               name:MarkdownImageSizeCacheDidUpdateNotification
+             object:nil];
+  }
+
   const auto &newViewProps =
       *std::static_pointer_cast<const MarkdownViewProps>(props);
 
@@ -217,7 +229,21 @@ using namespace facebook::react;
   }
   [_mentionOverlays removeAllObjects];
 
+  // Nil out onLayoutSubviews callbacks before removing text views,
+  // otherwise the blocks can fire on a detached view during recycling.
+  for (UIView *subview in _stackView.subviews) {
+    [self clearCallbacksRecursive:subview];
+  }
   [_stackView removeAllArrangedSubviews];
+}
+
+- (void)clearCallbacksRecursive:(UIView *)view {
+  if ([view isKindOfClass:[MarkdownInternalTextView class]]) {
+    ((MarkdownInternalTextView *)view).onLayoutSubviews = nil;
+  }
+  for (UIView *child in view.subviews) {
+    [self clearCallbacksRecursive:child];
+  }
 }
 
 - (void)addSegmentForNode:(ASTNodeWrapper *)node
@@ -599,7 +625,7 @@ using namespace facebook::react;
   if (spoilerStyle.backgroundColor) {
     spoilerOverlay.overlayColor = spoilerStyle.backgroundColor;
   }
-  spoilerOverlay.cornerRadius = spoilerStyle.borderRadius;
+  spoilerOverlay.cornerRadius = !isnan(spoilerStyle.borderRadius) ? spoilerStyle.borderRadius : 0;
   [_spoilerOverlays addObject:spoilerOverlay];
 
   // Mentions — transparent highlight-on-press overlay that fires
@@ -749,6 +775,9 @@ using namespace facebook::react;
 - (void)prepareForRecycle {
   [super prepareForRecycle];
   [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [self clearSegments];
+  _currentMarkdown = nil;
+  _currentStyleJSON = nil;
   _markdownState.reset();
 }
 

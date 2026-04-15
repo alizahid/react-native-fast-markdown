@@ -92,6 +92,9 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
   NSString *_objectFit;
   NSURLSessionDataTask *_task;
   MarkdownPressableOverlayView *_pressOverlay;
+  // Incremented on every new load; callbacks validate their captured
+  // generation matches the current one to discard stale results.
+  NSUInteger _loadGeneration;
 }
 
 - (instancetype)initWithURL:(NSURL *)url
@@ -256,6 +259,9 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
 #pragma mark - Loading
 
 - (void)loadImageIfNeeded {
+  [_task cancel];
+  _task = nil;
+
   if (!_url) return;
   NSString *key = _url.absoluteString;
 
@@ -270,10 +276,13 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
     return;
   }
 
-  NSURL *url = _url;
+  // Bump generation so any in-flight callback from a prior load is
+  // discarded when it arrives on the main queue.
+  NSUInteger generation = ++_loadGeneration;
+
   __weak __typeof(self) weakSelf = self;
   _task = [[NSURLSession sharedSession]
-        dataTaskWithURL:url
+        dataTaskWithURL:_url
       completionHandler:^(NSData *data, NSURLResponse *response,
                           NSError *error) {
         if (error || !data) return;
@@ -288,14 +297,10 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
         dispatch_async(dispatch_get_main_queue(), ^{
           __strong __typeof(weakSelf) strongSelf = weakSelf;
           if (!strongSelf) return;
-          if (![strongSelf->_url.absoluteString isEqualToString:key]) {
-            return;
-          }
+          // Discard if a newer load has started (view recycled or
+          // URL changed).
+          if (strongSelf->_loadGeneration != generation) return;
           strongSelf->_imageView.image = image;
-          // If the caller supplied a propSize we don't need to
-          // trigger a re-measure — layout is already correct.
-          // For the discovered path, MarkdownImageSizeCache's
-          // notification fires the re-measure for us.
         });
       }];
   [_task resume];

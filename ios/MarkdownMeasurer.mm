@@ -106,6 +106,8 @@ static ASTNodeWrapper *ImageOnlyParagraphChild(ASTNodeWrapper *node) {
 /// shadow-thread measurement matches the rendered view exactly.
 static CGSize SizeForBlockStyle(MarkdownElementStyle *style,
                                 CGSize contentSize) {
+  if (!style) return contentSize;
+
   UIEdgeInsets margin = [style resolvedMarginInsets];
   UIEdgeInsets padding = [style resolvedPaddingInsets];
   UIEdgeInsets borders = [style resolvedBorderWidths];
@@ -116,9 +118,9 @@ static CGSize SizeForBlockStyle(MarkdownElementStyle *style,
   CGFloat extraH = padding.top + padding.bottom + borders.top + borders.bottom;
 
   CGFloat borderBoxW =
-      style.width > 0 ? style.width : contentSize.width + extraW;
+      (!isnan(style.width) && style.width > 0) ? style.width : contentSize.width + extraW;
   CGFloat borderBoxH =
-      style.height > 0 ? style.height : contentSize.height + extraH;
+      (!isnan(style.height) && style.height > 0) ? style.height : contentSize.height + extraH;
 
   return CGSizeMake(borderBoxW + marginW, borderBoxH + marginH);
 }
