@@ -31,7 +31,6 @@
     "lib",
     "cpp",
     "ios",
-    "android",
     "react-native-markdown.podspec",
     "react-native.config.js",
     "!**/__tests__",

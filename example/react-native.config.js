@@ -13,7 +13,6 @@ module.exports = {
       root: path.join(__dirname, '..'),
       platforms: {
         ios: {},
-        android: {},
       },
     },
   },
