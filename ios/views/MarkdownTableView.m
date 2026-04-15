@@ -391,4 +391,22 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
   self.bounces = scrollable;
 }
 
+#pragma mark - Hit testing
+
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  // When the table content fits within the visible width, scrolling
+  // is disabled and the UIScrollView doesn't need to handle any
+  // gestures. Return nil so the touch passes through to a parent
+  // Pressable (React Native or React Native Gesture Handler).
+  //
+  // When the table IS scrollable, let UIScrollView handle the hit
+  // test normally so its pan gesture recogniser can claim horizontal
+  // swipes. Taps still reach the parent because the pan recogniser
+  // fails for non-moving touches.
+  if (!self.scrollEnabled) {
+    return nil;
+  }
+  return [super hitTest:point withEvent:event];
+}
+
 @end
