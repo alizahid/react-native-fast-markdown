@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "android": "expo run:android",
     "ios": "expo run:ios",
     "postinstall": "rm -rf node_modules/react-native-markdown && ln -s ../.. node_modules/react-native-markdown",
     "prebuild": "expo prebuild",
