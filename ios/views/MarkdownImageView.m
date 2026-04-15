@@ -1,7 +1,69 @@
 #import "MarkdownImageView.h"
 
+#import <ImageIO/ImageIO.h>
+
 #import "MarkdownImageSizeCache.h"
 #import "MarkdownPressableOverlayView.h"
+
+/// Decode image data with animated GIF support. For multi-frame
+/// GIFs this extracts every frame and its per-frame delay, then
+/// returns a UIImage created via +animatedImageWithImages:duration:.
+/// For all other formats (PNG, JPEG, WebP, …) it falls back to the
+/// standard [UIImage imageWithData:] path.
+static UIImage *_Nullable MarkdownImageFromData(NSData *_Nonnull data) {
+  CGImageSourceRef source =
+      CGImageSourceCreateWithData((__bridge CFDataRef)data, NULL);
+  if (!source) return [UIImage imageWithData:data];
+
+  size_t count = CGImageSourceGetCount(source);
+  if (count <= 1) {
+    CFRelease(source);
+    return [UIImage imageWithData:data];
+  }
+
+  // Multi-frame image — extract every frame + its delay.
+  NSMutableArray<UIImage *> *frames =
+      [[NSMutableArray alloc] initWithCapacity:count];
+  NSTimeInterval totalDuration = 0;
+
+  for (size_t i = 0; i < count; i++) {
+    CGImageRef cgImage =
+        CGImageSourceCreateImageAtIndex(source, i, NULL);
+    if (!cgImage) continue;
+
+    // Per-frame delay lives in the GIF properties dictionary.
+    // Prefer UnclampedDelayTime (may be < 10 ms); fall back to
+    // DelayTime; use 100 ms when both are missing or zero.
+    NSDictionary *properties = (__bridge_transfer NSDictionary *)
+        CGImageSourceCopyPropertiesAtIndex(source, i, NULL);
+    NSDictionary *gif =
+        properties[(__bridge NSString *)kCGImagePropertyGIFDictionary];
+
+    NSTimeInterval delay = 0;
+    NSNumber *unclamped =
+        gif[(__bridge NSString *)kCGImagePropertyGIFUnclampedDelayTime];
+    if (unclamped && [unclamped doubleValue] > __FLT_EPSILON__) {
+      delay = [unclamped doubleValue];
+    } else {
+      NSNumber *clamped =
+          gif[(__bridge NSString *)kCGImagePropertyGIFDelayTime];
+      if (clamped && [clamped doubleValue] > __FLT_EPSILON__) {
+        delay = [clamped doubleValue];
+      }
+    }
+    if (delay < 0.011) delay = 0.1;
+
+    totalDuration += delay;
+    [frames addObject:[UIImage imageWithCGImage:cgImage]];
+    CGImageRelease(cgImage);
+  }
+
+  CFRelease(source);
+
+  if (frames.count == 0) return nil;
+  if (frames.count == 1) return frames.firstObject;
+  return [UIImage animatedImageWithImages:frames duration:totalDuration];
+}
 
 // Process-wide image cache of decoded UIImages. Separate from
 // MarkdownImageSizeCache which only tracks sizes — this one holds
@@ -215,7 +277,7 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
       completionHandler:^(NSData *data, NSURLResponse *response,
                           NSError *error) {
         if (error || !data) return;
-        UIImage *image = [UIImage imageWithData:data];
+        UIImage *image = MarkdownImageFromData(data);
         if (!image) return;
 
         NSUInteger cost = data.length;
