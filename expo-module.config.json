@@ -1,6 +1,6 @@
 {
   "platforms": ["ios"],
   "ios": {
-    "podspecPath": "./react-native-markdown.podspec"
+    "podspecPath": "./react-native-fast-markdown.podspec"
   }
 }

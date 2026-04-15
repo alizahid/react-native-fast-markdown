@@ -1,5 +1,5 @@
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { Markdown } from 'react-native-markdown'
+import { Markdown } from 'react-native-fast-markdown'
 
 const mentionsMarkdown = `\
 ## Mentions

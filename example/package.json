@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "ios": "expo run:ios",
-    "postinstall": "rm -rf node_modules/react-native-markdown && ln -s ../.. node_modules/react-native-markdown",
+    "postinstall": "rm -rf node_modules/react-native-fast-markdown && ln -s ../.. node_modules/react-native-fast-markdown",
     "prebuild": "expo prebuild",
     "start": "expo start"
   },

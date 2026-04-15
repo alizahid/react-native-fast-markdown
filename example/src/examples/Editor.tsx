@@ -13,7 +13,7 @@ import {
   MarkdownEditor,
   type MentionTrigger,
   useMarkdownEditor,
-} from 'react-native-markdown'
+} from 'react-native-fast-markdown'
 
 const initialMarkdown = `\
 **Hello** *world*! This is a ~~demo~~ of the markdown editor.
