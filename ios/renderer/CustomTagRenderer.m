@@ -121,8 +121,11 @@ static NSString *const kSuperscriptTag = @"Superscript";
   NSMutableDictionary *attrs = [context.currentAttributes mutableCopy];
 
   // Mark the range as a spoiler — the overlay system will cover it.
-  // We use a unique ID so multiple spoilers can be toggled independently.
-  NSString *spoilerId = [[NSUUID UUID] UUIDString];
+  // Use the character offset as a stable ID so reveal state persists
+  // across re-renders of the same markdown (random UUIDs would reset
+  // every time).
+  NSString *spoilerId =
+      [NSString stringWithFormat:@"spoiler_%lu", (unsigned long)output.length];
   attrs[MarkdownSpoilerRangeKey] = spoilerId;
   attrs[MarkdownCustomTagKey] = kSpoilerTag;
 

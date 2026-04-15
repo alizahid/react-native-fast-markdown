@@ -17,6 +17,10 @@
 
   // Shape layer mask for per-corner radii (applied to _boxView.layer).
   CAShapeLayer *_cornerMaskLayer;
+
+  // Cached bounds for the corner mask so we skip the CGPath rebuild
+  // when layoutSubviews fires without a size change.
+  CGRect _cachedCornerMaskBounds;
 }
 
 - (instancetype)initWithStyle:(MarkdownElementStyle *)style {
@@ -36,6 +40,7 @@
 
 - (void)setStyle:(MarkdownElementStyle *)style {
   _style = style;
+  _cachedCornerMaskBounds = CGRectNull;
   [self applyStyle];
   [self setNeedsLayout];
 }
@@ -197,35 +202,40 @@
   }
 
   // Per-corner mask path, computed in _boxView's coordinate space.
+  // Skip the CGPath rebuild when bounds haven't changed.
   if (_cornerMaskLayer) {
-    CGFloat tl = [_style resolvedRadiusForCorner:UIRectCornerTopLeft];
-    CGFloat tr = [_style resolvedRadiusForCorner:UIRectCornerTopRight];
-    CGFloat bl = [_style resolvedRadiusForCorner:UIRectCornerBottomLeft];
-    CGFloat br = [_style resolvedRadiusForCorner:UIRectCornerBottomRight];
-
     CGRect rect = _boxView.bounds;
-    CGMutablePathRef path = CGPathCreateMutable();
-    CGPathMoveToPoint(path, NULL, CGRectGetMinX(rect) + tl, CGRectGetMinY(rect));
-    CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(rect) - tr, CGRectGetMinY(rect));
-    CGPathAddArcToPoint(path, NULL,
-                        CGRectGetMaxX(rect), CGRectGetMinY(rect),
-                        CGRectGetMaxX(rect), CGRectGetMinY(rect) + tr, tr);
-    CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(rect), CGRectGetMaxY(rect) - br);
-    CGPathAddArcToPoint(path, NULL,
-                        CGRectGetMaxX(rect), CGRectGetMaxY(rect),
-                        CGRectGetMaxX(rect) - br, CGRectGetMaxY(rect), br);
-    CGPathAddLineToPoint(path, NULL, CGRectGetMinX(rect) + bl, CGRectGetMaxY(rect));
-    CGPathAddArcToPoint(path, NULL,
-                        CGRectGetMinX(rect), CGRectGetMaxY(rect),
-                        CGRectGetMinX(rect), CGRectGetMaxY(rect) - bl, bl);
-    CGPathAddLineToPoint(path, NULL, CGRectGetMinX(rect), CGRectGetMinY(rect) + tl);
-    CGPathAddArcToPoint(path, NULL,
-                        CGRectGetMinX(rect), CGRectGetMinY(rect),
-                        CGRectGetMinX(rect) + tl, CGRectGetMinY(rect), tl);
-    CGPathCloseSubpath(path);
-    _cornerMaskLayer.path = path;
-    _cornerMaskLayer.frame = rect;
-    CGPathRelease(path);
+    if (!CGRectEqualToRect(rect, _cachedCornerMaskBounds)) {
+      _cachedCornerMaskBounds = rect;
+
+      CGFloat tl = [_style resolvedRadiusForCorner:UIRectCornerTopLeft];
+      CGFloat tr = [_style resolvedRadiusForCorner:UIRectCornerTopRight];
+      CGFloat bl = [_style resolvedRadiusForCorner:UIRectCornerBottomLeft];
+      CGFloat br = [_style resolvedRadiusForCorner:UIRectCornerBottomRight];
+
+      CGMutablePathRef path = CGPathCreateMutable();
+      CGPathMoveToPoint(path, NULL, CGRectGetMinX(rect) + tl, CGRectGetMinY(rect));
+      CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(rect) - tr, CGRectGetMinY(rect));
+      CGPathAddArcToPoint(path, NULL,
+                          CGRectGetMaxX(rect), CGRectGetMinY(rect),
+                          CGRectGetMaxX(rect), CGRectGetMinY(rect) + tr, tr);
+      CGPathAddLineToPoint(path, NULL, CGRectGetMaxX(rect), CGRectGetMaxY(rect) - br);
+      CGPathAddArcToPoint(path, NULL,
+                          CGRectGetMaxX(rect), CGRectGetMaxY(rect),
+                          CGRectGetMaxX(rect) - br, CGRectGetMaxY(rect), br);
+      CGPathAddLineToPoint(path, NULL, CGRectGetMinX(rect) + bl, CGRectGetMaxY(rect));
+      CGPathAddArcToPoint(path, NULL,
+                          CGRectGetMinX(rect), CGRectGetMaxY(rect),
+                          CGRectGetMinX(rect), CGRectGetMaxY(rect) - bl, bl);
+      CGPathAddLineToPoint(path, NULL, CGRectGetMinX(rect), CGRectGetMinY(rect) + tl);
+      CGPathAddArcToPoint(path, NULL,
+                          CGRectGetMinX(rect), CGRectGetMinY(rect),
+                          CGRectGetMinX(rect) + tl, CGRectGetMinY(rect), tl);
+      CGPathCloseSubpath(path);
+      _cornerMaskLayer.path = path;
+      _cornerMaskLayer.frame = rect;
+      CGPathRelease(path);
+    }
   }
 }
 
@@ -251,9 +261,9 @@
   // Explicit width/height from the style override the calculated
   // border-box size; margins are always additive.
   CGFloat borderBoxW =
-      _style.width > 0 ? _style.width : contentSize.width + extraW;
+      (!isnan(_style.width) && _style.width > 0) ? _style.width : contentSize.width + extraW;
   CGFloat borderBoxH =
-      _style.height > 0 ? _style.height : contentSize.height + extraH;
+      (!isnan(_style.height) && _style.height > 0) ? _style.height : contentSize.height + extraH;
 
   return CGSizeMake(borderBoxW + marginW, borderBoxH + marginH);
 }

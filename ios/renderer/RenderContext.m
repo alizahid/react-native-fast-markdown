@@ -113,16 +113,25 @@
     [renderer renderNode:node into:output context:context];
   }
 
-  while (output.length > 0) {
-    unichar last = [output.string characterAtIndex:output.length - 1];
-    if (last == '\n') {
-      [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
-    } else {
-      break;
-    }
-  }
+  [self trimTrailingNewlines:output];
 
   return [output copy];
+}
+
+/// Trims trailing newline characters from an attributed string in a
+/// single ranged delete instead of char-by-char.
++ (void)trimTrailingNewlines:(NSMutableAttributedString *)output {
+  NSString *str = output.string;
+  NSUInteger len = str.length;
+  if (len == 0) return;
+
+  NSUInteger end = len;
+  while (end > 0 && [str characterAtIndex:end - 1] == '\n') {
+    --end;
+  }
+  if (end < len) {
+    [output deleteCharactersInRange:NSMakeRange(end, len - end)];
+  }
 }
 
 + (NSAttributedString *)renderListItemContent:(ASTNodeWrapper *)item
@@ -153,14 +162,7 @@
     [renderer renderNode:item into:output context:context];
   }
 
-  while (output.length > 0) {
-    unichar last = [output.string characterAtIndex:output.length - 1];
-    if (last == '\n') {
-      [output deleteCharactersInRange:NSMakeRange(output.length - 1, 1)];
-    } else {
-      break;
-    }
-  }
+  [self trimTrailingNewlines:output];
 
   return [output copy];
 }
