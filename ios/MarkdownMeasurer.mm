@@ -237,7 +237,7 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
       }
     }
     if (visibleChildren > 1) {
-      totalChildren += blockquoteStyle.gap * (visibleChildren - 1);
+      totalChildren += (!isnan(blockquoteStyle.gap) ? blockquoteStyle.gap : 0) * (visibleChildren - 1);
     }
 
     CGSize bqSize = SizeForBlockStyle(blockquoteStyle,
@@ -303,7 +303,7 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
     }
 
     if (visibleItems > 1) {
-      totalItemsHeight += listStyle.gap * (visibleItems - 1);
+      totalItemsHeight += (!isnan(listStyle.gap) ? listStyle.gap : 0) * (visibleItems - 1);
     }
 
     CGSize listSize =
@@ -409,7 +409,7 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   }
 
   if (segmentCount > 1) {
-    totalHeight += styleConfig.base.gap * (segmentCount - 1);
+    totalHeight += (!isnan(styleConfig.base.gap) ? styleConfig.base.gap : 0) * (segmentCount - 1);
   }
 
   totalHeight += baseMargin.top + baseMargin.bottom + basePadding.top +

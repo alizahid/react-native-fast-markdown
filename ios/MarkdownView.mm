@@ -150,7 +150,7 @@ using namespace facebook::react;
     _baseContainer.style = _styleConfig.base;
 
     // Stack spacing = base.gap
-    _stackView.spacing = _styleConfig.base.gap;
+    _stackView.spacing = !isnan(_styleConfig.base.gap) ? _styleConfig.base.gap : 0;
   }
 
   if (markdownChanged || styleChanged || imagesChanged) {
@@ -405,7 +405,7 @@ using namespace facebook::react;
 
   MarkdownSegmentStackView *itemStack =
       [[MarkdownSegmentStackView alloc] initWithFrame:CGRectZero];
-  itemStack.spacing = listStyle.gap;
+  itemStack.spacing = !isnan(listStyle.gap) ? listStyle.gap : 0;
   listContainer.contentView = itemStack;
 
   MarkdownElementStyle *itemStyle = styleConfig.listItem;
@@ -468,7 +468,7 @@ using namespace facebook::react;
 
   MarkdownSegmentStackView *inner =
       [[MarkdownSegmentStackView alloc] initWithFrame:CGRectZero];
-  inner.spacing = blockquoteStyle.gap;
+  inner.spacing = !isnan(blockquoteStyle.gap) ? blockquoteStyle.gap : 0;
   container.contentView = inner;
 
   // Compose the attrs children inherit: start from our own inherited
@@ -748,6 +748,7 @@ using namespace facebook::react;
 
 - (void)prepareForRecycle {
   [super prepareForRecycle];
+  [[NSNotificationCenter defaultCenter] removeObserver:self];
   _markdownState.reset();
 }
 

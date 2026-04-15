@@ -85,8 +85,8 @@ using namespace facebook::react;
     _formatter.styleConfig = _styleConfig;
     _formatter.baseFont = _baseFont;
     _formatter.baseColor = _baseColor;
-    _formatter.baseLineHeight = _styleConfig.base.lineHeight;
-    _formatter.paragraphSpacing = _styleConfig.base.gap;
+    _formatter.baseLineHeight = !isnan(_styleConfig.base.lineHeight) ? _styleConfig.base.lineHeight : 0;
+    _formatter.paragraphSpacing = !isnan(_styleConfig.base.gap) ? _styleConfig.base.gap : 0;
 
     // Re-apply formatting with new styles if we already have content
     if (_textView.text.length > 0) {
@@ -176,7 +176,8 @@ using namespace facebook::react;
                                                      withStore:_store];
 
   // Then replace mention labels with their tag text.
-  // Build a mapping of label → tag from the text storage.
+  // Build a mapping of label → tag from the text storage, collecting
+  // each mention's range so we can match it by position.
   NSTextStorage *ts = _textView.textStorage;
   NSMutableArray<NSDictionary *> *mentions = [NSMutableArray new];
   [ts enumerateAttribute:@"MDMentionTag"
@@ -185,13 +186,31 @@ using namespace facebook::react;
               usingBlock:^(NSString *tag, NSRange range, BOOL *stop) {
     if (!tag) return;
     NSString *label = [ts.string substringWithRange:range];
-    [mentions addObject:@{@"label" : label, @"tag" : tag}];
+    [mentions addObject:@{
+      @"label" : label,
+      @"tag" : tag,
+      @"location" : @(range.location),
+    }];
   }];
 
-  // Replace each mention label in the serialized output
+  // Replace from end to start so earlier offsets stay valid.
+  // Search backwards from each mention's approximate position to
+  // avoid replacing the wrong occurrence of the same label.
   NSMutableString *result = [serialized mutableCopy];
-  for (NSDictionary *m in mentions) {
-    NSRange found = [result rangeOfString:m[@"label"]];
+  for (NSDictionary *m in [mentions reverseObjectEnumerator]) {
+    NSString *label = m[@"label"];
+    NSUInteger hint = [m[@"location"] unsignedIntegerValue];
+    // Search for the label nearest to or after its source position.
+    NSRange searchRange = NSMakeRange(
+        MIN(hint, result.length),
+        result.length - MIN(hint, result.length));
+    NSRange found = [result rangeOfString:label
+                                  options:0
+                                    range:searchRange];
+    if (found.location == NSNotFound) {
+      // Fall back to searching the whole string
+      found = [result rangeOfString:label];
+    }
     if (found.location != NSNotFound) {
       [result replaceCharactersInRange:found withString:m[@"tag"]];
     }

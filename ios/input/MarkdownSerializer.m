@@ -151,11 +151,15 @@
     if ([line hasPrefix:@"\u2022 "]) return 2;
     if ([line hasPrefix:@"\u2022"]) return 1;
   } else if (type == FormattingTypeOrderedList) {
-    // "N. " pattern
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^\\d+\\.\\s"
-                             options:0
-                               error:nil];
+    // "N. " pattern — static regex avoids recompilation per line
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^\\d+\\.\\s"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0

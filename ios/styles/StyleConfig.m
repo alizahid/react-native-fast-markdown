@@ -4,6 +4,47 @@
 
 @implementation MarkdownElementStyle
 
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+    // Use NaN as sentinel for "not set" so that explicit zero values
+    // are distinguishable from the default unset state.
+    _fontSize = NAN;
+    _letterSpacing = NAN;
+    _lineHeight = NAN;
+    _gap = NAN;
+    _width = NAN;
+    _height = NAN;
+    _maxWidth = NAN;
+    _maxHeight = NAN;
+    _margin = NAN;
+    _marginTop = NAN;
+    _marginBottom = NAN;
+    _marginLeft = NAN;
+    _marginRight = NAN;
+    _marginHorizontal = NAN;
+    _marginVertical = NAN;
+    _padding = NAN;
+    _paddingTop = NAN;
+    _paddingBottom = NAN;
+    _paddingLeft = NAN;
+    _paddingRight = NAN;
+    _paddingHorizontal = NAN;
+    _paddingVertical = NAN;
+    _borderWidth = NAN;
+    _borderTopWidth = NAN;
+    _borderBottomWidth = NAN;
+    _borderLeftWidth = NAN;
+    _borderRightWidth = NAN;
+    _borderRadius = NAN;
+    _borderTopLeftRadius = NAN;
+    _borderTopRightRadius = NAN;
+    _borderBottomLeftRadius = NAN;
+    _borderBottomRightRadius = NAN;
+  }
+  return self;
+}
+
 #pragma mark - Font resolution
 
 - (UIFont *)resolvedFont {
@@ -11,7 +52,7 @@
 }
 
 - (UIFont *)resolvedFontWithBase:(UIFont *)baseFont {
-  CGFloat size = _fontSize > 0
+  CGFloat size = !isnan(_fontSize)
       ? _fontSize
       : (baseFont ? baseFont.pointSize : 0);
   if (size <= 0) return baseFont;
@@ -75,44 +116,36 @@
 
 - (UIEdgeInsets)resolvedPaddingInsets {
   // Specific edges override paddingHorizontal/paddingVertical which override padding.
-  CGFloat top = _paddingTop > 0
-      ? _paddingTop
-      : (_paddingVertical > 0 ? _paddingVertical : _padding);
-  CGFloat bottom = _paddingBottom > 0
-      ? _paddingBottom
-      : (_paddingVertical > 0 ? _paddingVertical : _padding);
-  CGFloat left = _paddingLeft > 0
-      ? _paddingLeft
-      : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding);
-  CGFloat right = _paddingRight > 0
-      ? _paddingRight
-      : (_paddingHorizontal > 0 ? _paddingHorizontal : _padding);
+  // NaN means "not set" so explicit 0 values are respected.
+  CGFloat base = !isnan(_padding) ? _padding : 0;
+  CGFloat vBase = !isnan(_paddingVertical) ? _paddingVertical : base;
+  CGFloat hBase = !isnan(_paddingHorizontal) ? _paddingHorizontal : base;
+  CGFloat top = !isnan(_paddingTop) ? _paddingTop : vBase;
+  CGFloat bottom = !isnan(_paddingBottom) ? _paddingBottom : vBase;
+  CGFloat left = !isnan(_paddingLeft) ? _paddingLeft : hBase;
+  CGFloat right = !isnan(_paddingRight) ? _paddingRight : hBase;
 
   return UIEdgeInsetsMake(top, left, bottom, right);
 }
 
 - (UIEdgeInsets)resolvedMarginInsets {
-  CGFloat top = _marginTop > 0
-      ? _marginTop
-      : (_marginVertical > 0 ? _marginVertical : _margin);
-  CGFloat bottom = _marginBottom > 0
-      ? _marginBottom
-      : (_marginVertical > 0 ? _marginVertical : _margin);
-  CGFloat left = _marginLeft > 0
-      ? _marginLeft
-      : (_marginHorizontal > 0 ? _marginHorizontal : _margin);
-  CGFloat right = _marginRight > 0
-      ? _marginRight
-      : (_marginHorizontal > 0 ? _marginHorizontal : _margin);
+  CGFloat base = !isnan(_margin) ? _margin : 0;
+  CGFloat vBase = !isnan(_marginVertical) ? _marginVertical : base;
+  CGFloat hBase = !isnan(_marginHorizontal) ? _marginHorizontal : base;
+  CGFloat top = !isnan(_marginTop) ? _marginTop : vBase;
+  CGFloat bottom = !isnan(_marginBottom) ? _marginBottom : vBase;
+  CGFloat left = !isnan(_marginLeft) ? _marginLeft : hBase;
+  CGFloat right = !isnan(_marginRight) ? _marginRight : hBase;
 
   return UIEdgeInsetsMake(top, left, bottom, right);
 }
 
 - (UIEdgeInsets)resolvedBorderWidths {
-  CGFloat top = _borderTopWidth > 0 ? _borderTopWidth : _borderWidth;
-  CGFloat bottom = _borderBottomWidth > 0 ? _borderBottomWidth : _borderWidth;
-  CGFloat left = _borderLeftWidth > 0 ? _borderLeftWidth : _borderWidth;
-  CGFloat right = _borderRightWidth > 0 ? _borderRightWidth : _borderWidth;
+  CGFloat base = !isnan(_borderWidth) ? _borderWidth : 0;
+  CGFloat top = !isnan(_borderTopWidth) ? _borderTopWidth : base;
+  CGFloat bottom = !isnan(_borderBottomWidth) ? _borderBottomWidth : base;
+  CGFloat left = !isnan(_borderLeftWidth) ? _borderLeftWidth : base;
+  CGFloat right = !isnan(_borderRightWidth) ? _borderRightWidth : base;
   return UIEdgeInsetsMake(top, left, bottom, right);
 }
 
@@ -132,17 +165,18 @@
 }
 
 - (CGFloat)resolvedRadiusForCorner:(UIRectCorner)corner {
+  CGFloat base = !isnan(_borderRadius) ? _borderRadius : 0;
   switch (corner) {
     case UIRectCornerTopLeft:
-      return _borderTopLeftRadius > 0 ? _borderTopLeftRadius : _borderRadius;
+      return !isnan(_borderTopLeftRadius) ? _borderTopLeftRadius : base;
     case UIRectCornerTopRight:
-      return _borderTopRightRadius > 0 ? _borderTopRightRadius : _borderRadius;
+      return !isnan(_borderTopRightRadius) ? _borderTopRightRadius : base;
     case UIRectCornerBottomLeft:
-      return _borderBottomLeftRadius > 0 ? _borderBottomLeftRadius : _borderRadius;
+      return !isnan(_borderBottomLeftRadius) ? _borderBottomLeftRadius : base;
     case UIRectCornerBottomRight:
-      return _borderBottomRightRadius > 0 ? _borderBottomRightRadius : _borderRadius;
+      return !isnan(_borderBottomRightRadius) ? _borderBottomRightRadius : base;
     default:
-      return _borderRadius;
+      return base;
   }
 }
 
@@ -152,9 +186,11 @@
 }
 
 - (BOOL)hasAnyRadius {
-  return _borderRadius > 0 ||
-         _borderTopLeftRadius > 0 || _borderTopRightRadius > 0 ||
-         _borderBottomLeftRadius > 0 || _borderBottomRightRadius > 0;
+  return (!isnan(_borderRadius) && _borderRadius > 0) ||
+         (!isnan(_borderTopLeftRadius) && _borderTopLeftRadius > 0) ||
+         (!isnan(_borderTopRightRadius) && _borderTopRightRadius > 0) ||
+         (!isnan(_borderBottomLeftRadius) && _borderBottomLeftRadius > 0) ||
+         (!isnan(_borderBottomRightRadius) && _borderBottomRightRadius > 0);
 }
 
 - (BOOL)hasNonUniformBorders {

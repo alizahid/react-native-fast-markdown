@@ -120,6 +120,10 @@ export const MarkdownEditor = forwardRef<
   const nativeRef =
     React.useRef<React.ElementRef<typeof MarkdownEditorViewNative>>(null)
 
+  // Track the latest markdown so getMarkdown() can return it
+  // synchronously without requiring a round-trip to native.
+  const lastMarkdownRef = React.useRef<string>(defaultValue ?? '')
+
   // Split the style prop: text properties go into the markdown
   // styles as the `base` key (same as the renderer), layout
   // properties stay on the native view's style prop.
@@ -198,18 +202,12 @@ export const MarkdownEditor = forwardRef<
       },
       setValue(value: string) {
         if (nativeRef.current) {
+          lastMarkdownRef.current = value
           Commands.setValue(nativeRef.current, value)
         }
       },
       getMarkdown() {
-        // This will be resolved via a native callback
-        return new Promise<string>((resolve) => {
-          // For now, trigger a state read from native
-          if (nativeRef.current) {
-            Commands.setValue(nativeRef.current, '')
-          }
-          resolve('')
-        })
+        return Promise.resolve(lastMarkdownRef.current)
       },
       setSelection(start: number, end: number) {
         if (nativeRef.current) {
@@ -337,11 +335,10 @@ export const MarkdownEditor = forwardRef<
       editable={editable}
       mentionTriggers={mentionTriggers}
       multiline={multiline}
-      onChangeMarkdown={
-        onChangeMarkdown
-          ? (e) => onChangeMarkdown(e.nativeEvent.markdown)
-          : undefined
-      }
+      onChangeMarkdown={(e) => {
+        lastMarkdownRef.current = e.nativeEvent.markdown
+        onChangeMarkdown?.(e.nativeEvent.markdown)
+      }}
       onChangeSelection={
         onChangeSelection
           ? (e) =>
