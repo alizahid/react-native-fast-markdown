@@ -8,8 +8,6 @@
 
 namespace facebook::react {
 
-const char MarkdownViewComponentName[] = "MarkdownView";
-
 Size MarkdownViewShadowNode::measureContent(
     const LayoutContext & /*layoutContext*/,
     const LayoutConstraints &layoutConstraints) const {
