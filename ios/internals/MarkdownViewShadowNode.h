@@ -2,12 +2,13 @@
 
 #include <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #include <react/renderer/components/MarkdownViewSpec/Props.h>
-#include <react/renderer/components/MarkdownViewSpec/ShadowNodes.h>
 #include <react/renderer/components/view/ConcreteViewShadowNode.h>
 
 #include "MarkdownViewState.h"
 
 namespace facebook::react {
+
+extern const char MarkdownViewComponentName[];
 
 /// Custom shadow node that measures markdown content on the shadow
 /// tree so Yoga lays the view out with the correct size on the first
