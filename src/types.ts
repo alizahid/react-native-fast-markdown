@@ -372,6 +372,7 @@ export interface EditorStyleState {
   italic: boolean
   link: { url: string } | null
   list: 'ordered' | 'unordered' | null
+  spoiler: boolean
   strikethrough: boolean
 }
 
@@ -398,6 +399,7 @@ export interface MarkdownEditorHandle {
   ): void
   insertSpoiler(): void
   removeLink(): void
+  toggleSpoiler(): void
   setSelection(start: number, end: number): void
   setValue(markdown: string): void
 

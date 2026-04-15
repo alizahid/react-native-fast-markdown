@@ -278,6 +278,11 @@ export const MarkdownEditor = forwardRef<
           Commands.insertSpoiler(nativeRef.current)
         }
       },
+      toggleSpoiler() {
+        if (nativeRef.current) {
+          Commands.toggleSpoiler(nativeRef.current)
+        }
+      },
       insertCustomTag(tag: string, props?: Record<string, string>) {
         if (nativeRef.current) {
           Commands.insertCustomTag(
@@ -298,6 +303,7 @@ export const MarkdownEditor = forwardRef<
         italic: boolean
         strikethrough: boolean
         code: boolean
+        spoiler: boolean
         linkUrl: string
         heading: number
         list: string
@@ -308,6 +314,7 @@ export const MarkdownEditor = forwardRef<
         italic: e.nativeEvent.italic,
         strikethrough: e.nativeEvent.strikethrough,
         code: e.nativeEvent.code,
+        spoiler: e.nativeEvent.spoiler,
         link: e.nativeEvent.linkUrl ? { url: e.nativeEvent.linkUrl } : null,
         heading: e.nativeEvent.heading > 0 ? e.nativeEvent.heading : null,
         list:

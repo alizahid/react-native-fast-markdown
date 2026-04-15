@@ -70,6 +70,7 @@ export function EditorScreen() {
     italic: false,
     strikethrough: false,
     code: false,
+    spoiler: false,
     link: null,
     heading: null,
     list: null,
@@ -166,6 +167,11 @@ export function EditorScreen() {
             active={styleState.code}
             label="`"
             onPress={editor.toggleCode}
+          />
+          <ToolbarButton
+            active={styleState.spoiler}
+            label="||"
+            onPress={editor.toggleSpoiler}
           />
 
           <View style={styles.toolbarSep} />

@@ -292,6 +292,26 @@
     break;
   }
 
+  case MDNodeTypeCustomTag: {
+    if ([node.tagName isEqualToString:@"Spoiler"]) {
+      NSUInteger start = ctx.text.length;
+      for (ASTNodeWrapper *child in node.children) {
+        [self walkNode:child context:ctx blockType:blockType linkUrl:linkUrl];
+      }
+      NSUInteger len = ctx.text.length - start;
+      if (len > 0) {
+        [ctx.ranges addObject:[FormattingRange
+                                  rangeWithType:FormattingTypeSpoiler
+                                          range:NSMakeRange(start, len)]];
+      }
+    } else {
+      for (ASTNodeWrapper *child in node.children) {
+        [self walkNode:child context:ctx blockType:blockType linkUrl:linkUrl];
+      }
+    }
+    break;
+  }
+
   default: {
     for (ASTNodeWrapper *child in node.children) {
       [self walkNode:child context:ctx blockType:blockType linkUrl:linkUrl];

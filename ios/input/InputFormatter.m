@@ -327,6 +327,16 @@
     break;
   }
 
+  case FormattingTypeSpoiler: {
+    MarkdownElementStyle *style = _styleConfig.spoiler;
+    UIColor *bg = style.backgroundColor
+                      ?: [UIColor colorWithWhite:0.5 alpha:0.3];
+    [textStorage addAttribute:NSBackgroundColorAttributeName
+                        value:bg
+                        range:r.range];
+    break;
+  }
+
   default:
     break;
   }
