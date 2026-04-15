@@ -11,12 +11,14 @@ namespace markdown {
 // Reddit-style syntax pre-processor
 // ---------------------------------------------------------------------------
 // Runs a single O(n) pass over the raw markdown BEFORE md4c parses it,
-// converting two non-standard Reddit extensions into HTML custom tags
-// that the existing custom-tag pipeline already handles:
+// converting non-standard Reddit extensions into standard markdown or
+// HTML custom tags that the existing pipelines already handle:
 //
-//   >!spoiler text!<   →  <Spoiler>spoiler text</Spoiler>
-//   ^word              →  <Superscript>word</Superscript>
-//   ^(text with spaces)→  <Superscript>text with spaces</Superscript>
+//   >!spoiler text!<              →  <Spoiler>spoiler text</Spoiler>
+//   ^word                         →  <Superscript>word</Superscript>
+//   ^(text with spaces)           →  <Superscript>text with spaces</Superscript>
+//   ![gif](giphy|ID)              →  ![gif](https://media.giphy.com/media/ID/giphy.gif)
+//   ![gif](giphy|ID|downsized)    →  ![gif](https://…/ID/giphy-downsized.gif)
 //
 // The replacement is skipped inside backtick code spans and fenced
 // code blocks so `>!literal!<` in code stays literal.
@@ -64,6 +66,40 @@ static std::string preprocessRedditSyntax(const std::string &input) {
         out.append(input, i + 2, end - (i + 2));
         out += "</Spoiler>";
         i = end + 2;
+        continue;
+      }
+    }
+
+    // ---- Reddit GIPHY: ![gif](giphy|ID|variant) or ![gif](giphy|ID) ----
+    // Rewrites the shorthand URL inside the image to a full giphy.com
+    // link so md4c's normal image handling picks it up:
+    //   giphy|ID|variant → https://media.giphy.com/media/ID/giphy-variant.gif
+    //   giphy|ID         → https://media.giphy.com/media/ID/giphy.gif
+    if (input[i] == ']' && i + 8 < len &&
+        input[i + 1] == '(' &&
+        input.compare(i + 2, 6, "giphy|") == 0) {
+      size_t close = input.find(')', i + 8);
+      if (close != std::string::npos) {
+        // body = "ID|variant" or "ID"
+        std::string body(input, i + 8, close - (i + 8));
+        std::string id;
+        std::string variant;
+        size_t pipe = body.find('|');
+        if (pipe != std::string::npos) {
+          id = body.substr(0, pipe);
+          variant = body.substr(pipe + 1);
+        } else {
+          id = body;
+        }
+        out += "](https://media.giphy.com/media/";
+        out += id;
+        out += "/giphy";
+        if (!variant.empty()) {
+          out += '-';
+          out += variant;
+        }
+        out += ".gif)";
+        i = close + 1;
         continue;
       }
     }
@@ -506,8 +542,8 @@ ASTNode MarkdownParser::parse(const std::string &markdown,
   if (options.enableLatexMath)
     flags |= MD_FLAG_LATEXMATHSPANS;
 
-  // Pre-process Reddit-style syntax (>!spoiler!< and ^superscript)
-  // into HTML custom tags before md4c sees the text.
+  // Pre-process Reddit-style syntax (>!spoiler!<, ^superscript, and
+  // giphy shorthand) before md4c sees the text.
   std::string processed = preprocessRedditSyntax(markdown);
 
   // We need HTML callbacks for custom tags — don't disable HTML

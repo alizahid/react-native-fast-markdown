@@ -18,7 +18,9 @@ Here's a [link to GitHub](https://github.com) and an autolink: https://example.c
 
 GIPHY
 
-![](https://media.giphy.com/media/l3q2XhfQ8oCkm1Ts4/giphy.gif)
+![gif](giphy|l3q2XhfQ8oCkm1Ts4)
+
+![gif](giphy|l3q2XhfQ8oCkm1Ts4|downsized)
 
 Large image
 
