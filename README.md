@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alizahid/react-native-fast-markdown/main/.github/banner-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alizahid/react-native-fast-markdown/main/.github/banner-light.svg">
-    <img alt="react-native-fast-markdown" src="https://raw.githubusercontent.com/alizahid/react-native-fast-markdown/main/.github/banner-light.svg" width="720">
-  </picture>
+  <img alt="react-native-fast-markdown" src="https://raw.githubusercontent.com/alizahid/react-native-fast-markdown/main/.github/banner.png" width="720">
 </p>
 
 <p align="center">
