@@ -16,7 +16,6 @@
 #import "MarkdownImageSizeCache.h"
 #import "MarkdownImageView.h"
 #import "MarkdownInternalTextView.h"
-#import "MarkdownLinkOverlay.h"
 #import "MarkdownMeasurer.h"
 #import "MarkdownMentionOverlay.h"
 #import "MarkdownParser.hpp"
@@ -42,19 +41,17 @@ using namespace facebook::react;
 /// Coordinates with React Native's touch handler (and RNGH handlers)
 /// to prevent a parent Pressable from firing when the touch lands on
 /// an interactive element inside the markdown renderer (link, mention,
-/// spoiler, image, or scrollable table).
+/// spoiler, or image press overlay).
 ///
-/// For overlays and links the recognizer transitions to Recognized
-/// immediately, causing ancestor touch handlers to fail for that
-/// touch. For non-interactive areas it fails immediately, letting
-/// the ancestor handlers proceed normally so parent Pressables work.
+/// Immediately transitions to Recognized for interactive elements
+/// (UIControl overlays and UITextView link hits), causing ancestor
+/// touch handlers to fail. For non-interactive areas it fails
+/// immediately, letting the ancestor handlers proceed.
 ///
-/// For scrollable tables it defers the decision: a horizontal pan
-/// blocks the parent (Began → Ended), while a stationary tap fails
-/// so the parent Pressable fires.
-@interface MarkdownTouchBlockingRecognizer : UIGestureRecognizer {
-  BOOL _trackingScroll;
-}
+/// Scrollable tables are handled separately by MarkdownTableView
+/// which sets up requireGestureRecognizerToFail: on its own
+/// panGestureRecognizer.
+@interface MarkdownTouchBlockingRecognizer : UIGestureRecognizer
 @end
 
 @implementation MarkdownTouchBlockingRecognizer
@@ -65,71 +62,15 @@ using namespace facebook::react;
 
   UIView *hitView = touches.anyObject.view;
 
-  // Direct check: overlays are UIControls and always the hit view.
-  if ([hitView isKindOfClass:[UIControl class]]) {
+  if ([hitView isKindOfClass:[UIControl class]] ||
+      [hitView isKindOfClass:[UITextView class]]) {
+    // Overlay (mention, spoiler, image) or link — block the parent
+    // touch handler immediately so Pressable does not fire.
     self.state = UIGestureRecognizerStateRecognized;
-    return;
-  }
-
-  // The hit view might be a label or cell deep inside a scrollable
-  // table (UIScrollView). Walk up from the hit view to find it.
-  UIView *v = hitView;
-  while (v && v != self.view) {
-    if ([v isKindOfClass:[UIScrollView class]] &&
-        ((UIScrollView *)v).scrollEnabled) {
-      _trackingScroll = YES;
-      return;
-    }
-    v = v.superview;
-  }
-
-  // Non-interactive area — let parent Pressable handle.
-  self.state = UIGestureRecognizerStateFailed;
-}
-
-- (void)touchesMoved:(NSSet<UITouch *> *)touches
-            withEvent:(UIEvent *)event {
-  [super touchesMoved:touches withEvent:event];
-
-  if (_trackingScroll && self.state == UIGestureRecognizerStatePossible) {
-    UITouch *touch = touches.anyObject;
-    CGPoint curr = [touch locationInView:self.view];
-    CGPoint prev = [touch previousLocationInView:self.view];
-    if (fabs(curr.x - prev.x) > 2.0 || fabs(curr.y - prev.y) > 2.0) {
-      // Movement detected — block parent Pressable during scroll.
-      self.state = UIGestureRecognizerStateBegan;
-    }
-  }
-}
-
-- (void)touchesEnded:(NSSet<UITouch *> *)touches
-            withEvent:(UIEvent *)event {
-  [super touchesEnded:touches withEvent:event];
-
-  if (self.state == UIGestureRecognizerStatePossible) {
-    // Scrollable-table touch ended without movement (tap) —
-    // let parent Pressable fire.
+  } else {
+    // Non-interactive area — let parent Pressable handle.
     self.state = UIGestureRecognizerStateFailed;
-  } else if (self.state == UIGestureRecognizerStateBegan ||
-             self.state == UIGestureRecognizerStateChanged) {
-    self.state = UIGestureRecognizerStateEnded;
   }
-}
-
-- (void)touchesCancelled:(NSSet<UITouch *> *)touches
-                withEvent:(UIEvent *)event {
-  [super touchesCancelled:touches withEvent:event];
-
-  if (self.state == UIGestureRecognizerStatePossible ||
-      self.state == UIGestureRecognizerStateBegan ||
-      self.state == UIGestureRecognizerStateChanged) {
-    self.state = UIGestureRecognizerStateCancelled;
-  }
-}
-
-- (void)reset {
-  [super reset];
-  _trackingScroll = NO;
 }
 
 #pragma mark - Failure-requirement wiring
@@ -185,7 +126,6 @@ using namespace facebook::react;
 
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
-  NSMutableArray<MarkdownLinkOverlay *> *_linkOverlays;
 
   // Captured in updateState:oldState: so markNeedsRemeasure can
   // dispatch a new state update back to the shadow tree.
@@ -214,7 +154,6 @@ using namespace facebook::react;
 
     _spoilerOverlays = [NSMutableArray new];
     _mentionOverlays = [NSMutableArray new];
-    _linkOverlays = [NSMutableArray new];
 
     // Install a gesture recognizer that prevents parent Pressable
     // components (RN or RNGH) from firing when the touch lands on
@@ -375,11 +314,6 @@ using namespace facebook::react;
     [overlay removeAllOverlays];
   }
   [_mentionOverlays removeAllObjects];
-
-  for (MarkdownLinkOverlay *overlay in _linkOverlays) {
-    [overlay removeAllOverlays];
-  }
-  [_linkOverlays removeAllObjects];
 
   // Nil out onLayoutSubviews callbacks before removing text views,
   // otherwise the blocks can fire on a detached view during recycling.
@@ -793,19 +727,17 @@ using namespace facebook::react;
   };
   [_mentionOverlays addObject:mentionOverlay];
 
-  // Links — transparent overlay that fires onLinkPress instantly
-  // via UIControlEventTouchUpInside, bypassing UITextView's delayed
-  // UITextItemInteraction gesture. Long-press fires onLinkLongPress.
-  MarkdownLinkOverlay *linkOverlay =
-      [[MarkdownLinkOverlay alloc] initWithTextView:textView];
-
-  linkOverlay.onPress = ^(NSURL *url) {
-    [weakSelf emitLinkPressForURL:url];
-  };
-  linkOverlay.onLongPress = ^(NSURL *url) {
-    [weakSelf emitLinkLongPressForURL:url];
-  };
-  [_linkOverlays addObject:linkOverlay];
+  // Link tap — instant via a UITapGestureRecognizer that bypasses
+  // UITextView's delayed UITextItemInteraction gesture path.
+  // Long-press is still handled by the UITextViewDelegate below.
+  if ([textView isKindOfClass:[MarkdownInternalTextView class]]) {
+    MarkdownInternalTextView *mdTextView =
+        (MarkdownInternalTextView *)textView;
+    [mdTextView installLinkTapRecognizer];
+    mdTextView.onLinkTap = ^(NSURL *url) {
+      [weakSelf emitLinkPressForURL:url];
+    };
+  }
 
   // Rebuild overlay rects every time the text view lays out — they
   // depend on computed line fragments, which only become accurate
@@ -815,11 +747,9 @@ using namespace facebook::react;
   if ([textView isKindOfClass:[MarkdownInternalTextView class]]) {
     __weak MarkdownSpoilerOverlay *weakSpoiler = spoilerOverlay;
     __weak MarkdownMentionOverlay *weakMention = mentionOverlay;
-    __weak MarkdownLinkOverlay *weakLink = linkOverlay;
     ((MarkdownInternalTextView *)textView).onLayoutSubviews = ^{
       [weakSpoiler updateOverlays];
       [weakMention updateOverlays];
-      [weakLink updateOverlays];
     };
   }
 }
@@ -835,17 +765,10 @@ using namespace facebook::react;
                 [scheme isEqualToString:@"https"];
 
   if (interaction == UITextItemInteractionInvokeDefaultAction) {
-    // Tap — emit onLinkPress so JS can handle (open in-app, log,
-    // override, etc.). Always return NO so UITextView doesn't also
-    // open the URL in Safari behind our back.
-    if (_eventEmitter) {
-      const auto &eventEmitter =
-          static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
-      eventEmitter.onLinkPress({
-          .url = std::string([[URL absoluteString] UTF8String]),
-          .title = std::string(""),
-      });
-    }
+    // Tap — handled by the fast UITapGestureRecognizer installed via
+    // installLinkTapRecognizer. Return NO so UITextView doesn't
+    // open the URL in Safari. Don't emit onLinkPress here — the tap
+    // GR already fired it.
     return NO;
   }
 
@@ -915,16 +838,6 @@ using namespace facebook::react;
   const auto &eventEmitter =
       static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
   eventEmitter.onLinkPress({
-      .url = std::string([[url absoluteString] UTF8String]),
-      .title = std::string(""),
-  });
-}
-
-- (void)emitLinkLongPressForURL:(NSURL *)url {
-  if (!_eventEmitter || !url) return;
-  const auto &eventEmitter =
-      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
-  eventEmitter.onLinkLongPress({
       .url = std::string([[url absoluteString] UTF8String]),
       .title = std::string(""),
   });
