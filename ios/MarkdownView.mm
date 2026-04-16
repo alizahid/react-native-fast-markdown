@@ -40,14 +40,12 @@ using namespace facebook::react;
 #pragma mark - Touch-blocking gesture recognizer
 
 /// Prevents a parent Pressable from firing when the touch lands on an
-/// interactive native element (link, overlay, scrollable table).
+/// interactive native element (overlay or link). Scrollable tables are
+/// handled separately by MarkdownTablePanRecognizer.
 ///
 /// Only receives touches that MarkdownView.hitTest routed to a native
 /// child — non-interactive touches return nil from hitTest and never
-/// reach this recognizer. So the logic is simple: block for overlays
-/// and links (UIControl / UITextView), pass through for scrollable
-/// tables (let Pressable's own movement-cancellation handle scroll
-/// vs tap).
+/// reach this recognizer.
 @interface MarkdownTouchBlockingRecognizer : UIGestureRecognizer
 @end
 
@@ -60,14 +58,13 @@ using namespace facebook::react;
   UIView *hitView = touches.anyObject.view;
 
   if ([hitView isKindOfClass:[UIControl class]] ||
-      [hitView isKindOfClass:[UITextView class]] ||
-      [hitView isKindOfClass:[UIScrollView class]]) {
-    // Interactive native element — block parent Pressable.
-    // UIControl = overlay (mention, spoiler, image press)
-    // UITextView = link
-    // UIScrollView = scrollable table
+      [hitView isKindOfClass:[UITextView class]]) {
+    // Overlay (mention, spoiler, image) or link — block parent.
     self.state = UIGestureRecognizerStateRecognized;
   } else {
+    // Everything else (including scrollable tables routed to self)
+    // — let parent Pressable handle. Table scroll blocking is done
+    // by the separate MarkdownTablePanRecognizer.
     self.state = UIGestureRecognizerStateFailed;
   }
 }
@@ -102,9 +99,49 @@ using namespace facebook::react;
 
 @end
 
+#pragma mark - Table-scroll pan recognizer
+
+/// UIPanGestureRecognizer that drives horizontal scrolling for
+/// scrollable MarkdownTableViews. Installed on MarkdownView itself
+/// (not on the table) so that hitTest can return self for table areas
+/// — letting the blocking recognizer fail and allowing parent
+/// Pressable taps to work.
+///
+/// shouldBeRequiredToFailByGestureRecognizer: makes ancestor touch
+/// handlers (RCTSurfaceTouchHandler, RNGH) wait for this recognizer.
+/// gestureRecognizerShouldBegin: (via delegate) ensures it only
+/// begins for horizontal pans over scrollable tables. Result:
+///   • Pan → this recognizer begins → ancestors fail → no Pressable
+///   • Tap → this recognizer never begins → fails → Pressable fires
+@interface MarkdownTablePanRecognizer : UIPanGestureRecognizer
+@end
+
+@implementation MarkdownTablePanRecognizer
+
+- (BOOL)shouldBeRequiredToFailByGestureRecognizer:
+    (UIGestureRecognizer *)other {
+  UIView *otherView = other.view;
+  if (!otherView) return NO;
+  if ([otherView isDescendantOfView:self.view]) return NO;
+  if ([other isKindOfClass:[UIPanGestureRecognizer class]]) return NO;
+  return YES;
+}
+
+- (BOOL)canPreventGestureRecognizer:
+    (UIGestureRecognizer *)preventedGR {
+  return NO;
+}
+
+- (BOOL)canBePreventedByGestureRecognizer:
+    (UIGestureRecognizer *)preventingGR {
+  return NO;
+}
+
+@end
+
 #pragma mark - MarkdownView
 
-@interface MarkdownView () <UITextViewDelegate>
+@interface MarkdownView () <UITextViewDelegate, UIGestureRecognizerDelegate>
 @end
 
 @implementation MarkdownView {
@@ -123,6 +160,9 @@ using namespace facebook::react;
 
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
+
+  MarkdownTablePanRecognizer *_tablePanGR;
+  __weak MarkdownTableView *_panTargetTable;
 
   // Captured in updateState:oldState: so markNeedsRemeasure can
   // dispatch a new state update back to the shadow tree.
@@ -162,6 +202,17 @@ using namespace facebook::react;
     blocker.delaysTouchesBegan = NO;
     blocker.delaysTouchesEnded = NO;
     [self addGestureRecognizer:blocker];
+
+    // Horizontal-pan recognizer that drives scrollable table views.
+    // Installed on MarkdownView (not on the table) so that hitTest
+    // can return self for table areas, letting the blocking
+    // recognizer fail and parent Pressable taps work.
+    _tablePanGR =
+        [[MarkdownTablePanRecognizer alloc] initWithTarget:self
+                                                    action:@selector(handleTablePan:)];
+    _tablePanGR.cancelsTouchesInView = NO;
+    _tablePanGR.delegate = self;
+    [self addGestureRecognizer:_tablePanGR];
 
     // Listen for async image loads so we can dirty the measurer
     // cache and force Yoga to re-call measureContent with the
@@ -216,13 +267,13 @@ using namespace facebook::react;
     return nil; // Plain text — pass through.
   }
 
-  // 3. Scrollable table — return it so the pan gesture recognizer
-  //    can handle horizontal scrolling. The blocking recognizer
-  //    immediately blocks the parent Pressable for all table touches.
-  MarkdownTableView *tableView =
-      [self scrollableTableAncestorOf:hitView];
-  if (tableView) {
-    return tableView;
+  // 3. Scrollable table — return self (not the table) so the
+  //    blocking recognizer fails (it only blocks UIControl /
+  //    UITextView). The MarkdownTablePanRecognizer on self handles
+  //    horizontal scrolling and blocks the parent Pressable only
+  //    when actual movement is detected. Taps pass through.
+  if ([self scrollableTableAncestorOf:hitView]) {
+    return self;
   }
 
   // 4. Everything else (empty space, block containers, non-scrollable
@@ -964,6 +1015,65 @@ using namespace facebook::react;
       .url = std::string([[url absoluteString] UTF8String]),
       .title = std::string(""),
   });
+}
+
+#pragma mark - Table pan
+
+- (void)handleTablePan:(UIPanGestureRecognizer *)recognizer {
+  if (recognizer.state == UIGestureRecognizerStateBegan) {
+    _panTargetTable = [self findScrollableTableAtPoint:
+        [recognizer locationInView:self]];
+  }
+
+  MarkdownTableView *table = _panTargetTable;
+  if (!table) return;
+
+  CGPoint translation = [recognizer translationInView:self];
+  CGFloat maxOffset =
+      table.contentSize.width - table.bounds.size.width;
+  CGFloat newX = table.contentOffset.x - translation.x;
+  newX = MAX(0, MIN(maxOffset, newX));
+  [table setContentOffset:CGPointMake(newX, 0) animated:NO];
+  [recognizer setTranslation:CGPointZero inView:self];
+
+  if (recognizer.state == UIGestureRecognizerStateEnded ||
+      recognizer.state == UIGestureRecognizerStateCancelled) {
+    _panTargetTable = nil;
+  }
+}
+
+/// Finds a scrollable MarkdownTableView at `point` (in self's
+/// coordinate space) by hit-testing the internal view tree.
+- (nullable MarkdownTableView *)findScrollableTableAtPoint:
+    (CGPoint)point {
+  CGPoint basePoint = [self convertPoint:point toView:_baseContainer];
+  UIView *hitView = [_baseContainer hitTest:basePoint withEvent:nil];
+  return [self scrollableTableAncestorOf:hitView];
+}
+
+#pragma mark - UIGestureRecognizerDelegate
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gr {
+  if (gr != _tablePanGR) return YES;
+
+  // Only begin for predominantly-horizontal pans over scrollable
+  // tables. Vertical pans are left to the parent FlatList / ScrollView.
+  UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gr;
+  CGPoint velocity = [pan velocityInView:self];
+  if (fabs(velocity.x) <= fabs(velocity.y)) return NO;
+
+  return [self findScrollableTableAtPoint:
+      [pan locationInView:self]] != nil;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:
+        (UIGestureRecognizer *)other {
+  // Allow simultaneous recognition with everything — we only drive
+  // the table's contentOffset and don't interfere with other
+  // gestures (FlatList scroll, etc.).
+  if (gestureRecognizer == _tablePanGR) return YES;
+  return NO;
 }
 
 #pragma mark - Mention press
