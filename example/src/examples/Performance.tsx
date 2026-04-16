@@ -13,7 +13,11 @@ const templates = [
   '**Message from user:** Hello everyone! Check out this [link](https://example.com). What do you think?',
 
   `# Quick Update
+
+[We shipped the new feature today. Here's what changed](https://alizahid.dev)
+
 We shipped the new feature today. Here's what changed:
+
 - Improved >!performance!<
 - Fixed the login bug
 - Added dark mode`,
