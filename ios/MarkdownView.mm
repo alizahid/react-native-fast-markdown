@@ -99,46 +99,6 @@ using namespace facebook::react;
 
 @end
 
-#pragma mark - Table-scroll pan recognizer
-
-/// UIPanGestureRecognizer that drives horizontal scrolling for
-/// scrollable MarkdownTableViews. Installed on MarkdownView itself
-/// (not on the table) so that hitTest can return self for table areas
-/// — letting the blocking recognizer fail and allowing parent
-/// Pressable taps to work.
-///
-/// shouldBeRequiredToFailByGestureRecognizer: makes ancestor touch
-/// handlers (RCTSurfaceTouchHandler, RNGH) wait for this recognizer.
-/// gestureRecognizerShouldBegin: (via delegate) ensures it only
-/// begins for horizontal pans over scrollable tables. Result:
-///   • Pan → this recognizer begins → ancestors fail → no Pressable
-///   • Tap → this recognizer never begins → fails → Pressable fires
-@interface MarkdownTablePanRecognizer : UIPanGestureRecognizer
-@end
-
-@implementation MarkdownTablePanRecognizer
-
-- (BOOL)shouldBeRequiredToFailByGestureRecognizer:
-    (UIGestureRecognizer *)other {
-  UIView *otherView = other.view;
-  if (!otherView) return NO;
-  if ([otherView isDescendantOfView:self.view]) return NO;
-  if ([other isKindOfClass:[UIPanGestureRecognizer class]]) return NO;
-  return YES;
-}
-
-- (BOOL)canPreventGestureRecognizer:
-    (UIGestureRecognizer *)preventedGR {
-  return NO;
-}
-
-- (BOOL)canBePreventedByGestureRecognizer:
-    (UIGestureRecognizer *)preventingGR {
-  return NO;
-}
-
-@end
-
 #pragma mark - MarkdownView
 
 @interface MarkdownView () <UITextViewDelegate, UIGestureRecognizerDelegate>
@@ -161,7 +121,7 @@ using namespace facebook::react;
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
 
-  MarkdownTablePanRecognizer *_tablePanGR;
+  UIPanGestureRecognizer *_tablePanGR;
   __weak MarkdownTableView *_panTargetTable;
 
   // Captured in updateState:oldState: so markNeedsRemeasure can
@@ -208,8 +168,8 @@ using namespace facebook::react;
     // can return self for table areas, letting the blocking
     // recognizer fail and parent Pressable taps work.
     _tablePanGR =
-        [[MarkdownTablePanRecognizer alloc] initWithTarget:self
-                                                    action:@selector(handleTablePan:)];
+        [[UIPanGestureRecognizer alloc] initWithTarget:self
+                                                action:@selector(handleTablePan:)];
     _tablePanGR.cancelsTouchesInView = NO;
     _tablePanGR.delegate = self;
     [self addGestureRecognizer:_tablePanGR];
@@ -228,24 +188,6 @@ using namespace facebook::react;
 
 - (void)dealloc {
   [[NSNotificationCenter defaultCenter] removeObserver:self];
-}
-
-- (void)didMoveToWindow {
-  [super didMoveToWindow];
-  if (!self.window) return;
-
-  // Set up a static failure requirement between ancestor touch
-  // handlers and our table-pan recognizer. This is more reliable
-  // than the dynamic shouldBeRequiredToFailByGestureRecognizer:
-  // which may not persist across recognition cycles.
-  UIView *ancestor = self.superview;
-  while (ancestor) {
-    for (UIGestureRecognizer *gr in ancestor.gestureRecognizers) {
-      if ([gr isKindOfClass:[UIPanGestureRecognizer class]]) continue;
-      [gr requireGestureRecognizerToFail:_tablePanGR];
-    }
-    ancestor = ancestor.superview;
-  }
 }
 
 - (void)layoutSubviews {
@@ -1041,6 +983,13 @@ using namespace facebook::react;
   if (recognizer.state == UIGestureRecognizerStateBegan) {
     _panTargetTable = [self findScrollableTableAtPoint:
         [recognizer locationInView:self]];
+
+    // Cancel ancestor touch handlers (RCTSurfaceTouchHandler, RNGH)
+    // so the parent Pressable's press is cancelled. Disabling and
+    // immediately re-enabling a gesture recognizer cancels its
+    // current recognition and sends touchesCancelled to JS —
+    // Pressable receives onTouchCancel and drops the press.
+    [self cancelAncestorTouchHandlers];
   }
 
   MarkdownTableView *table = _panTargetTable;
@@ -1057,6 +1006,22 @@ using namespace facebook::react;
   if (recognizer.state == UIGestureRecognizerStateEnded ||
       recognizer.state == UIGestureRecognizerStateCancelled) {
     _panTargetTable = nil;
+  }
+}
+
+/// Disables and re-enables all non-pan gesture recognizers on ancestor
+/// views. This immediately cancels their ongoing recognition, which
+/// sends touchesCancelled to JS and prevents the parent Pressable
+/// from firing onPress.
+- (void)cancelAncestorTouchHandlers {
+  UIView *ancestor = self.superview;
+  while (ancestor) {
+    for (UIGestureRecognizer *gr in ancestor.gestureRecognizers) {
+      if ([gr isKindOfClass:[UIPanGestureRecognizer class]]) continue;
+      gr.enabled = NO;
+      gr.enabled = YES;
+    }
+    ancestor = ancestor.superview;
   }
 }
 
