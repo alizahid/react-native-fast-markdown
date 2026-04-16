@@ -396,6 +396,14 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
   }
 }
 
+- (void)didMoveToWindow {
+  [super didMoveToWindow];
+  // Retry if layoutSubviews ran before the view was in a window.
+  if (self.window && self.scrollEnabled) {
+    [self installScrollBlockingIfNeeded];
+  }
+}
+
 #pragma mark - Hit testing
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {

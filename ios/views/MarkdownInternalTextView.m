@@ -13,10 +13,19 @@
 
 - (BOOL)shouldBeRequiredToFailByGestureRecognizer:
     (UIGestureRecognizer *)other {
-  // Make UITextView's OWN recognizers wait for us. Recognizers on
-  // other views (parent Pressable, scroll views) are unaffected.
-  if (other.view == self.view) return YES;
-  return NO;
+  // Only affect recognizers on the same view (UITextView internals).
+  if (other.view != self.view) return NO;
+
+  // Allow long-press recognizers with a meaningful hold duration to
+  // fire independently — they drive the native link context menu.
+  // Only block short-duration recognizers (UITextView's internal
+  // link-tap gesture, ~0.12 s) so our instant tap fires first.
+  if ([other isKindOfClass:[UILongPressGestureRecognizer class]] &&
+      ((UILongPressGestureRecognizer *)other).minimumPressDuration >= 0.3) {
+    return NO;
+  }
+
+  return YES;
 }
 
 @end

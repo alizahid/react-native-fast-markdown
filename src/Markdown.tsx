@@ -105,6 +105,7 @@ export function Markdown({
       {...viewProps}
       customTags={customTags}
       images={images}
+      linkLongPressEnabled={onLinkLongPress != null}
       markdown={children}
       onImagePress={
         onImagePress

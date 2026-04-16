@@ -127,6 +127,11 @@ using namespace facebook::react;
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
 
+  // YES when the JS side passed an onLinkLongPress handler.
+  // When set, long-press on links emits the event instead of
+  // showing the native iOS link context menu.
+  BOOL _linkLongPressEnabled;
+
   // Captured in updateState:oldState: so markNeedsRemeasure can
   // dispatch a new state update back to the shadow tree.
   MarkdownViewShadowNode::ConcreteState::Shared _markdownState;
@@ -209,6 +214,8 @@ using namespace facebook::react;
   NSString *styleJSON = newViewProps.styles.empty()
                             ? @""
                             : [NSString stringWithUTF8String:newViewProps.styles.c_str()];
+
+  _linkLongPressEnabled = newViewProps.linkLongPressEnabled;
 
   NSMutableArray<NSString *> *customTags = [NSMutableArray new];
   for (const auto &tag : newViewProps.customTags) {
@@ -773,24 +780,26 @@ using namespace facebook::react;
   }
 
   if (interaction == UITextItemInteractionPresentActions) {
-    // Long-press — for http(s) URLs return YES so UITextView shows
-    // the native iOS link context menu (the popover with a rendered
-    // webpage preview and Open / Copy Link / Add to Reading List /
-    // Share). For custom schemes (deeplinks, mailto:, tel:, etc.)
-    // fall back to firing onLinkLongPress so JS can decide.
-    if (isHttp) {
-      return YES;
+    // Long-press — if the JS side provided an onLinkLongPress
+    // handler, always emit the event and let JS decide what to
+    // show. Otherwise fall back to the native iOS link context
+    // menu for http(s) URLs.
+    if (_linkLongPressEnabled) {
+      if (_eventEmitter) {
+        const auto &eventEmitter =
+            static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+        eventEmitter.onLinkLongPress({
+            .url = std::string([[URL absoluteString] UTF8String]),
+            .title = std::string(""),
+        });
+      }
+      return NO;
     }
 
-    if (_eventEmitter) {
-      const auto &eventEmitter =
-          static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
-      eventEmitter.onLinkLongPress({
-          .url = std::string([[URL absoluteString] UTF8String]),
-          .title = std::string(""),
-      });
-    }
-    return NO;
+    // No JS handler — show the native context menu for http(s)
+    // links (page preview + Open / Copy / Share). Non-http
+    // schemes have no useful native preview, so suppress.
+    return isHttp;
   }
 
   return NO;
