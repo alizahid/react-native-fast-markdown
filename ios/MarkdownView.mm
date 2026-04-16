@@ -16,6 +16,7 @@
 #import "MarkdownImageSizeCache.h"
 #import "MarkdownImageView.h"
 #import "MarkdownInternalTextView.h"
+#import "MarkdownLinkOverlay.h"
 #import "MarkdownMeasurer.h"
 #import "MarkdownMentionOverlay.h"
 #import "MarkdownParser.hpp"
@@ -64,20 +65,26 @@ using namespace facebook::react;
 
   UIView *hitView = touches.anyObject.view;
 
-  if ([hitView isKindOfClass:[UIControl class]] ||
-      [hitView isKindOfClass:[UITextView class]]) {
-    // Overlay (mention, spoiler, image) or link — block the parent
-    // touch handler immediately so Pressable does not fire.
+  // Direct check: overlays are UIControls and always the hit view.
+  if ([hitView isKindOfClass:[UIControl class]]) {
     self.state = UIGestureRecognizerStateRecognized;
-  } else if ([hitView isKindOfClass:[UIScrollView class]] &&
-             ((UIScrollView *)hitView).scrollEnabled) {
-    // Scrollable table — wait to see if the finger moves (scroll)
-    // or lifts (tap).
-    _trackingScroll = YES;
-  } else {
-    // Non-interactive area — let parent Pressable handle.
-    self.state = UIGestureRecognizerStateFailed;
+    return;
   }
+
+  // The hit view might be a label or cell deep inside a scrollable
+  // table (UIScrollView). Walk up from the hit view to find it.
+  UIView *v = hitView;
+  while (v && v != self.view) {
+    if ([v isKindOfClass:[UIScrollView class]] &&
+        ((UIScrollView *)v).scrollEnabled) {
+      _trackingScroll = YES;
+      return;
+    }
+    v = v.superview;
+  }
+
+  // Non-interactive area — let parent Pressable handle.
+  self.state = UIGestureRecognizerStateFailed;
 }
 
 - (void)touchesMoved:(NSSet<UITouch *> *)touches
@@ -178,6 +185,7 @@ using namespace facebook::react;
 
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
+  NSMutableArray<MarkdownLinkOverlay *> *_linkOverlays;
 
   // Captured in updateState:oldState: so markNeedsRemeasure can
   // dispatch a new state update back to the shadow tree.
@@ -206,6 +214,7 @@ using namespace facebook::react;
 
     _spoilerOverlays = [NSMutableArray new];
     _mentionOverlays = [NSMutableArray new];
+    _linkOverlays = [NSMutableArray new];
 
     // Install a gesture recognizer that prevents parent Pressable
     // components (RN or RNGH) from firing when the touch lands on
@@ -366,6 +375,11 @@ using namespace facebook::react;
     [overlay removeAllOverlays];
   }
   [_mentionOverlays removeAllObjects];
+
+  for (MarkdownLinkOverlay *overlay in _linkOverlays) {
+    [overlay removeAllOverlays];
+  }
+  [_linkOverlays removeAllObjects];
 
   // Nil out onLayoutSubviews callbacks before removing text views,
   // otherwise the blocks can fire on a detached view during recycling.
@@ -779,6 +793,20 @@ using namespace facebook::react;
   };
   [_mentionOverlays addObject:mentionOverlay];
 
+  // Links — transparent overlay that fires onLinkPress instantly
+  // via UIControlEventTouchUpInside, bypassing UITextView's delayed
+  // UITextItemInteraction gesture. Long-press fires onLinkLongPress.
+  MarkdownLinkOverlay *linkOverlay =
+      [[MarkdownLinkOverlay alloc] initWithTextView:textView];
+
+  linkOverlay.onPress = ^(NSURL *url) {
+    [weakSelf emitLinkPressForURL:url];
+  };
+  linkOverlay.onLongPress = ^(NSURL *url) {
+    [weakSelf emitLinkLongPressForURL:url];
+  };
+  [_linkOverlays addObject:linkOverlay];
+
   // Rebuild overlay rects every time the text view lays out — they
   // depend on computed line fragments, which only become accurate
   // after the view has a real width. Without this the overlays are
@@ -787,9 +815,11 @@ using namespace facebook::react;
   if ([textView isKindOfClass:[MarkdownInternalTextView class]]) {
     __weak MarkdownSpoilerOverlay *weakSpoiler = spoilerOverlay;
     __weak MarkdownMentionOverlay *weakMention = mentionOverlay;
+    __weak MarkdownLinkOverlay *weakLink = linkOverlay;
     ((MarkdownInternalTextView *)textView).onLayoutSubviews = ^{
       [weakSpoiler updateOverlays];
       [weakMention updateOverlays];
+      [weakLink updateOverlays];
     };
   }
 }
@@ -875,6 +905,28 @@ using namespace facebook::react;
       .mentionId = std::string([mentionId UTF8String]),
       .mentionName = std::string([name UTF8String]),
       .mentionProps = std::string([propsJson UTF8String]),
+  });
+}
+
+#pragma mark - Link press
+
+- (void)emitLinkPressForURL:(NSURL *)url {
+  if (!_eventEmitter || !url) return;
+  const auto &eventEmitter =
+      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+  eventEmitter.onLinkPress({
+      .url = std::string([[url absoluteString] UTF8String]),
+      .title = std::string(""),
+  });
+}
+
+- (void)emitLinkLongPressForURL:(NSURL *)url {
+  if (!_eventEmitter || !url) return;
+  const auto &eventEmitter =
+      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+  eventEmitter.onLinkLongPress({
+      .url = std::string([[url absoluteString] UTF8String]),
+      .title = std::string(""),
   });
 }
 
