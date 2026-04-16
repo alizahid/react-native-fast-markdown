@@ -230,6 +230,24 @@ using namespace facebook::react;
   [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
+- (void)didMoveToWindow {
+  [super didMoveToWindow];
+  if (!self.window) return;
+
+  // Set up a static failure requirement between ancestor touch
+  // handlers and our table-pan recognizer. This is more reliable
+  // than the dynamic shouldBeRequiredToFailByGestureRecognizer:
+  // which may not persist across recognition cycles.
+  UIView *ancestor = self.superview;
+  while (ancestor) {
+    for (UIGestureRecognizer *gr in ancestor.gestureRecognizers) {
+      if ([gr isKindOfClass:[UIPanGestureRecognizer class]]) continue;
+      [gr requireGestureRecognizerToFail:_tablePanGR];
+    }
+    ancestor = ancestor.superview;
+  }
+}
+
 - (void)layoutSubviews {
   [super layoutSubviews];
   _baseContainer.frame = self.bounds;
@@ -1056,9 +1074,15 @@ using namespace facebook::react;
 - (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gr {
   if (gr != _tablePanGR) return YES;
 
+  UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gr;
+
+  // Decline near the left screen edge so the navigation
+  // back-swipe gesture can fire instead.
+  CGPoint locationInWindow = [pan locationInView:self.window];
+  if (locationInWindow.x < 30) return NO;
+
   // Only begin for predominantly-horizontal pans over scrollable
   // tables. Vertical pans are left to the parent FlatList / ScrollView.
-  UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gr;
   CGPoint velocity = [pan velocityInView:self];
   if (fabs(velocity.x) <= fabs(velocity.y)) return NO;
 
@@ -1069,11 +1093,14 @@ using namespace facebook::react;
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
     shouldRecognizeSimultaneouslyWithGestureRecognizer:
         (UIGestureRecognizer *)other {
-  // Allow simultaneous recognition with everything — we only drive
-  // the table's contentOffset and don't interfere with other
-  // gestures (FlatList scroll, etc.).
-  if (gestureRecognizer == _tablePanGR) return YES;
-  return NO;
+  if (gestureRecognizer != _tablePanGR) return NO;
+
+  // Don't compete with the screen-edge back-swipe gesture.
+  if ([other isKindOfClass:[UIScreenEdgePanGestureRecognizer class]])
+    return NO;
+
+  // Allow simultaneous with everything else (FlatList scroll, etc.).
+  return YES;
 }
 
 #pragma mark - Mention press
