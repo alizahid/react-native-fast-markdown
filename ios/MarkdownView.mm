@@ -8,6 +8,8 @@
 
 #include <atomic>
 
+#import <UIKit/UIGestureRecognizerSubclass.h>
+
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
@@ -33,6 +35,129 @@
 static const CGFloat kDefaultImageHeight = 200.0;
 
 using namespace facebook::react;
+
+#pragma mark - Touch-blocking gesture recognizer
+
+/// Coordinates with React Native's touch handler (and RNGH handlers)
+/// to prevent a parent Pressable from firing when the touch lands on
+/// an interactive element inside the markdown renderer (link, mention,
+/// spoiler, image, or scrollable table).
+///
+/// For overlays and links the recognizer transitions to Recognized
+/// immediately, causing ancestor touch handlers to fail for that
+/// touch. For non-interactive areas it fails immediately, letting
+/// the ancestor handlers proceed normally so parent Pressables work.
+///
+/// For scrollable tables it defers the decision: a horizontal pan
+/// blocks the parent (Began → Ended), while a stationary tap fails
+/// so the parent Pressable fires.
+@interface MarkdownTouchBlockingRecognizer : UIGestureRecognizer {
+  BOOL _trackingScroll;
+}
+@end
+
+@implementation MarkdownTouchBlockingRecognizer
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches
+            withEvent:(UIEvent *)event {
+  [super touchesBegan:touches withEvent:event];
+
+  UIView *hitView = touches.anyObject.view;
+
+  if ([hitView isKindOfClass:[UIControl class]] ||
+      [hitView isKindOfClass:[UITextView class]]) {
+    // Overlay (mention, spoiler, image) or link — block the parent
+    // touch handler immediately so Pressable does not fire.
+    self.state = UIGestureRecognizerStateRecognized;
+  } else if ([hitView isKindOfClass:[UIScrollView class]] &&
+             ((UIScrollView *)hitView).scrollEnabled) {
+    // Scrollable table — wait to see if the finger moves (scroll)
+    // or lifts (tap).
+    _trackingScroll = YES;
+  } else {
+    // Non-interactive area — let parent Pressable handle.
+    self.state = UIGestureRecognizerStateFailed;
+  }
+}
+
+- (void)touchesMoved:(NSSet<UITouch *> *)touches
+            withEvent:(UIEvent *)event {
+  [super touchesMoved:touches withEvent:event];
+
+  if (_trackingScroll && self.state == UIGestureRecognizerStatePossible) {
+    UITouch *touch = touches.anyObject;
+    CGPoint curr = [touch locationInView:self.view];
+    CGPoint prev = [touch previousLocationInView:self.view];
+    if (fabs(curr.x - prev.x) > 2.0 || fabs(curr.y - prev.y) > 2.0) {
+      // Movement detected — block parent Pressable during scroll.
+      self.state = UIGestureRecognizerStateBegan;
+    }
+  }
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches
+            withEvent:(UIEvent *)event {
+  [super touchesEnded:touches withEvent:event];
+
+  if (self.state == UIGestureRecognizerStatePossible) {
+    // Scrollable-table touch ended without movement (tap) —
+    // let parent Pressable fire.
+    self.state = UIGestureRecognizerStateFailed;
+  } else if (self.state == UIGestureRecognizerStateBegan ||
+             self.state == UIGestureRecognizerStateChanged) {
+    self.state = UIGestureRecognizerStateEnded;
+  }
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches
+                withEvent:(UIEvent *)event {
+  [super touchesCancelled:touches withEvent:event];
+
+  if (self.state == UIGestureRecognizerStatePossible ||
+      self.state == UIGestureRecognizerStateBegan ||
+      self.state == UIGestureRecognizerStateChanged) {
+    self.state = UIGestureRecognizerStateCancelled;
+  }
+}
+
+- (void)reset {
+  [super reset];
+  _trackingScroll = NO;
+}
+
+#pragma mark - Failure-requirement wiring
+
+- (BOOL)shouldBeRequiredToFailByGestureRecognizer:
+    (UIGestureRecognizer *)other {
+  UIView *otherView = other.view;
+  if (!otherView) return NO;
+
+  // Don't block recognizers on our own view tree (e.g. the table's
+  // own panGestureRecognizer).
+  if ([otherView isDescendantOfView:self.view]) return NO;
+
+  // Don't block pan gesture recognizers — those drive parent scroll
+  // views and must stay unblocked.
+  if ([other isKindOfClass:[UIPanGestureRecognizer class]]) return NO;
+
+  // Block everything else on ancestor views: RCTSurfaceTouchHandler,
+  // RNGH tap/press handlers, etc.
+  return YES;
+}
+
+- (BOOL)canPreventGestureRecognizer:
+    (UIGestureRecognizer *)preventedGR {
+  return NO;
+}
+
+- (BOOL)canBePreventedByGestureRecognizer:
+    (UIGestureRecognizer *)preventingGR {
+  return NO;
+}
+
+@end
+
+#pragma mark - MarkdownView
 
 @interface MarkdownView () <UITextViewDelegate>
 @end
@@ -81,6 +206,19 @@ using namespace facebook::react;
 
     _spoilerOverlays = [NSMutableArray new];
     _mentionOverlays = [NSMutableArray new];
+
+    // Install a gesture recognizer that prevents parent Pressable
+    // components (RN or RNGH) from firing when the touch lands on
+    // an interactive element inside the markdown (link, overlay,
+    // scrollable table). For non-interactive areas the recognizer
+    // fails immediately, letting the parent Pressable work.
+    MarkdownTouchBlockingRecognizer *blocker =
+        [[MarkdownTouchBlockingRecognizer alloc] initWithTarget:nil
+                                                         action:nil];
+    blocker.cancelsTouchesInView = NO;
+    blocker.delaysTouchesBegan = NO;
+    blocker.delaysTouchesEnded = NO;
+    [self addGestureRecognizer:blocker];
 
     // Listen for async image loads so we can dirty the measurer
     // cache and force Yoga to re-call measureContent with the
