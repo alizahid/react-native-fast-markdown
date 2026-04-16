@@ -9,6 +9,7 @@
 #include <atomic>
 
 #import <UIKit/UIGestureRecognizerSubclass.h>
+#import <objc/runtime.h>
 
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
@@ -95,6 +96,36 @@ using namespace facebook::react;
 - (BOOL)canBePreventedByGestureRecognizer:
     (UIGestureRecognizer *)preventingGR {
   return NO;
+}
+
+@end
+
+#pragma mark - Instant link-tap gesture recognizer
+
+/// UITapGestureRecognizer that fires instantly for link taps, bypassing
+/// UITextView's delayed UITextItemInteraction gesture (~120 ms).
+///
+/// shouldBeRequiredToFailByGestureRecognizer: blocks UITextView's
+/// internal short-duration recognizers (the link-tap gesture) but
+/// leaves the long-press recognizer (≥ 0.3 s) alone so the native
+/// context menu still works.
+@interface MarkdownLinkTapRecognizer : UITapGestureRecognizer
+@end
+
+@implementation MarkdownLinkTapRecognizer
+
+- (BOOL)shouldBeRequiredToFailByGestureRecognizer:
+    (UIGestureRecognizer *)other {
+  if (other.view != self.view) return NO;
+
+  // Allow long-press recognizers with a meaningful hold duration to
+  // fire independently — they drive the native link context menu.
+  if ([other isKindOfClass:[UILongPressGestureRecognizer class]] &&
+      ((UILongPressGestureRecognizer *)other).minimumPressDuration >= 0.3) {
+    return NO;
+  }
+
+  return YES;
 }
 
 @end
@@ -213,10 +244,14 @@ using namespace facebook::react;
     return nil; // Plain text — pass through.
   }
 
-  // 3. Scrollable table — let it handle panning.
+  // 3. Scrollable table — let it handle panning. Also set up
+  //    requireGestureRecognizerToFail: between ancestor touch
+  //    handlers and the table's panGestureRecognizer so horizontal
+  //    scrolling blocks the parent Pressable.
   MarkdownTableView *tableView =
       [self scrollableTableAncestorOf:hitView];
   if (tableView) {
+    [self ensureScrollBlockingForTable:tableView];
     return tableView;
   }
 
@@ -287,6 +322,72 @@ using namespace facebook::react;
   return [storage attribute:NSLinkAttributeName
                     atIndex:charIdx
              effectiveRange:nil] != nil;
+}
+
+/// Like isPointOverLink: but returns the NSURL (or nil).
+- (nullable NSURL *)linkURLAtPoint:(CGPoint)point
+                        inTextView:(UITextView *)textView {
+  NSLayoutManager *lm = textView.layoutManager;
+  NSTextContainer *tc = textView.textContainer;
+  NSTextStorage *storage = textView.textStorage;
+  if (!lm || !tc || !storage || storage.length == 0) return nil;
+
+  CGPoint textPoint = CGPointMake(
+      point.x - textView.textContainerInset.left,
+      point.y - textView.textContainerInset.top);
+
+  CGRect textBounds = [lm usedRectForTextContainer:tc];
+  if (!CGRectContainsPoint(textBounds, textPoint)) return nil;
+
+  CGFloat fraction = 0;
+  NSUInteger glyphIdx =
+      [lm glyphIndexForPoint:textPoint
+              inTextContainer:tc
+  fractionOfDistanceThroughGlyph:&fraction];
+
+  CGRect glyphRect =
+      [lm boundingRectForGlyphRange:NSMakeRange(glyphIdx, 1)
+                     inTextContainer:tc];
+  if (!CGRectContainsPoint(glyphRect, textPoint)) return nil;
+
+  NSUInteger charIdx = [lm characterIndexForGlyphAtIndex:glyphIdx];
+  if (charIdx >= storage.length) return nil;
+
+  id link = [storage attribute:NSLinkAttributeName
+                       atIndex:charIdx
+                effectiveRange:nil];
+  if (!link) return nil;
+  if ([link isKindOfClass:[NSURL class]]) return link;
+  if ([link isKindOfClass:[NSString class]])
+    return [NSURL URLWithString:link];
+  return nil;
+}
+
+#pragma mark - Table scroll-blocking
+
+/// Key for the associated-object flag that tracks whether
+/// requireGestureRecognizerToFail: has been set up for a table.
+static const void *kScrollBlockingKey = &kScrollBlockingKey;
+
+/// Makes ancestor non-pan gesture recognizers (RCTSurfaceTouchHandler,
+/// RNGH handlers) wait for `tableView.panGestureRecognizer` to fail
+/// before recognizing. Pan recognizes (scroll) → ancestors fail →
+/// parent Pressable does NOT fire. Pan fails (tap) → ancestors
+/// proceed → parent Pressable fires.
+- (void)ensureScrollBlockingForTable:(MarkdownTableView *)tableView {
+  if (objc_getAssociatedObject(tableView, kScrollBlockingKey)) return;
+  objc_setAssociatedObject(tableView, kScrollBlockingKey, @YES,
+                           OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+  UIPanGestureRecognizer *panGR = tableView.panGestureRecognizer;
+  UIView *ancestor = self.superview;
+  while (ancestor) {
+    for (UIGestureRecognizer *gr in ancestor.gestureRecognizers) {
+      if ([gr isKindOfClass:[UIPanGestureRecognizer class]]) continue;
+      [gr requireGestureRecognizerToFail:panGR];
+    }
+    ancestor = ancestor.superview;
+  }
 }
 
 - (void)updateProps:(const Props::Shared &)props
@@ -798,6 +899,16 @@ using namespace facebook::react;
   textView.backgroundColor = [UIColor clearColor];
   textView.dataDetectorTypes = UIDataDetectorTypeNone;
   textView.delegate = self;
+
+  // Instant link-tap recognizer — fires on touch-up without
+  // UITextView's ~120 ms link-interaction delay. Long-press is
+  // unaffected and still shows the native context menu.
+  MarkdownLinkTapRecognizer *linkTap =
+      [[MarkdownLinkTapRecognizer alloc] initWithTarget:self
+                                                 action:@selector(handleLinkTap:)];
+  linkTap.cancelsTouchesInView = NO;
+  [textView addGestureRecognizer:linkTap];
+
   return textView;
 }
 
@@ -853,17 +964,8 @@ using namespace facebook::react;
                 [scheme isEqualToString:@"https"];
 
   if (interaction == UITextItemInteractionInvokeDefaultAction) {
-    // Tap — emit onLinkPress so JS can handle (open in-app, log,
-    // override, etc.). Always return NO so UITextView doesn't also
-    // open the URL in Safari behind our back.
-    if (_eventEmitter) {
-      const auto &eventEmitter =
-          static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
-      eventEmitter.onLinkPress({
-          .url = std::string([[URL absoluteString] UTF8String]),
-          .title = std::string(""),
-      });
-    }
+    // Tap — handled by the instant MarkdownLinkTapRecognizer.
+    // Return NO so UITextView doesn't open the URL in Safari.
     return NO;
   }
 
@@ -889,6 +991,22 @@ using namespace facebook::react;
   }
 
   return NO;
+}
+
+#pragma mark - Link tap
+
+- (void)handleLinkTap:(UITapGestureRecognizer *)recognizer {
+  UITextView *textView = (UITextView *)recognizer.view;
+  CGPoint point = [recognizer locationInView:textView];
+  NSURL *url = [self linkURLAtPoint:point inTextView:textView];
+  if (!url || !_eventEmitter) return;
+
+  const auto &eventEmitter =
+      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+  eventEmitter.onLinkPress({
+      .url = std::string([[url absoluteString] UTF8String]),
+      .title = std::string(""),
+  });
 }
 
 #pragma mark - Mention press
