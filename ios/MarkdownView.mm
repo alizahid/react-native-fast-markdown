@@ -9,7 +9,6 @@
 #include <atomic>
 
 #import <UIKit/UIGestureRecognizerSubclass.h>
-#import <objc/runtime.h>
 
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
@@ -61,11 +60,14 @@ using namespace facebook::react;
   UIView *hitView = touches.anyObject.view;
 
   if ([hitView isKindOfClass:[UIControl class]] ||
-      [hitView isKindOfClass:[UITextView class]]) {
-    // Overlay (mention, spoiler, image) or link — block parent.
+      [hitView isKindOfClass:[UITextView class]] ||
+      [hitView isKindOfClass:[UIScrollView class]]) {
+    // Interactive native element — block parent Pressable.
+    // UIControl = overlay (mention, spoiler, image press)
+    // UITextView = link
+    // UIScrollView = scrollable table
     self.state = UIGestureRecognizerStateRecognized;
   } else {
-    // Scrollable table or unexpected — let parent Pressable handle.
     self.state = UIGestureRecognizerStateFailed;
   }
 }
@@ -96,36 +98,6 @@ using namespace facebook::react;
 - (BOOL)canBePreventedByGestureRecognizer:
     (UIGestureRecognizer *)preventingGR {
   return NO;
-}
-
-@end
-
-#pragma mark - Instant link-tap gesture recognizer
-
-/// UITapGestureRecognizer that fires instantly for link taps, bypassing
-/// UITextView's delayed UITextItemInteraction gesture (~120 ms).
-///
-/// shouldBeRequiredToFailByGestureRecognizer: blocks UITextView's
-/// internal short-duration recognizers (the link-tap gesture) but
-/// leaves the long-press recognizer (≥ 0.3 s) alone so the native
-/// context menu still works.
-@interface MarkdownLinkTapRecognizer : UITapGestureRecognizer
-@end
-
-@implementation MarkdownLinkTapRecognizer
-
-- (BOOL)shouldBeRequiredToFailByGestureRecognizer:
-    (UIGestureRecognizer *)other {
-  if (other.view != self.view) return NO;
-
-  // Allow long-press recognizers with a meaningful hold duration to
-  // fire independently — they drive the native link context menu.
-  if ([other isKindOfClass:[UILongPressGestureRecognizer class]] &&
-      ((UILongPressGestureRecognizer *)other).minimumPressDuration >= 0.3) {
-    return NO;
-  }
-
-  return YES;
 }
 
 @end
@@ -244,14 +216,12 @@ using namespace facebook::react;
     return nil; // Plain text — pass through.
   }
 
-  // 3. Scrollable table — let it handle panning. Also set up
-  //    requireGestureRecognizerToFail: between ancestor touch
-  //    handlers and the table's panGestureRecognizer so horizontal
-  //    scrolling blocks the parent Pressable.
+  // 3. Scrollable table — return it so the pan gesture recognizer
+  //    can handle horizontal scrolling. The blocking recognizer
+  //    immediately blocks the parent Pressable for all table touches.
   MarkdownTableView *tableView =
       [self scrollableTableAncestorOf:hitView];
   if (tableView) {
-    [self ensureScrollBlockingForTable:tableView];
     return tableView;
   }
 
@@ -361,33 +331,6 @@ using namespace facebook::react;
   if ([link isKindOfClass:[NSString class]])
     return [NSURL URLWithString:link];
   return nil;
-}
-
-#pragma mark - Table scroll-blocking
-
-/// Key for the associated-object flag that tracks whether
-/// requireGestureRecognizerToFail: has been set up for a table.
-static const void *kScrollBlockingKey = &kScrollBlockingKey;
-
-/// Makes ancestor non-pan gesture recognizers (RCTSurfaceTouchHandler,
-/// RNGH handlers) wait for `tableView.panGestureRecognizer` to fail
-/// before recognizing. Pan recognizes (scroll) → ancestors fail →
-/// parent Pressable does NOT fire. Pan fails (tap) → ancestors
-/// proceed → parent Pressable fires.
-- (void)ensureScrollBlockingForTable:(MarkdownTableView *)tableView {
-  if (objc_getAssociatedObject(tableView, kScrollBlockingKey)) return;
-  objc_setAssociatedObject(tableView, kScrollBlockingKey, @YES,
-                           OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-  UIPanGestureRecognizer *panGR = tableView.panGestureRecognizer;
-  UIView *ancestor = self.superview;
-  while (ancestor) {
-    for (UIGestureRecognizer *gr in ancestor.gestureRecognizers) {
-      if ([gr isKindOfClass:[UIPanGestureRecognizer class]]) continue;
-      [gr requireGestureRecognizerToFail:panGR];
-    }
-    ancestor = ancestor.superview;
-  }
 }
 
 - (void)updateProps:(const Props::Shared &)props
@@ -900,12 +843,15 @@ static const void *kScrollBlockingKey = &kScrollBlockingKey;
   textView.dataDetectorTypes = UIDataDetectorTypeNone;
   textView.delegate = self;
 
-  // Instant link-tap recognizer — fires on touch-up without
-  // UITextView's ~120 ms link-interaction delay. Long-press is
-  // unaffected and still shows the native context menu.
-  MarkdownLinkTapRecognizer *linkTap =
-      [[MarkdownLinkTapRecognizer alloc] initWithTarget:self
-                                                 action:@selector(handleLinkTap:)];
+  // Fast link-tap recognizer — fires on touch-up. For quick taps
+  // this beats UITextView's delayed internal recognizer. For slower
+  // taps UITextView's recognizer fires first and UIKit cancels ours
+  // (the delegate handles that case). Long-press and visual press
+  // feedback are unaffected because we don't block any of
+  // UITextView's internal recognizers.
+  UITapGestureRecognizer *linkTap =
+      [[UITapGestureRecognizer alloc] initWithTarget:self
+                                              action:@selector(handleLinkTap:)];
   linkTap.cancelsTouchesInView = NO;
   [textView addGestureRecognizer:linkTap];
 
@@ -964,8 +910,19 @@ static const void *kScrollBlockingKey = &kScrollBlockingKey;
                 [scheme isEqualToString:@"https"];
 
   if (interaction == UITextItemInteractionInvokeDefaultAction) {
-    // Tap — handled by the instant MarkdownLinkTapRecognizer.
-    // Return NO so UITextView doesn't open the URL in Safari.
+    // Tap — for quick taps the UITapGestureRecognizer on the text
+    // view fires first and UIKit cancels UITextView's internal
+    // recognizer, so this delegate method is never called. For
+    // slower taps UITextView's recognizer wins and cancels ours,
+    // so we emit here as a fallback.
+    if (_eventEmitter) {
+      const auto &eventEmitter =
+          static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+      eventEmitter.onLinkPress({
+          .url = std::string([[URL absoluteString] UTF8String]),
+          .title = std::string(""),
+      });
+    }
     return NO;
   }
 
