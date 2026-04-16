@@ -8,12 +8,15 @@
 
 #include <atomic>
 
+#import <UIKit/UIGestureRecognizerSubclass.h>
+
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
 #import "MarkdownImageSizeCache.h"
 #import "MarkdownImageView.h"
 #import "MarkdownInternalTextView.h"
+#import "MarkdownPressableOverlayView.h"
 #import "MarkdownMeasurer.h"
 #import "MarkdownMentionOverlay.h"
 #import "MarkdownParser.hpp"
@@ -34,7 +37,71 @@ static const CGFloat kDefaultImageHeight = 200.0;
 
 using namespace facebook::react;
 
-@interface MarkdownView () <UITextViewDelegate>
+#pragma mark - Touch-blocking gesture recognizer
+
+/// Prevents a parent Pressable from firing when the touch lands on an
+/// interactive native element (overlay or link). Scrollable tables are
+/// handled separately by MarkdownTablePanRecognizer.
+///
+/// Only receives touches that MarkdownView.hitTest routed to a native
+/// child — non-interactive touches return nil from hitTest and never
+/// reach this recognizer.
+@interface MarkdownTouchBlockingRecognizer : UIGestureRecognizer
+@end
+
+@implementation MarkdownTouchBlockingRecognizer
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches
+            withEvent:(UIEvent *)event {
+  [super touchesBegan:touches withEvent:event];
+
+  UIView *hitView = touches.anyObject.view;
+
+  if ([hitView isKindOfClass:[UIControl class]] ||
+      [hitView isKindOfClass:[UITextView class]]) {
+    // Overlay (mention, spoiler, image) or link — block parent.
+    self.state = UIGestureRecognizerStateRecognized;
+  } else {
+    // Everything else (including scrollable tables routed to self)
+    // — let parent Pressable handle. Table scroll blocking is done
+    // by the separate MarkdownTablePanRecognizer.
+    self.state = UIGestureRecognizerStateFailed;
+  }
+}
+
+#pragma mark - Failure-requirement wiring
+
+- (BOOL)shouldBeRequiredToFailByGestureRecognizer:
+    (UIGestureRecognizer *)other {
+  UIView *otherView = other.view;
+  if (!otherView) return NO;
+
+  // Don't block recognizers on our own view tree.
+  if ([otherView isDescendantOfView:self.view]) return NO;
+
+  // Don't block pan recognizers — parent scroll views need them.
+  if ([other isKindOfClass:[UIPanGestureRecognizer class]]) return NO;
+
+  // Block everything else on ancestor views (RCTSurfaceTouchHandler,
+  // RNGH tap/press handlers, etc).
+  return YES;
+}
+
+- (BOOL)canPreventGestureRecognizer:
+    (UIGestureRecognizer *)preventedGR {
+  return NO;
+}
+
+- (BOOL)canBePreventedByGestureRecognizer:
+    (UIGestureRecognizer *)preventingGR {
+  return NO;
+}
+
+@end
+
+#pragma mark - MarkdownView
+
+@interface MarkdownView () <UITextViewDelegate, UIGestureRecognizerDelegate>
 @end
 
 @implementation MarkdownView {
@@ -53,6 +120,9 @@ using namespace facebook::react;
 
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
+
+  UIPanGestureRecognizer *_tablePanGR;
+  __weak MarkdownTableView *_panTargetTable;
 
   // Captured in updateState:oldState: so markNeedsRemeasure can
   // dispatch a new state update back to the shadow tree.
@@ -82,6 +152,28 @@ using namespace facebook::react;
     _spoilerOverlays = [NSMutableArray new];
     _mentionOverlays = [NSMutableArray new];
 
+    // Block parent Pressable when a touch lands on an interactive
+    // native element. Non-interactive touches never reach this
+    // recognizer because hitTest returns nil for them.
+    MarkdownTouchBlockingRecognizer *blocker =
+        [[MarkdownTouchBlockingRecognizer alloc] initWithTarget:nil
+                                                         action:nil];
+    blocker.cancelsTouchesInView = NO;
+    blocker.delaysTouchesBegan = NO;
+    blocker.delaysTouchesEnded = NO;
+    [self addGestureRecognizer:blocker];
+
+    // Horizontal-pan recognizer that drives scrollable table views.
+    // Installed on MarkdownView (not on the table) so that hitTest
+    // can return self for table areas, letting the blocking
+    // recognizer fail and parent Pressable taps work.
+    _tablePanGR =
+        [[UIPanGestureRecognizer alloc] initWithTarget:self
+                                                action:@selector(handleTablePan:)];
+    _tablePanGR.cancelsTouchesInView = NO;
+    _tablePanGR.delegate = self;
+    [self addGestureRecognizer:_tablePanGR];
+
     // Listen for async image loads so we can dirty the measurer
     // cache and force Yoga to re-call measureContent with the
     // newly-known natural sizes.
@@ -101,6 +193,123 @@ using namespace facebook::react;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _baseContainer.frame = self.bounds;
+}
+
+#pragma mark - Hit testing
+
+/// Routes touches: interactive elements (overlays, links, scrollable
+/// tables) are returned so native gesture handling works. Everything
+/// else returns nil so the touch falls through to a parent Pressable.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  if (!self.userInteractionEnabled || self.hidden || self.alpha < 0.01) {
+    return nil;
+  }
+  if (![self pointInside:point withEvent:event]) {
+    return nil;
+  }
+
+  UIView *hitView = [super hitTest:point withEvent:event];
+  if (!hitView || hitView == self) return nil;
+
+  // 1. Overlay (mention, spoiler, image press) — interactive.
+  if ([hitView isKindOfClass:[MarkdownPressableOverlayView class]]) {
+    return hitView;
+  }
+
+  // 2. Text view (or an internal subview of one) — check for link.
+  MarkdownInternalTextView *textView =
+      [self markdownTextViewAncestorOf:hitView];
+  if (textView) {
+    CGPoint localPoint = [self convertPoint:point toView:textView];
+    if ([self linkURLAtPoint:localPoint inTextView:textView]) {
+      return textView;
+    }
+    return nil; // Plain text — pass through.
+  }
+
+  // 3. Scrollable table — return self (not the table) so the
+  //    blocking recognizer fails (it only blocks UIControl /
+  //    UITextView). The MarkdownTablePanRecognizer on self handles
+  //    horizontal scrolling and blocks the parent Pressable only
+  //    when actual movement is detected. Taps pass through.
+  if ([self scrollableTableAncestorOf:hitView]) {
+    return self;
+  }
+
+  // 4. Everything else (empty space, block containers, non-scrollable
+  //    table cells) — pass through to parent Pressable.
+  return nil;
+}
+
+/// Walks from `view` up to (but not including) self, looking for a
+/// MarkdownInternalTextView ancestor.
+- (nullable MarkdownInternalTextView *)markdownTextViewAncestorOf:
+    (UIView *)view {
+  UIView *v = view;
+  while (v && v != self) {
+    if ([v isKindOfClass:[MarkdownInternalTextView class]]) {
+      return (MarkdownInternalTextView *)v;
+    }
+    v = v.superview;
+  }
+  return nil;
+}
+
+/// Walks from `view` up to (but not including) self, looking for a
+/// scrollable MarkdownTableView ancestor.
+- (nullable MarkdownTableView *)scrollableTableAncestorOf:
+    (UIView *)view {
+  UIView *v = view;
+  while (v && v != self) {
+    if ([v isKindOfClass:[MarkdownTableView class]]) {
+      MarkdownTableView *table = (MarkdownTableView *)v;
+      return table.scrollEnabled ? table : nil;
+    }
+    v = v.superview;
+  }
+  return nil;
+}
+
+/// Returns the link URL at `point` (in the text view's coordinate
+/// space), or nil if the character under the point does not carry
+/// NSLinkAttributeName. Used by both hitTest (to decide whether to
+/// claim the touch) and handleLinkTap: (to emit onLinkPress).
+- (nullable NSURL *)linkURLAtPoint:(CGPoint)point
+                        inTextView:(UITextView *)textView {
+  NSLayoutManager *lm = textView.layoutManager;
+  NSTextContainer *tc = textView.textContainer;
+  NSTextStorage *storage = textView.textStorage;
+  if (!lm || !tc || !storage || storage.length == 0) return nil;
+
+  CGPoint textPoint = CGPointMake(
+      point.x - textView.textContainerInset.left,
+      point.y - textView.textContainerInset.top);
+
+  CGRect textBounds = [lm usedRectForTextContainer:tc];
+  if (!CGRectContainsPoint(textBounds, textPoint)) return nil;
+
+  CGFloat fraction = 0;
+  NSUInteger glyphIdx =
+      [lm glyphIndexForPoint:textPoint
+              inTextContainer:tc
+  fractionOfDistanceThroughGlyph:&fraction];
+
+  CGRect glyphRect =
+      [lm boundingRectForGlyphRange:NSMakeRange(glyphIdx, 1)
+                     inTextContainer:tc];
+  if (!CGRectContainsPoint(glyphRect, textPoint)) return nil;
+
+  NSUInteger charIdx = [lm characterIndexForGlyphAtIndex:glyphIdx];
+  if (charIdx >= storage.length) return nil;
+
+  id link = [storage attribute:NSLinkAttributeName
+                       atIndex:charIdx
+                effectiveRange:nil];
+  if (!link) return nil;
+  if ([link isKindOfClass:[NSURL class]]) return link;
+  if ([link isKindOfClass:[NSString class]])
+    return [NSURL URLWithString:link];
+  return nil;
 }
 
 - (void)updateProps:(const Props::Shared &)props
@@ -612,6 +821,19 @@ using namespace facebook::react;
   textView.backgroundColor = [UIColor clearColor];
   textView.dataDetectorTypes = UIDataDetectorTypeNone;
   textView.delegate = self;
+
+  // Fast link-tap recognizer — fires on touch-up. For quick taps
+  // this beats UITextView's delayed internal recognizer. For slower
+  // taps UITextView's recognizer fires first and UIKit cancels ours
+  // (the delegate handles that case). Long-press and visual press
+  // feedback are unaffected because we don't block any of
+  // UITextView's internal recognizers.
+  UITapGestureRecognizer *linkTap =
+      [[UITapGestureRecognizer alloc] initWithTarget:self
+                                              action:@selector(handleLinkTap:)];
+  linkTap.cancelsTouchesInView = NO;
+  [textView addGestureRecognizer:linkTap];
+
   return textView;
 }
 
@@ -667,9 +889,11 @@ using namespace facebook::react;
                 [scheme isEqualToString:@"https"];
 
   if (interaction == UITextItemInteractionInvokeDefaultAction) {
-    // Tap — emit onLinkPress so JS can handle (open in-app, log,
-    // override, etc.). Always return NO so UITextView doesn't also
-    // open the URL in Safari behind our back.
+    // Tap — for quick taps the UITapGestureRecognizer on the text
+    // view fires first and UIKit cancels UITextView's internal
+    // recognizer, so this delegate method is never called. For
+    // slower taps UITextView's recognizer wins and cancels ours,
+    // so we emit here as a fallback.
     if (_eventEmitter) {
       const auto &eventEmitter =
           static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
@@ -703,6 +927,113 @@ using namespace facebook::react;
   }
 
   return NO;
+}
+
+#pragma mark - Link tap
+
+- (void)handleLinkTap:(UITapGestureRecognizer *)recognizer {
+  UITextView *textView = (UITextView *)recognizer.view;
+  CGPoint point = [recognizer locationInView:textView];
+  NSURL *url = [self linkURLAtPoint:point inTextView:textView];
+  if (!url || !_eventEmitter) return;
+
+  const auto &eventEmitter =
+      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+  eventEmitter.onLinkPress({
+      .url = std::string([[url absoluteString] UTF8String]),
+      .title = std::string(""),
+  });
+}
+
+#pragma mark - Table pan
+
+- (void)handleTablePan:(UIPanGestureRecognizer *)recognizer {
+  if (recognizer.state == UIGestureRecognizerStateBegan) {
+    _panTargetTable = [self findScrollableTableAtPoint:
+        [recognizer locationInView:self]];
+
+    // Cancel ancestor touch handlers (RCTSurfaceTouchHandler, RNGH)
+    // so the parent Pressable's press is cancelled. Disabling and
+    // immediately re-enabling a gesture recognizer cancels its
+    // current recognition and sends touchesCancelled to JS —
+    // Pressable receives onTouchCancel and drops the press.
+    [self cancelAncestorTouchHandlers];
+  }
+
+  MarkdownTableView *table = _panTargetTable;
+  if (!table) return;
+
+  CGPoint translation = [recognizer translationInView:self];
+  CGFloat maxOffset =
+      table.contentSize.width - table.bounds.size.width;
+  CGFloat newX = table.contentOffset.x - translation.x;
+  newX = MAX(0, MIN(maxOffset, newX));
+  [table setContentOffset:CGPointMake(newX, 0) animated:NO];
+  [recognizer setTranslation:CGPointZero inView:self];
+
+  if (recognizer.state == UIGestureRecognizerStateEnded ||
+      recognizer.state == UIGestureRecognizerStateCancelled) {
+    _panTargetTable = nil;
+  }
+}
+
+/// Disables and re-enables all non-pan gesture recognizers on ancestor
+/// views. This immediately cancels their ongoing recognition, which
+/// sends touchesCancelled to JS and prevents the parent Pressable
+/// from firing onPress.
+- (void)cancelAncestorTouchHandlers {
+  UIView *ancestor = self.superview;
+  while (ancestor) {
+    for (UIGestureRecognizer *gr in ancestor.gestureRecognizers) {
+      if ([gr isKindOfClass:[UIPanGestureRecognizer class]]) continue;
+      gr.enabled = NO;
+      gr.enabled = YES;
+    }
+    ancestor = ancestor.superview;
+  }
+}
+
+/// Finds a scrollable MarkdownTableView at `point` (in self's
+/// coordinate space) by hit-testing the internal view tree.
+- (nullable MarkdownTableView *)findScrollableTableAtPoint:
+    (CGPoint)point {
+  CGPoint basePoint = [self convertPoint:point toView:_baseContainer];
+  UIView *hitView = [_baseContainer hitTest:basePoint withEvent:nil];
+  return [self scrollableTableAncestorOf:hitView];
+}
+
+#pragma mark - UIGestureRecognizerDelegate
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gr {
+  if (gr != _tablePanGR) return YES;
+
+  UIPanGestureRecognizer *pan = (UIPanGestureRecognizer *)gr;
+
+  // Decline near the left screen edge so the navigation
+  // back-swipe gesture can fire instead.
+  CGPoint locationInWindow = [pan locationInView:self.window];
+  if (locationInWindow.x < 30) return NO;
+
+  // Only begin for predominantly-horizontal pans over scrollable
+  // tables. Vertical pans are left to the parent FlatList / ScrollView.
+  CGPoint velocity = [pan velocityInView:self];
+  if (fabs(velocity.x) <= fabs(velocity.y)) return NO;
+
+  return [self findScrollableTableAtPoint:
+      [pan locationInView:self]] != nil;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:
+        (UIGestureRecognizer *)other {
+  if (gestureRecognizer != _tablePanGR) return NO;
+
+  // Don't compete with the screen-edge back-swipe gesture.
+  if ([other isKindOfClass:[UIScreenEdgePanGestureRecognizer class]])
+    return NO;
+
+  // Allow simultaneous with everything else (FlatList scroll, etc.).
+  return YES;
 }
 
 #pragma mark - Mention press
