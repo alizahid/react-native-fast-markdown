@@ -111,7 +111,16 @@ function MessageRow({ item }: { item: MessageItem }) {
           <Text style={styles.authorText}>{item.author}</Text>
           <Text style={styles.timeText}>{item.time}</Text>
         </View>
-        <Markdown customTags={['Mention']} styles={markdownStyles}>
+        <Markdown
+          customTags={['Mention']}
+          onLinkPress={(link) => {
+            Alert.alert('Link pressed', JSON.stringify(link, null, 2))
+          }}
+          onMentionPress={(mention) => {
+            Alert.alert('Mention pressed', JSON.stringify(mention, null, 2))
+          }}
+          styles={markdownStyles}
+        >
           {item.markdown}
         </Markdown>
       </View>
