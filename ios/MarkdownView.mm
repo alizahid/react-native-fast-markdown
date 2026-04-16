@@ -8,12 +8,15 @@
 
 #include <atomic>
 
+#import <UIKit/UIGestureRecognizerSubclass.h>
+
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
 #import "MarkdownImageSizeCache.h"
 #import "MarkdownImageView.h"
 #import "MarkdownInternalTextView.h"
+#import "MarkdownPressableOverlayView.h"
 #import "MarkdownMeasurer.h"
 #import "MarkdownMentionOverlay.h"
 #import "MarkdownParser.hpp"
@@ -33,6 +36,70 @@
 static const CGFloat kDefaultImageHeight = 200.0;
 
 using namespace facebook::react;
+
+#pragma mark - Touch-blocking gesture recognizer
+
+/// Prevents a parent Pressable from firing when the touch lands on an
+/// interactive native element (link, overlay, scrollable table).
+///
+/// Only receives touches that MarkdownView.hitTest routed to a native
+/// child — non-interactive touches return nil from hitTest and never
+/// reach this recognizer. So the logic is simple: block for overlays
+/// and links (UIControl / UITextView), pass through for scrollable
+/// tables (let Pressable's own movement-cancellation handle scroll
+/// vs tap).
+@interface MarkdownTouchBlockingRecognizer : UIGestureRecognizer
+@end
+
+@implementation MarkdownTouchBlockingRecognizer
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches
+            withEvent:(UIEvent *)event {
+  [super touchesBegan:touches withEvent:event];
+
+  UIView *hitView = touches.anyObject.view;
+
+  if ([hitView isKindOfClass:[UIControl class]] ||
+      [hitView isKindOfClass:[UITextView class]]) {
+    // Overlay (mention, spoiler, image) or link — block parent.
+    self.state = UIGestureRecognizerStateRecognized;
+  } else {
+    // Scrollable table or unexpected — let parent Pressable handle.
+    self.state = UIGestureRecognizerStateFailed;
+  }
+}
+
+#pragma mark - Failure-requirement wiring
+
+- (BOOL)shouldBeRequiredToFailByGestureRecognizer:
+    (UIGestureRecognizer *)other {
+  UIView *otherView = other.view;
+  if (!otherView) return NO;
+
+  // Don't block recognizers on our own view tree.
+  if ([otherView isDescendantOfView:self.view]) return NO;
+
+  // Don't block pan recognizers — parent scroll views need them.
+  if ([other isKindOfClass:[UIPanGestureRecognizer class]]) return NO;
+
+  // Block everything else on ancestor views (RCTSurfaceTouchHandler,
+  // RNGH tap/press handlers, etc).
+  return YES;
+}
+
+- (BOOL)canPreventGestureRecognizer:
+    (UIGestureRecognizer *)preventedGR {
+  return NO;
+}
+
+- (BOOL)canBePreventedByGestureRecognizer:
+    (UIGestureRecognizer *)preventingGR {
+  return NO;
+}
+
+@end
+
+#pragma mark - MarkdownView
 
 @interface MarkdownView () <UITextViewDelegate>
 @end
@@ -82,6 +149,17 @@ using namespace facebook::react;
     _spoilerOverlays = [NSMutableArray new];
     _mentionOverlays = [NSMutableArray new];
 
+    // Block parent Pressable when a touch lands on an interactive
+    // native element. Non-interactive touches never reach this
+    // recognizer because hitTest returns nil for them.
+    MarkdownTouchBlockingRecognizer *blocker =
+        [[MarkdownTouchBlockingRecognizer alloc] initWithTarget:nil
+                                                         action:nil];
+    blocker.cancelsTouchesInView = NO;
+    blocker.delaysTouchesBegan = NO;
+    blocker.delaysTouchesEnded = NO;
+    [self addGestureRecognizer:blocker];
+
     // Listen for async image loads so we can dirty the measurer
     // cache and force Yoga to re-call measureContent with the
     // newly-known natural sizes.
@@ -101,6 +179,114 @@ using namespace facebook::react;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _baseContainer.frame = self.bounds;
+}
+
+#pragma mark - Hit testing
+
+/// Routes touches: interactive elements (overlays, links, scrollable
+/// tables) are returned so native gesture handling works. Everything
+/// else returns nil so the touch falls through to a parent Pressable.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  if (!self.userInteractionEnabled || self.hidden || self.alpha < 0.01) {
+    return nil;
+  }
+  if (![self pointInside:point withEvent:event]) {
+    return nil;
+  }
+
+  UIView *hitView = [super hitTest:point withEvent:event];
+  if (!hitView || hitView == self) return nil;
+
+  // 1. Overlay (mention, spoiler, image press) — interactive.
+  if ([hitView isKindOfClass:[MarkdownPressableOverlayView class]]) {
+    return hitView;
+  }
+
+  // 2. Text view (or an internal subview of one) — check for link.
+  MarkdownInternalTextView *textView =
+      [self markdownTextViewAncestorOf:hitView];
+  if (textView) {
+    CGPoint localPoint = [self convertPoint:point toView:textView];
+    if ([self isPointOverLink:localPoint inTextView:textView]) {
+      return textView;
+    }
+    return nil; // Plain text — pass through.
+  }
+
+  // 3. Scrollable table — let it handle panning.
+  MarkdownTableView *tableView =
+      [self scrollableTableAncestorOf:hitView];
+  if (tableView) {
+    return tableView;
+  }
+
+  // 4. Everything else (empty space, block containers, non-scrollable
+  //    table cells) — pass through to parent Pressable.
+  return nil;
+}
+
+/// Walks from `view` up to (but not including) self, looking for a
+/// MarkdownInternalTextView ancestor.
+- (nullable MarkdownInternalTextView *)markdownTextViewAncestorOf:
+    (UIView *)view {
+  UIView *v = view;
+  while (v && v != self) {
+    if ([v isKindOfClass:[MarkdownInternalTextView class]]) {
+      return (MarkdownInternalTextView *)v;
+    }
+    v = v.superview;
+  }
+  return nil;
+}
+
+/// Walks from `view` up to (but not including) self, looking for a
+/// scrollable MarkdownTableView ancestor.
+- (nullable MarkdownTableView *)scrollableTableAncestorOf:
+    (UIView *)view {
+  UIView *v = view;
+  while (v && v != self) {
+    if ([v isKindOfClass:[MarkdownTableView class]]) {
+      MarkdownTableView *table = (MarkdownTableView *)v;
+      return table.scrollEnabled ? table : nil;
+    }
+    v = v.superview;
+  }
+  return nil;
+}
+
+/// Returns YES when `point` (in the text view's coordinate space)
+/// lands on a character that carries NSLinkAttributeName.
+- (BOOL)isPointOverLink:(CGPoint)point
+             inTextView:(UITextView *)textView {
+  NSLayoutManager *lm = textView.layoutManager;
+  NSTextContainer *tc = textView.textContainer;
+  NSTextStorage *storage = textView.textStorage;
+  if (!lm || !tc || !storage || storage.length == 0) return NO;
+
+  CGPoint textPoint = CGPointMake(
+      point.x - textView.textContainerInset.left,
+      point.y - textView.textContainerInset.top);
+
+  CGRect textBounds = [lm usedRectForTextContainer:tc];
+  if (!CGRectContainsPoint(textBounds, textPoint)) return NO;
+
+  CGFloat fraction = 0;
+  NSUInteger glyphIdx =
+      [lm glyphIndexForPoint:textPoint
+              inTextContainer:tc
+  fractionOfDistanceThroughGlyph:&fraction];
+
+  CGRect glyphRect =
+      [lm boundingRectForGlyphRange:NSMakeRange(glyphIdx, 1)
+                     inTextContainer:tc];
+  if (!CGRectContainsPoint(glyphRect, textPoint)) return NO;
+
+  NSUInteger charIdx = [lm characterIndexForGlyphAtIndex:glyphIdx];
+  if (charIdx >= storage.length) return NO;
+
+  return [storage attribute:NSLinkAttributeName
+                    atIndex:charIdx
+             effectiveRange:nil] != nil;
 }
 
 - (void)updateProps:(const Props::Shared &)props
