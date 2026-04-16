@@ -315,7 +315,7 @@ interface EditorStyleState {
 | Autolinks | `https://example.com` |
 | Spoilers | `>!hidden!<` |
 | Superscript | `^word` or `^(words)` |
-| Mentions | `<UserMention id="1" name="Ali" />` |
+| Mentions | `<UserMention id="1" name="Ali" />`, `<ChannelMention id="1" name="general" />`, `<Command id="1" name="giphy" />` |
 
 ## License
 
