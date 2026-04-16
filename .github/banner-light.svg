@@ -1,0 +1,90 @@
+<svg width="720" height="240" viewBox="0 0 720 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="720" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#faf9f4"/>
+      <stop offset="1" stop-color="#f2f0e5"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="200" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A02F6F"/>
+      <stop offset="0.5" stop-color="#5E409D"/>
+      <stop offset="1" stop-color="#205EA6"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="56" y1="56" x2="136" y2="136" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#A02F6F"/>
+      <stop offset="1" stop-color="#5E409D"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="720" height="240" rx="16" fill="url(#bg)"/>
+
+  <!-- Decorative grid dots -->
+  <g opacity="0.08">
+    <circle cx="40" cy="40" r="1.5" fill="#100F0F"/>
+    <circle cx="80" cy="40" r="1.5" fill="#100F0F"/>
+    <circle cx="120" cy="40" r="1.5" fill="#100F0F"/>
+    <circle cx="40" cy="80" r="1.5" fill="#100F0F"/>
+    <circle cx="80" cy="80" r="1.5" fill="#100F0F"/>
+    <circle cx="120" cy="80" r="1.5" fill="#100F0F"/>
+    <circle cx="600" cy="160" r="1.5" fill="#100F0F"/>
+    <circle cx="640" cy="160" r="1.5" fill="#100F0F"/>
+    <circle cx="680" cy="160" r="1.5" fill="#100F0F"/>
+    <circle cx="600" cy="200" r="1.5" fill="#100F0F"/>
+    <circle cx="640" cy="200" r="1.5" fill="#100F0F"/>
+    <circle cx="680" cy="200" r="1.5" fill="#100F0F"/>
+  </g>
+
+  <!-- Markdown icon -->
+  <g transform="translate(72, 52)">
+    <!-- Icon background -->
+    <rect x="0" y="0" width="80" height="52" rx="8" fill="url(#mark)" opacity="0.1"/>
+    <rect x="0" y="0" width="80" height="52" rx="8" stroke="url(#mark)" stroke-width="2" fill="none" opacity="0.3"/>
+    <!-- M arrow -->
+    <path d="M16 36V16l12 14 12-14v20" stroke="url(#mark)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- Down arrow -->
+    <path d="M56 18v16m0 0l-6-6m6 6l6-6" stroke="url(#mark)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+
+  <!-- Title -->
+  <text x="72" y="140" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="30" font-weight="700" fill="#100F0F" letter-spacing="-0.5">
+    react-native-fast-markdown
+  </text>
+
+  <!-- Subtitle -->
+  <text x="72" y="170" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="15" fill="#6F6E69" letter-spacing="0.2">
+    High-performance native Markdown renderer and editor
+  </text>
+
+  <!-- Tags -->
+  <g transform="translate(72, 186)">
+    <!-- Fabric tag -->
+    <rect x="0" y="0" width="64" height="24" rx="6" fill="#205EA6" opacity="0.1"/>
+    <text x="32" y="16" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#205EA6" text-anchor="middle">Fabric</text>
+
+    <!-- iOS tag -->
+    <rect x="74" y="0" width="40" height="24" rx="6" fill="#5E409D" opacity="0.1"/>
+    <text x="94" y="16" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#5E409D" text-anchor="middle">iOS</text>
+
+    <!-- C++ tag -->
+    <rect x="124" y="0" width="44" height="24" rx="6" fill="#A02F6F" opacity="0.1"/>
+    <text x="146" y="16" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#A02F6F" text-anchor="middle">C++</text>
+
+    <!-- GFM tag -->
+    <rect x="178" y="0" width="48" height="24" rx="6" fill="#668C0B" opacity="0.1"/>
+    <text x="202" y="16" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="600" fill="#668C0B" text-anchor="middle">GFM</text>
+  </g>
+
+  <!-- Decorative code snippet on right -->
+  <g transform="translate(500, 52)">
+    <rect x="0" y="0" width="168" height="136" rx="10" fill="#100F0F" opacity="0.04"/>
+    <text font-family="Menlo, Monaco, 'Courier New', monospace" font-size="10" opacity="0.35">
+      <tspan x="12" y="24" fill="#5E409D">&lt;</tspan><tspan fill="#A02F6F">Markdown</tspan><tspan fill="#5E409D">&gt;</tspan>
+      <tspan x="12" y="42" fill="#6F6E69">  # Title</tspan>
+      <tspan x="12" y="58" fill="#6F6E69">  Hello **world**</tspan>
+      <tspan x="12" y="74" fill="#6F6E69">  - item one</tspan>
+      <tspan x="12" y="90" fill="#6F6E69">  - item two</tspan>
+      <tspan x="12" y="106" fill="#6F6E69">  &gt; quote</tspan>
+      <tspan x="12" y="124" fill="#5E409D">&lt;/</tspan><tspan fill="#A02F6F">Markdown</tspan><tspan fill="#5E409D">&gt;</tspan>
+    </text>
+  </g>
+</svg>
