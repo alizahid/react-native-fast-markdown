@@ -1,5 +1,12 @@
 import { useMemo } from 'react'
-import { FlatList, StyleSheet, Text, View } from 'react-native'
+import {
+  Alert,
+  FlatList,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { Markdown, type MarkdownStyle } from 'react-native-fast-markdown'
 
 const templates = [
@@ -7,7 +14,7 @@ const templates = [
 
   `# Quick Update
 We shipped the new feature today. Here's what changed:
-- Improved performance
+- Improved >!performance!<
 - Fixed the login bug
 - Added dark mode`,
 
@@ -25,13 +32,18 @@ Pretty simple, right?`,
 | Ali | Engineer |
 | Sarah | Designer |`,
 
+  `| Name | Role |
+|------|------|
+| Lorem ipsum dolor sit amet, consectetur adipiscing elit | Quisque condimentum leo eu consequat pulvinar |
+| In venenatis libero nec condimentum iaculis | Quisque sit amet enim at lorem dictum tempor at ac tortor |`,
+
   `Things to do today:
 - [x] Review PRs
-- [x] Ship hotfix
+- [x] Ship [hotfix](https://alizahid.dev)
 - [ ] Write docs
 - [ ] Plan sprint`,
 
-  `Just a simple message with **bold** and *italic* and a mention <Mention user="Ali" />`,
+  `Just a simple message with **bold** and *italic* and a mention <UserMention id="u_ali" name="Ali" />`,
 
   `Some inline \`code\` and a ~~strikethrough~~ word.
 
@@ -85,7 +97,12 @@ const markdownStyles: MarkdownStyle = {
 
 function MessageRow({ item }: { item: MessageItem }) {
   return (
-    <View style={styles.messageRow}>
+    <Pressable
+      onPress={() => {
+        Alert.alert('Item', JSON.stringify(item, null, 2))
+      }}
+      style={styles.messageRow}
+    >
       <View style={styles.avatar}>
         <Text style={styles.avatarText}>{item.author.charAt(0)}</Text>
       </View>
@@ -98,7 +115,7 @@ function MessageRow({ item }: { item: MessageItem }) {
           {item.markdown}
         </Markdown>
       </View>
-    </View>
+    </Pressable>
   )
 }
 
