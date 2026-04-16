@@ -31,7 +31,6 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
 @implementation MarkdownTableView {
   CGFloat _tableHeight;
   CGFloat _totalWidth;
-  BOOL _scrollBlockingConfigured;
 }
 
 #pragma mark - Layout computation (shared by view build + shadow-thread measure)
@@ -390,62 +389,6 @@ static const CGFloat kMaxColumnWidthRatio = 0.8;
   self.scrollEnabled = scrollable;
   self.showsHorizontalScrollIndicator = scrollable;
   self.bounces = scrollable;
-
-  if (scrollable) {
-    [self installScrollBlockingIfNeeded];
-  }
-}
-
-- (void)didMoveToWindow {
-  [super didMoveToWindow];
-  // Retry if layoutSubviews ran before the view was in a window.
-  if (self.window && self.scrollEnabled) {
-    [self installScrollBlockingIfNeeded];
-  }
-}
-
-#pragma mark - Hit testing
-
-- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
-  // When the table content fits within the visible width, scrolling
-  // is disabled and the UIScrollView doesn't need to handle any
-  // gestures. Return nil so the touch passes through to a parent
-  // Pressable (React Native or React Native Gesture Handler).
-  if (!self.scrollEnabled) {
-    return nil;
-  }
-  // Return self (not the deepest subview) so the touch is
-  // identified as landing on a UIScrollView. The table's internal
-  // labels don't need their own touch handling — only the pan
-  // gesture recognizer on the scroll view matters.
-  return [self pointInside:point withEvent:event] ? self : nil;
-}
-
-#pragma mark - Scroll-blocking coordination
-
-/// Makes ancestor touch handlers (RCTSurfaceTouchHandler, RNGH
-/// handlers) wait for our panGestureRecognizer to fail before
-/// recognizing. Effect:
-///   • User scrolls → pan recognizes → ancestor handlers fail →
-///     parent Pressable does NOT fire.
-///   • User taps → pan fails → ancestor handlers can recognize →
-///     parent Pressable fires.
-- (void)installScrollBlockingIfNeeded {
-  if (_scrollBlockingConfigured) return;
-  if (!self.window) return;
-  _scrollBlockingConfigured = YES;
-
-  UIPanGestureRecognizer *panGR = self.panGestureRecognizer;
-  UIView *ancestor = self.superview;
-  while (ancestor) {
-    for (UIGestureRecognizer *gr in ancestor.gestureRecognizers) {
-      // Skip pan recognizers — those drive parent scroll views
-      // (FlatList, ScrollView) and must stay unblocked.
-      if ([gr isKindOfClass:[UIPanGestureRecognizer class]]) continue;
-      [gr requireGestureRecognizerToFail:panGR];
-    }
-    ancestor = ancestor.superview;
-  }
 }
 
 @end

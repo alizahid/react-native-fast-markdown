@@ -8,8 +8,6 @@
 
 #include <atomic>
 
-#import <UIKit/UIGestureRecognizerSubclass.h>
-
 #import "ASTNodeWrapper.h"
 #import "CustomTagRenderer.h"
 #import "MarkdownBlockView.h"
@@ -36,77 +34,6 @@ static const CGFloat kDefaultImageHeight = 200.0;
 
 using namespace facebook::react;
 
-#pragma mark - Touch-blocking gesture recognizer
-
-/// Coordinates with React Native's touch handler (and RNGH handlers)
-/// to prevent a parent Pressable from firing when the touch lands on
-/// an interactive element inside the markdown renderer (link, mention,
-/// spoiler, or image press overlay).
-///
-/// Immediately transitions to Recognized for interactive elements
-/// (UIControl overlays and UITextView link hits), causing ancestor
-/// touch handlers to fail. For non-interactive areas it fails
-/// immediately, letting the ancestor handlers proceed.
-///
-/// Scrollable tables are handled separately by MarkdownTableView
-/// which sets up requireGestureRecognizerToFail: on its own
-/// panGestureRecognizer.
-@interface MarkdownTouchBlockingRecognizer : UIGestureRecognizer
-@end
-
-@implementation MarkdownTouchBlockingRecognizer
-
-- (void)touchesBegan:(NSSet<UITouch *> *)touches
-            withEvent:(UIEvent *)event {
-  [super touchesBegan:touches withEvent:event];
-
-  UIView *hitView = touches.anyObject.view;
-
-  if ([hitView isKindOfClass:[UIControl class]] ||
-      [hitView isKindOfClass:[UITextView class]]) {
-    // Overlay (mention, spoiler, image) or link — block the parent
-    // touch handler immediately so Pressable does not fire.
-    self.state = UIGestureRecognizerStateRecognized;
-  } else {
-    // Non-interactive area — let parent Pressable handle.
-    self.state = UIGestureRecognizerStateFailed;
-  }
-}
-
-#pragma mark - Failure-requirement wiring
-
-- (BOOL)shouldBeRequiredToFailByGestureRecognizer:
-    (UIGestureRecognizer *)other {
-  UIView *otherView = other.view;
-  if (!otherView) return NO;
-
-  // Don't block recognizers on our own view tree (e.g. the table's
-  // own panGestureRecognizer).
-  if ([otherView isDescendantOfView:self.view]) return NO;
-
-  // Don't block pan gesture recognizers — those drive parent scroll
-  // views and must stay unblocked.
-  if ([other isKindOfClass:[UIPanGestureRecognizer class]]) return NO;
-
-  // Block everything else on ancestor views: RCTSurfaceTouchHandler,
-  // RNGH tap/press handlers, etc.
-  return YES;
-}
-
-- (BOOL)canPreventGestureRecognizer:
-    (UIGestureRecognizer *)preventedGR {
-  return NO;
-}
-
-- (BOOL)canBePreventedByGestureRecognizer:
-    (UIGestureRecognizer *)preventingGR {
-  return NO;
-}
-
-@end
-
-#pragma mark - MarkdownView
-
 @interface MarkdownView () <UITextViewDelegate>
 @end
 
@@ -126,11 +53,6 @@ using namespace facebook::react;
 
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
-
-  // YES when the JS side passed an onLinkLongPress handler.
-  // When set, long-press on links emits the event instead of
-  // showing the native iOS link context menu.
-  BOOL _linkLongPressEnabled;
 
   // Captured in updateState:oldState: so markNeedsRemeasure can
   // dispatch a new state update back to the shadow tree.
@@ -159,19 +81,6 @@ using namespace facebook::react;
 
     _spoilerOverlays = [NSMutableArray new];
     _mentionOverlays = [NSMutableArray new];
-
-    // Install a gesture recognizer that prevents parent Pressable
-    // components (RN or RNGH) from firing when the touch lands on
-    // an interactive element inside the markdown (link, overlay,
-    // scrollable table). For non-interactive areas the recognizer
-    // fails immediately, letting the parent Pressable work.
-    MarkdownTouchBlockingRecognizer *blocker =
-        [[MarkdownTouchBlockingRecognizer alloc] initWithTarget:nil
-                                                         action:nil];
-    blocker.cancelsTouchesInView = NO;
-    blocker.delaysTouchesBegan = NO;
-    blocker.delaysTouchesEnded = NO;
-    [self addGestureRecognizer:blocker];
 
     // Listen for async image loads so we can dirty the measurer
     // cache and force Yoga to re-call measureContent with the
@@ -214,8 +123,6 @@ using namespace facebook::react;
   NSString *styleJSON = newViewProps.styles.empty()
                             ? @""
                             : [NSString stringWithUTF8String:newViewProps.styles.c_str()];
-
-  _linkLongPressEnabled = newViewProps.linkLongPressEnabled;
 
   NSMutableArray<NSString *> *customTags = [NSMutableArray new];
   for (const auto &tag : newViewProps.customTags) {
@@ -734,18 +641,6 @@ using namespace facebook::react;
   };
   [_mentionOverlays addObject:mentionOverlay];
 
-  // Link tap — instant via a UITapGestureRecognizer that bypasses
-  // UITextView's delayed UITextItemInteraction gesture path.
-  // Long-press is still handled by the UITextViewDelegate below.
-  if ([textView isKindOfClass:[MarkdownInternalTextView class]]) {
-    MarkdownInternalTextView *mdTextView =
-        (MarkdownInternalTextView *)textView;
-    [mdTextView installLinkTapRecognizer];
-    mdTextView.onLinkTap = ^(NSURL *url) {
-      [weakSelf emitLinkPressForURL:url];
-    };
-  }
-
   // Rebuild overlay rects every time the text view lays out — they
   // depend on computed line fragments, which only become accurate
   // after the view has a real width. Without this the overlays are
@@ -772,34 +667,39 @@ using namespace facebook::react;
                 [scheme isEqualToString:@"https"];
 
   if (interaction == UITextItemInteractionInvokeDefaultAction) {
-    // Tap — handled by the fast UITapGestureRecognizer installed via
-    // installLinkTapRecognizer. Return NO so UITextView doesn't
-    // open the URL in Safari. Don't emit onLinkPress here — the tap
-    // GR already fired it.
+    // Tap — emit onLinkPress so JS can handle (open in-app, log,
+    // override, etc.). Always return NO so UITextView doesn't also
+    // open the URL in Safari behind our back.
+    if (_eventEmitter) {
+      const auto &eventEmitter =
+          static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+      eventEmitter.onLinkPress({
+          .url = std::string([[URL absoluteString] UTF8String]),
+          .title = std::string(""),
+      });
+    }
     return NO;
   }
 
   if (interaction == UITextItemInteractionPresentActions) {
-    // Long-press — if the JS side provided an onLinkLongPress
-    // handler, always emit the event and let JS decide what to
-    // show. Otherwise fall back to the native iOS link context
-    // menu for http(s) URLs.
-    if (_linkLongPressEnabled) {
-      if (_eventEmitter) {
-        const auto &eventEmitter =
-            static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
-        eventEmitter.onLinkLongPress({
-            .url = std::string([[URL absoluteString] UTF8String]),
-            .title = std::string(""),
-        });
-      }
-      return NO;
+    // Long-press — for http(s) URLs return YES so UITextView shows
+    // the native iOS link context menu (the popover with a rendered
+    // webpage preview and Open / Copy Link / Add to Reading List /
+    // Share). For custom schemes (deeplinks, mailto:, tel:, etc.)
+    // fall back to firing onLinkLongPress so JS can decide.
+    if (isHttp) {
+      return YES;
     }
 
-    // No JS handler — show the native context menu for http(s)
-    // links (page preview + Open / Copy / Share). Non-http
-    // schemes have no useful native preview, so suppress.
-    return isHttp;
+    if (_eventEmitter) {
+      const auto &eventEmitter =
+          static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
+      eventEmitter.onLinkLongPress({
+          .url = std::string([[URL absoluteString] UTF8String]),
+          .title = std::string(""),
+      });
+    }
+    return NO;
   }
 
   return NO;
@@ -837,18 +737,6 @@ using namespace facebook::react;
       .mentionId = std::string([mentionId UTF8String]),
       .mentionName = std::string([name UTF8String]),
       .mentionProps = std::string([propsJson UTF8String]),
-  });
-}
-
-#pragma mark - Link press
-
-- (void)emitLinkPressForURL:(NSURL *)url {
-  if (!_eventEmitter || !url) return;
-  const auto &eventEmitter =
-      static_cast<const MarkdownViewEventEmitter &>(*_eventEmitter);
-  eventEmitter.onLinkPress({
-      .url = std::string([[url absoluteString] UTF8String]),
-      .title = std::string(""),
   });
 }
 

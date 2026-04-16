@@ -12,14 +12,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// Called on the main thread after every call to layoutSubviews.
 @property (nonatomic, copy, nullable) void (^onLayoutSubviews)(void);
 
-/// Called instantly (touch-up) when a link is tapped.  Bypasses
-/// UITextView's delayed UITextItemInteraction gesture path.
-@property (nonatomic, copy, nullable) void (^onLinkTap)(NSURL *url);
-
-/// Installs a UITapGestureRecognizer that fires onLinkTap for link
-/// ranges. Call once after the text view's content is configured.
-- (void)installLinkTapRecognizer;
-
 @end
 
 NS_ASSUME_NONNULL_END

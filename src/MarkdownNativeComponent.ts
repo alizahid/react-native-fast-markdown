@@ -17,11 +17,6 @@ export interface MarkdownViewNativeProps extends ViewProps {
   images?: ReadonlyArray<
     Readonly<{ url: string; width: Double; height: Double }>
   >
-  /** When true the native side emits onLinkLongPress instead of
-   *  showing the system link context menu. Derived automatically
-   *  from whether the JS component receives an onLinkLongPress
-   *  callback. */
-  linkLongPressEnabled?: boolean
   markdown: string
 
   // Events
