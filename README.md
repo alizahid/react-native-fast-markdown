@@ -1,5 +1,5 @@
 <p align="center">
-  <img alt="react-native-fast-markdown" src="https://raw.githubusercontent.com/alizahid/react-native-fast-markdown/HEAD/.github/banner.png" width="720">
+  <img alt="react-native-fast-markdown" src="https://github.com/alizahid/react-native-fast-markdown/blob/main/.github/banner.png?raw=true" width="720">
 </p>
 
 <p align="center">
