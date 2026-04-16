@@ -221,7 +221,7 @@ using namespace facebook::react;
       [self markdownTextViewAncestorOf:hitView];
   if (textView) {
     CGPoint localPoint = [self convertPoint:point toView:textView];
-    if ([self isPointOverLink:localPoint inTextView:textView]) {
+    if ([self linkURLAtPoint:localPoint inTextView:textView]) {
       return textView;
     }
     return nil; // Plain text — pass through.
@@ -270,42 +270,10 @@ using namespace facebook::react;
   return nil;
 }
 
-/// Returns YES when `point` (in the text view's coordinate space)
-/// lands on a character that carries NSLinkAttributeName.
-- (BOOL)isPointOverLink:(CGPoint)point
-             inTextView:(UITextView *)textView {
-  NSLayoutManager *lm = textView.layoutManager;
-  NSTextContainer *tc = textView.textContainer;
-  NSTextStorage *storage = textView.textStorage;
-  if (!lm || !tc || !storage || storage.length == 0) return NO;
-
-  CGPoint textPoint = CGPointMake(
-      point.x - textView.textContainerInset.left,
-      point.y - textView.textContainerInset.top);
-
-  CGRect textBounds = [lm usedRectForTextContainer:tc];
-  if (!CGRectContainsPoint(textBounds, textPoint)) return NO;
-
-  CGFloat fraction = 0;
-  NSUInteger glyphIdx =
-      [lm glyphIndexForPoint:textPoint
-              inTextContainer:tc
-  fractionOfDistanceThroughGlyph:&fraction];
-
-  CGRect glyphRect =
-      [lm boundingRectForGlyphRange:NSMakeRange(glyphIdx, 1)
-                     inTextContainer:tc];
-  if (!CGRectContainsPoint(glyphRect, textPoint)) return NO;
-
-  NSUInteger charIdx = [lm characterIndexForGlyphAtIndex:glyphIdx];
-  if (charIdx >= storage.length) return NO;
-
-  return [storage attribute:NSLinkAttributeName
-                    atIndex:charIdx
-             effectiveRange:nil] != nil;
-}
-
-/// Like isPointOverLink: but returns the NSURL (or nil).
+/// Returns the link URL at `point` (in the text view's coordinate
+/// space), or nil if the character under the point does not carry
+/// NSLinkAttributeName. Used by both hitTest (to decide whether to
+/// claim the touch) and handleLinkTap: (to emit onLinkPress).
 - (nullable NSURL *)linkURLAtPoint:(CGPoint)point
                         inTextView:(UITextView *)textView {
   NSLayoutManager *lm = textView.layoutManager;
