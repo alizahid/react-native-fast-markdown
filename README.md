@@ -319,7 +319,7 @@ interface EditorStyleState {
 
 ## Sponsors
 
-[![Duet](https://github.com/alizahid/react-native-fast-markdown/blob/main/.github/duet.png?raw=true)](https://duet.so)
+[<img alt="Duet" src="https://github.com/alizahid/react-native-fast-markdown/blob/main/.github/duet.png?raw=true" width="128">](https://duet.so)
 
 ## License
 
