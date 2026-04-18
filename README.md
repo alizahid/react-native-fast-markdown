@@ -317,6 +317,10 @@ interface EditorStyleState {
 | Superscript | `^word` or `^(words)` |
 | Mentions | `<UserMention id="1" name="Ali" />`, `<ChannelMention id="1" name="general" />`, `<Command id="giphy" />` |
 
+## Sponsors
+
+[![Duet](https://github.com/alizahid/react-native-fast-markdown/blob/main/.github/duet.png?raw=true)](https://duet.so)
+
 ## License
 
 MIT
