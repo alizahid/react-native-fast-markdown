@@ -54,6 +54,7 @@ export interface MarkdownEditorViewNativeProps extends ViewProps {
   >
   onMentionEnd?: DirectEventHandler<Readonly<{ trigger: string }>>
   onMentionStart?: DirectEventHandler<Readonly<{ trigger: string }>>
+  onPaste?: DirectEventHandler<Readonly<{ imagesJson: string; text: string }>>
   placeholder?: string
   placeholderTextColor?: string
   scrollEnabled?: boolean
@@ -64,6 +65,10 @@ export interface MarkdownEditorViewNativeProps extends ViewProps {
 type MarkdownEditorViewComponent = HostComponent<MarkdownEditorViewNativeProps>
 
 interface NativeCommands {
+  applyPaste: (
+    viewRef: React.ElementRef<MarkdownEditorViewComponent>,
+    text: string,
+  ) => void
   blur: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
   focus: (viewRef: React.ElementRef<MarkdownEditorViewComponent>) => void
   insertCustomTag: (
@@ -148,6 +153,7 @@ export const Commands = codegenNativeCommands<NativeCommands>({
     'insertMention',
     'insertSpoiler',
     'insertCustomTag',
+    'applyPaste',
   ],
 })
 

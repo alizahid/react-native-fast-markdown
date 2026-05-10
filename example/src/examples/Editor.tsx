@@ -270,6 +270,12 @@ export function EditorScreen() {
               setMentionTrigger(trigger)
               setMentionQuery('')
             }}
+            onPaste={(event) => {
+              console.log('onPaste', event)
+              if (event.images) {
+                Alert.alert('paste', JSON.stringify(event.images))
+              }
+            }}
             placeholder="Type some markdown..."
             ref={editor.ref}
             style={styles.input}

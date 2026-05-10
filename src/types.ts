@@ -358,6 +358,19 @@ export interface ImagePressEvent {
   width: number
 }
 
+export interface PastedImage {
+  height: number
+  url: string
+  width: number
+}
+
+export interface OnPasteEvent {
+  readonly defaultPrevented: boolean
+  images?: Array<PastedImage>
+  preventDefault(): void
+  text?: string
+}
+
 // --- Editor State ---
 
 export interface EditorStyleState {

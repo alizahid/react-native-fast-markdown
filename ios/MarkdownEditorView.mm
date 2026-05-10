@@ -3,6 +3,7 @@
 #import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
 #import <QuartzCore/QuartzCore.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <react/renderer/components/MarkdownViewSpec/ComponentDescriptors.h>
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
@@ -16,10 +17,37 @@
 
 using namespace facebook::react;
 
+@class MarkdownEditorTextView;
+
+@protocol MarkdownEditorTextViewPasteHandler <NSObject>
+- (void)markdownEditorTextViewDidRequestPaste:(MarkdownEditorTextView *)textView;
+@end
+
 @interface MarkdownEditorTextView : UITextView
+@property (nonatomic, weak) id<MarkdownEditorTextViewPasteHandler> pasteHandler;
 @end
 
 @implementation MarkdownEditorTextView
+
+- (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
+  if (action == @selector(paste:)) {
+    UIPasteboard *pasteboard = UIPasteboard.generalPasteboard;
+    if (self.editable && _pasteHandler &&
+        (pasteboard.hasStrings || pasteboard.hasImages)) {
+      return YES;
+    }
+  }
+
+  return [super canPerformAction:action withSender:sender];
+}
+
+- (void)paste:(id)sender {
+  if (_pasteHandler) {
+    [_pasteHandler markdownEditorTextViewDidRequestPaste:self];
+    return;
+  }
+  [super paste:sender];
+}
 
 - (CGRect)caretRectForPosition:(UITextPosition *)position {
   CGRect rect = [super caretRectForPosition:position];
@@ -35,7 +63,7 @@ using namespace facebook::react;
 
 @end
 
-@interface MarkdownEditorView () <UITextViewDelegate>
+@interface MarkdownEditorView () <UITextViewDelegate, MarkdownEditorTextViewPasteHandler>
 @end
 
 @implementation MarkdownEditorView {
@@ -55,6 +83,9 @@ using namespace facebook::react;
   NSSet<NSString *> *_mentionTriggers;
   NSString *_activeMentionTrigger;  // nil when not in a mention
   NSUInteger _mentionStartPos;     // position after the trigger char
+
+  BOOL _hasPendingPasteRange;
+  NSRange _pendingPasteRange;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -71,6 +102,7 @@ using namespace facebook::react;
 
     _textView = [[MarkdownEditorTextView alloc] initWithFrame:self.bounds];
     _textView.delegate = self;
+    ((MarkdownEditorTextView *)_textView).pasteHandler = self;
     _textView.autocorrectionType = UITextAutocorrectionTypeDefault;
     _textView.scrollEnabled = YES;
     _textView.backgroundColor = [UIColor clearColor];
@@ -94,6 +126,9 @@ using namespace facebook::react;
   // Re-attach delegate after prepareForRecycle cleared it.
   if (!_textView.delegate) {
     _textView.delegate = self;
+  }
+  if (!((MarkdownEditorTextView *)_textView).pasteHandler) {
+    ((MarkdownEditorTextView *)_textView).pasteHandler = self;
   }
 
   const auto &newProps =
@@ -1438,6 +1473,189 @@ using namespace facebook::react;
 }
 
 // ---------------------------------------------------------------
+#pragma mark - Paste
+// ---------------------------------------------------------------
+
+- (void)markdownEditorTextViewDidRequestPaste:(MarkdownEditorTextView *)textView {
+  UIPasteboard *pasteboard = UIPasteboard.generalPasteboard;
+  NSString *text = pasteboard.string ?: @"";
+  if (text.length == 0 && pasteboard.URL) {
+    text = pasteboard.URL.absoluteString;
+  }
+  NSString *imagesJSON = [self pastedImagesJSONFromPasteboard:pasteboard];
+
+  if (text.length == 0 && imagesJSON.length == 0) {
+    return;
+  }
+
+  _pendingPasteRange = _textView.selectedRange;
+  _hasPendingPasteRange = YES;
+  [self emitPasteWithText:text imagesJSON:imagesJSON];
+}
+
+- (NSString *)pastedImagesJSONFromPasteboard:(UIPasteboard *)pasteboard {
+  NSMutableArray<NSDictionary *> *payload = [NSMutableArray new];
+
+  for (NSDictionary<NSString *, id> *item in pasteboard.items) {
+    NSData *imageData = nil;
+    BOOL added = NO;
+    NSString *mimeType = nil;
+
+    for (NSString *type in item.allKeys) {
+      if (added) {
+        break;
+      }
+
+      mimeType = [self mimeTypeForImagePasteboardType:type];
+      if (!mimeType) {
+        continue;
+      }
+
+      id value = item[type];
+      if ([value isKindOfClass:NSData.class]) {
+        imageData = value;
+      } else if ([value isKindOfClass:UIImage.class]) {
+        imageData = [self dataForImage:value pasteboardType:type];
+      } else if ([type isEqualToString:UTTypeGIF.identifier] ||
+                 [type isEqualToString:UTTypeWebP.identifier]) {
+        imageData = [pasteboard dataForPasteboardType:type];
+      }
+
+      if (!imageData) {
+        continue;
+      }
+
+      UIImage *imageInfo = [UIImage imageWithData:imageData];
+      if (!imageInfo) {
+        continue;
+      }
+
+      NSURL *url = [self savePastedImageData:imageData mimeType:mimeType];
+      if (!url) {
+        continue;
+      }
+
+      added = YES;
+      [payload addObject:@{
+        @"url" : url.absoluteString,
+        @"width" : @(imageInfo.size.width),
+        @"height" : @(imageInfo.size.height),
+      }];
+    }
+  }
+
+  if (payload.count == 0) return @"";
+  NSData *json = [NSJSONSerialization dataWithJSONObject:payload
+                                                 options:0
+                                                   error:nil];
+  if (!json) return @"";
+  return [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding] ?: @"";
+}
+
+- (NSString *)mimeTypeForImagePasteboardType:(NSString *)type {
+  if ([type isEqualToString:UTTypeJPEG.identifier]) {
+    return @"image/jpeg";
+  }
+  if ([type isEqualToString:UTTypePNG.identifier]) {
+    return @"image/png";
+  }
+  if ([type isEqualToString:UTTypeGIF.identifier]) {
+    return @"image/gif";
+  }
+  if ([type isEqualToString:UTTypeHEIC.identifier]) {
+    return @"image/heic";
+  }
+  if ([type isEqualToString:UTTypeWebP.identifier]) {
+    return @"image/webp";
+  }
+  if ([type isEqualToString:UTTypeTIFF.identifier]) {
+    return @"image/tiff";
+  }
+  return nil;
+}
+
+- (NSString *)fileExtensionForImageMimeType:(NSString *)mimeType {
+  if ([mimeType isEqualToString:@"image/jpeg"]) return @"jpg";
+  if ([mimeType isEqualToString:@"image/png"]) return @"png";
+  if ([mimeType isEqualToString:@"image/gif"]) return @"gif";
+  if ([mimeType isEqualToString:@"image/heic"]) return @"heic";
+  if ([mimeType isEqualToString:@"image/webp"]) return @"webp";
+  if ([mimeType isEqualToString:@"image/tiff"]) return @"tiff";
+  return @"img";
+}
+
+- (NSData *)dataForImage:(UIImage *)image pasteboardType:(NSString *)type {
+  if ([type isEqualToString:UTTypePNG.identifier]) {
+    return UIImagePNGRepresentation(image);
+  }
+  if ([type isEqualToString:UTTypeHEIC.identifier]) {
+    return UIImageHEICRepresentation(image);
+  }
+  return UIImageJPEGRepresentation(image, 1.0);
+}
+
+- (NSURL *)savePastedImageData:(NSData *)data mimeType:(NSString *)mimeType {
+  if (!data) return nil;
+
+  NSString *extension = [self fileExtensionForImageMimeType:mimeType ?: @""];
+  NSString *filename = [NSString stringWithFormat:
+      @"markdown-editor-paste-%@.%@", NSUUID.UUID.UUIDString, extension];
+  NSURL *url = [NSURL fileURLWithPath:
+      [NSTemporaryDirectory() stringByAppendingPathComponent:filename]];
+
+  if (![data writeToURL:url atomically:YES]) return nil;
+  return url;
+}
+
+- (void)applyPasteText:(NSString *)markdown {
+  if (markdown.length == 0) {
+    _hasPendingPasteRange = NO;
+    return;
+  }
+
+  NSRange range = _hasPendingPasteRange
+      ? _pendingPasteRange
+      : _textView.selectedRange;
+  _hasPendingPasteRange = NO;
+
+  if (range.location > _textView.text.length) {
+    range = _textView.selectedRange;
+  }
+  if (NSMaxRange(range) > _textView.text.length) {
+    range.length = _textView.text.length - range.location;
+  }
+
+  InputParserResult *result = [InputParser parseMarkdown:markdown];
+  NSString *insertedText = result.plainText.length > 0
+      ? result.plainText
+      : markdown;
+
+  _suppressFormatting = YES;
+  [_textView.textStorage replaceCharactersInRange:range
+                                       withString:insertedText];
+  [_store adjustForEditAt:range.location
+            deletedLength:range.length
+           insertedLength:insertedText.length];
+  _suppressFormatting = NO;
+
+  if (result.plainText.length > 0) {
+    for (FormattingRange *parsedRange in result.store.allRanges) {
+      FormattingRange *shifted = [parsedRange copy];
+      shifted.range = NSMakeRange(range.location + parsedRange.range.location,
+                                  parsedRange.range.length);
+      [_store addRange:shifted];
+    }
+  }
+
+  [_store clearPending];
+  _textView.selectedRange = NSMakeRange(range.location + insertedText.length, 0);
+  [self applyFullFormatting];
+  [self resetTypingAttributes];
+  [self detectAndEmitState];
+  [self emitMarkdownChange];
+}
+
+// ---------------------------------------------------------------
 #pragma mark - Mentions
 // ---------------------------------------------------------------
 
@@ -1664,6 +1882,9 @@ using namespace facebook::react;
     NSString *tag = args.count > 0 ? args[0] : @"";
     NSString *propsJSON = args.count > 1 ? args[1] : @"{}";
     [self insertCustomTag:tag propsJSON:propsJSON];
+  } else if ([commandName isEqualToString:@"applyPaste"]) {
+    NSString *text = args.count > 0 ? args[0] : @"";
+    [self applyPasteText:text];
   }
 }
 
@@ -1750,6 +1971,16 @@ using namespace facebook::react;
   const auto &emitter =
       static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
   emitter.onLinkDetected({.url = std::string([url UTF8String])});
+}
+
+- (void)emitPasteWithText:(NSString *)text imagesJSON:(NSString *)imagesJSON {
+  if (!_eventEmitter) return;
+  const auto &emitter =
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
+  emitter.onPaste({
+      .text = std::string([(text ?: @"") UTF8String]),
+      .imagesJson = std::string([(imagesJSON ?: @"") UTF8String]),
+  });
 }
 
 // ---------------------------------------------------------------
@@ -1865,6 +2096,7 @@ using namespace facebook::react;
 
   // Clear delegate to break the strong reference from textView → self.
   _textView.delegate = nil;
+  ((MarkdownEditorTextView *)_textView).pasteHandler = nil;
 
   // Reset editor content and formatting state
   _suppressFormatting = YES;
@@ -1878,6 +2110,7 @@ using namespace facebook::react;
   _activeMentionTrigger = nil;
   _mentionStartPos = 0;
   _mentionTriggers = nil;
+  _hasPendingPasteRange = NO;
 }
 
 @end

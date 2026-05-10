@@ -35,5 +35,7 @@ export type {
   MentionPressEvent,
   MentionTrigger,
   MentionType,
+  OnPasteEvent,
+  PastedImage,
 } from './types'
 export { useMarkdownEditor } from './useMarkdownEditor'

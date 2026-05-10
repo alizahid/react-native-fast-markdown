@@ -9,6 +9,8 @@ import {
   type MarkdownEditorHandle,
   type MarkdownStyle,
   type MentionTrigger,
+  type OnPasteEvent,
+  type PastedImage,
 } from './types'
 
 export interface MarkdownEditorProps extends ViewProps {
@@ -68,6 +70,9 @@ export interface MarkdownEditorProps extends ViewProps {
   /** Called when user types a trigger character — show suggestions */
   onMentionStart?: (trigger: MentionTrigger) => void
 
+  /** Called before pasted text is inserted. Call preventDefault() to reject it. */
+  onPaste?: (event: OnPasteEvent) => void
+
   /** Placeholder text */
   placeholder?: string
 
@@ -111,6 +116,7 @@ export const MarkdownEditor = forwardRef<
     onMentionStart,
     onMentionChange,
     onMentionEnd,
+    onPaste,
     onFocus,
     onBlur,
     ...viewProps
@@ -347,6 +353,39 @@ export const MarkdownEditor = forwardRef<
     [onChangeState],
   )
 
+  const handlePaste = useCallback(
+    (e: { nativeEvent: { imagesJson: string; text: string } }) => {
+      let defaultPrevented = false
+      let images: Array<PastedImage> | undefined
+
+      if (e.nativeEvent.imagesJson) {
+        try {
+          images = JSON.parse(e.nativeEvent.imagesJson) as Array<PastedImage>
+        } catch {
+          images = undefined
+        }
+      }
+
+      const event = {
+        get defaultPrevented() {
+          return defaultPrevented
+        },
+        images,
+        preventDefault() {
+          defaultPrevented = true
+        },
+        text: e.nativeEvent.text || undefined,
+      } satisfies OnPasteEvent
+
+      onPaste?.(event)
+
+      if (!defaultPrevented && e.nativeEvent.text && nativeRef.current) {
+        Commands.applyPaste(nativeRef.current, e.nativeEvent.text)
+      }
+    },
+    [onPaste],
+  )
+
   return (
     <MarkdownEditorViewNative
       {...restViewProps}
@@ -404,6 +443,7 @@ export const MarkdownEditor = forwardRef<
           ? (e) => onMentionStart(e.nativeEvent.trigger as MentionTrigger)
           : undefined
       }
+      onPaste={handlePaste}
       placeholder={placeholder}
       placeholderTextColor={
         placeholderTextColor ? String(placeholderTextColor) : undefined

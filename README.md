@@ -145,6 +145,7 @@ A rich text input that outputs markdown.
 | `onMentionStart` | `(trigger: MentionTrigger) => void` | User typed a trigger character |
 | `onMentionChange` | `(event: { query, trigger }) => void` | Keystroke after trigger |
 | `onMentionEnd` | `(trigger: MentionTrigger) => void` | Mention cancelled |
+| `onPaste` | `(event: OnPasteEvent) => void` | Paste payload before insertion; call `event.preventDefault()` to reject |
 
 ### `useMarkdownEditor()`
 
@@ -277,6 +278,13 @@ interface MentionPressEvent {
   name?: string
   type: 'user' | 'channel' | 'command'
   [key: string]: string | undefined // extra tag attributes
+}
+
+interface OnPasteEvent {
+  readonly defaultPrevented: boolean
+  text?: string
+  images?: { url: string; height: number; width: number }[]
+  preventDefault(): void
 }
 
 interface EditorStyleState {
