@@ -43,7 +43,6 @@ const defaultStyles: MarkdownStyle = {
     fontSize: 14,
     backgroundColor: colors.background,
     borderRadius: 6,
-    padding: 12,
   },
   link: {
     color: colors.link,
@@ -53,9 +52,9 @@ const defaultStyles: MarkdownStyle = {
   },
   blockquote: {
     backgroundColor: colors.background,
-    padding: 6,
+    paddingLeft: 4,
     borderRadius: 6,
-    borderLeftWidth: 6,
+    borderLeftWidth: 4,
     borderColor: colors.border,
   },
   listBullet: {

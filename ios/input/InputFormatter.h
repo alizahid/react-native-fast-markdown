@@ -11,7 +11,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) UIFont *baseFont;
 @property (nonatomic, strong) UIColor *baseColor;
 @property (nonatomic) CGFloat baseLineHeight;
-@property (nonatomic) CGFloat paragraphSpacing;
 
 /// Full re-style: resets everything to base attributes, then
 /// layers on block and inline formatting. Used for import and

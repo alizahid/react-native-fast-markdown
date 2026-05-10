@@ -1,7 +1,10 @@
 #import "InputFormatter.h"
 #import "FormattingRange.h"
 #import "FormattingStore.h"
+#import "StyleAttributes.h"
 #import "StyleConfig.h"
+
+#import <CoreText/CoreText.h>
 
 @implementation InputFormatter
 
@@ -16,17 +19,10 @@
   CGFloat lineHeight = _baseLineHeight > 0
       ? _baseLineHeight
       : _styleConfig.base.lineHeight;
-  CGFloat gap = _paragraphSpacing > 0
-      ? _paragraphSpacing
-      : _styleConfig.base.gap;
-
   NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
   if (lineHeight > 0) {
     basePStyle.minimumLineHeight = lineHeight;
     basePStyle.maximumLineHeight = lineHeight;
-  }
-  if (gap > 0) {
-    basePStyle.paragraphSpacing = gap;
   }
 
   [textStorage addAttribute:NSFontAttributeName value:_baseFont range:fullRange];
@@ -35,6 +31,7 @@
   [textStorage removeAttribute:NSBackgroundColorAttributeName range:fullRange];
   [textStorage removeAttribute:NSStrikethroughStyleAttributeName range:fullRange];
   [textStorage removeAttribute:NSStrikethroughColorAttributeName range:fullRange];
+  [textStorage removeAttribute:(NSString *)kCTSuperscriptAttributeName range:fullRange];
 
   // Apply block-level formatting from the store
   for (FormattingRange *r in store.allRanges) {
@@ -42,8 +39,7 @@
     if (NSMaxRange(r.range) > textStorage.length) continue;
     [self applyBlockRange:r
             toTextStorage:textStorage
-               lineHeight:lineHeight
-                      gap:gap];
+               lineHeight:lineHeight];
   }
 
   // Apply inline formatting on top
@@ -74,19 +70,12 @@
   CGFloat lineHeight = _baseLineHeight > 0
       ? _baseLineHeight
       : _styleConfig.base.lineHeight;
-  CGFloat gap = _paragraphSpacing > 0
-      ? _paragraphSpacing
-      : _styleConfig.base.gap;
-
   [textStorage beginEditing];
 
   NSMutableParagraphStyle *basePStyle = [NSMutableParagraphStyle new];
   if (lineHeight > 0) {
     basePStyle.minimumLineHeight = lineHeight;
     basePStyle.maximumLineHeight = lineHeight;
-  }
-  if (gap > 0) {
-    basePStyle.paragraphSpacing = gap;
   }
 
   [textStorage addAttribute:NSFontAttributeName
@@ -104,6 +93,8 @@
                          range:dirtyRange];
   [textStorage removeAttribute:NSStrikethroughColorAttributeName
                          range:dirtyRange];
+  [textStorage removeAttribute:(NSString *)kCTSuperscriptAttributeName
+                         range:dirtyRange];
 
   // Re-apply block formatting that intersects the dirty range
   for (FormattingRange *r in store.allRanges) {
@@ -113,8 +104,7 @@
     if (NSMaxRange(r.range) > textStorage.length) continue;
     [self applyBlockRange:r
             toTextStorage:textStorage
-               lineHeight:lineHeight
-                      gap:gap];
+               lineHeight:lineHeight];
   }
 
   // Re-apply inline formatting that intersects the dirty range
@@ -135,9 +125,7 @@
 #pragma mark - Mention Styling
 
 - (void)applyMentionStyling:(NSTextStorage *)textStorage {
-  if (textStorage.length == 0) return;
-  [self applyMentionStylingInRange:NSMakeRange(0, textStorage.length)
-                       textStorage:textStorage];
+  // Mention styling is now driven by FormattingTypeMention ranges.
 }
 
 - (void)applyMentionStylingInRange:(NSRange)range
@@ -177,8 +165,7 @@
 
 - (void)applyBlockRange:(FormattingRange *)r
           toTextStorage:(NSTextStorage *)textStorage
-             lineHeight:(CGFloat)lineHeight
-                    gap:(CGFloat)gap {
+             lineHeight:(CGFloat)lineHeight {
   switch (r.type) {
   case FormattingTypeHeading1:
   case FormattingTypeHeading2:
@@ -207,13 +194,31 @@
   }
 
   case FormattingTypeBlockquote:
-  case FormattingTypeCodeBlock:
-    // Block-level code blocks and blockquotes are not rendered
-    // in the editor. They are only used by the parser/serializer.
+    [self applyElementStyle:_styleConfig.blockquote
+              toTextStorage:textStorage
+                      range:r.range];
+    [textStorage removeAttribute:NSBackgroundColorAttributeName range:r.range];
+    [self applyBlockLayoutForStyle:_styleConfig.blockquote
+                      textStorage:textStorage
+                             range:r.range];
     break;
+
+  case FormattingTypeCodeBlock: {
+    MarkdownElementStyle *style = _styleConfig.codeBlock;
+    [self applyElementStyle:style toTextStorage:textStorage range:r.range];
+    [textStorage removeAttribute:NSBackgroundColorAttributeName range:r.range];
+
+    [self applyBlockLayoutForStyle:style
+                      textStorage:textStorage
+                             range:r.range];
+    break;
+  }
 
   case FormattingTypeOrderedList:
   case FormattingTypeUnorderedList:
+    [self applyElementStyle:_styleConfig.listItem
+              toTextStorage:textStorage
+                      range:r.range];
     break;
 
   default:
@@ -298,18 +303,7 @@
 
   case FormattingTypeCode: {
     MarkdownElementStyle *style = _styleConfig.code;
-    UIFont *codeFont =
-        [style resolvedFontWithBase:_baseFont]
-            ?: [UIFont monospacedSystemFontOfSize:_baseFont.pointSize
-                                          weight:UIFontWeightRegular];
-    [textStorage addAttribute:NSFontAttributeName
-                        value:codeFont
-                        range:r.range];
-    UIColor *bg = style.backgroundColor
-                      ?: [UIColor colorWithWhite:0.5 alpha:0.1];
-    [textStorage addAttribute:NSBackgroundColorAttributeName
-                        value:bg
-                        range:r.range];
+    [self applyElementStyle:style toTextStorage:textStorage range:r.range];
     if (style.color) {
       [textStorage addAttribute:NSForegroundColorAttributeName
                           value:style.color
@@ -320,26 +314,133 @@
 
   case FormattingTypeLink: {
     MarkdownElementStyle *style = _styleConfig.link;
-    UIColor *linkColor = style.color ?: [UIColor systemBlueColor];
-    [textStorage addAttribute:NSForegroundColorAttributeName
-                        value:linkColor
-                        range:r.range];
+    if (style.color) {
+      [textStorage addAttribute:NSForegroundColorAttributeName
+                          value:style.color
+                          range:r.range];
+    }
     break;
   }
 
   case FormattingTypeSpoiler: {
     MarkdownElementStyle *style = _styleConfig.spoiler;
-    UIColor *bg = style.backgroundColor
-                      ?: [UIColor colorWithWhite:0.5 alpha:0.3];
-    [textStorage addAttribute:NSBackgroundColorAttributeName
-                        value:bg
+    if (style.backgroundColor) {
+      [textStorage addAttribute:NSBackgroundColorAttributeName
+                          value:style.backgroundColor
+                          range:r.range];
+    }
+    break;
+  }
+
+  case FormattingTypeSuperscript: {
+    MarkdownElementStyle *style = _styleConfig.superscript;
+    [self applyElementStyle:style toTextStorage:textStorage range:r.range];
+    [textStorage addAttribute:(NSString *)kCTSuperscriptAttributeName
+                        value:@1
                         range:r.range];
+    break;
+  }
+
+  case FormattingTypeMention: {
+    MarkdownElementStyle *style = [self styleForMentionRange:r];
+    [self applyElementStyle:style toTextStorage:textStorage range:r.range];
+    NSString *tag = [self tagStringForMentionRange:r];
+    if (tag.length > 0) {
+      [textStorage addAttribute:@"MDMentionTag" value:tag range:r.range];
+    }
     break;
   }
 
   default:
     break;
   }
+}
+
+- (void)applyElementStyle:(MarkdownElementStyle *)style
+            toTextStorage:(NSTextStorage *)textStorage
+                    range:(NSRange)range {
+  if (!style || range.length == 0 || NSMaxRange(range) > textStorage.length) {
+    return;
+  }
+
+  NSMutableDictionary *attrs =
+      [[textStorage attributesAtIndex:range.location
+                        effectiveRange:nil] mutableCopy] ?: [NSMutableDictionary new];
+  if (!attrs[NSFontAttributeName] && _baseFont) {
+    attrs[NSFontAttributeName] = _baseFont;
+  }
+  if (!attrs[NSForegroundColorAttributeName] && _baseColor) {
+    attrs[NSForegroundColorAttributeName] = _baseColor;
+  }
+
+  [StyleAttributes applyStyle:style toAttrs:attrs];
+  for (NSString *key in attrs) {
+    [textStorage addAttribute:key value:attrs[key] range:range];
+  }
+}
+
+- (void)applyBlockLayoutForStyle:(MarkdownElementStyle *)style
+                     textStorage:(NSTextStorage *)textStorage
+                            range:(NSRange)range {
+  if (range.length == 0 || NSMaxRange(range) > textStorage.length) return;
+
+  UIEdgeInsets padding = style ? [style resolvedPaddingInsets] : UIEdgeInsetsZero;
+  UIEdgeInsets borders = style ? [style resolvedBorderWidths] : UIEdgeInsetsZero;
+  CGFloat indent = borders.left + padding.left;
+  CGFloat rightPadding = borders.right + padding.right;
+
+  [textStorage enumerateAttribute:NSParagraphStyleAttributeName
+                          inRange:range
+                          options:0
+                       usingBlock:^(NSParagraphStyle *value, NSRange subrange,
+                                    BOOL *stop) {
+    NSMutableParagraphStyle *pStyle = value
+        ? [value mutableCopy]
+        : [[NSMutableParagraphStyle alloc] init];
+    pStyle.firstLineHeadIndent = indent;
+    pStyle.headIndent = indent;
+    if (rightPadding > 0) {
+      pStyle.tailIndent = -rightPadding;
+    }
+    [textStorage addAttribute:NSParagraphStyleAttributeName
+                        value:pStyle
+                        range:subrange];
+  }];
+}
+
+- (MarkdownElementStyle *)styleForMentionRange:(FormattingRange *)range {
+  if ([range.tagName isEqualToString:@"ChannelMention"]) {
+    return _styleConfig.mentionChannel;
+  }
+  if ([range.tagName isEqualToString:@"Command"]) {
+    return _styleConfig.mentionCommand;
+  }
+  return _styleConfig.mentionUser;
+}
+
+- (NSString *)tagStringForMentionRange:(FormattingRange *)range {
+  if (!range.tagName) return nil;
+  NSMutableString *tag = [NSMutableString stringWithFormat:@"<%@", range.tagName];
+  NSArray *keys = [[range.tagProps allKeys]
+      sortedArrayUsingSelector:@selector(compare:)];
+  for (NSString *key in keys) {
+    NSString *value = range.tagProps[key] ?: @"";
+    [tag appendFormat:@" %@=\"%@\"", key, [self escapedAttributeValue:value]];
+  }
+  [tag appendString:@" />"];
+  return tag;
+}
+
+- (NSString *)escapedAttributeValue:(NSString *)value {
+  NSString *escaped = [value stringByReplacingOccurrencesOfString:@"&"
+                                                       withString:@"&amp;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@"\""
+                                               withString:@"&quot;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@"<"
+                                               withString:@"&lt;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@">"
+                                               withString:@"&gt;"];
+  return escaped;
 }
 
 @end

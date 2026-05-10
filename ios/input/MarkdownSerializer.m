@@ -15,6 +15,15 @@
 @implementation _MSEvent
 @end
 
+@interface _MSAtom : NSObject
+@property (nonatomic) NSUInteger start;
+@property (nonatomic) NSUInteger end;
+@property (nonatomic, copy) NSString *markdown;
+@end
+
+@implementation _MSAtom
+@end
+
 @implementation MarkdownSerializer
 
 + (NSString *)serializePlainText:(NSString *)text
@@ -25,10 +34,10 @@
 
   // Collect code block ranges — stored as NSRange values, not per-
   // character indices, so memory is O(range count) not O(text length).
-  NSMutableArray<NSValue *> *codeBlockRanges = [NSMutableArray new];
+  NSMutableArray<FormattingRange *> *codeBlockRanges = [NSMutableArray new];
   for (FormattingRange *r in store.allRanges) {
     if (r.type == FormattingTypeCodeBlock) {
-      [codeBlockRanges addObject:[NSValue valueWithRange:r.range]];
+      [codeBlockRanges addObject:r];
     }
   }
 
@@ -46,17 +55,14 @@
     if (lineIdx > 0) [md appendString:@"\n"];
 
     // Check if this line is in a code block
-    BOOL lineInCodeBlock = NO;
-    if (lineRange.length > 0) {
-      for (NSValue *rv in codeBlockRanges) {
-        NSRange cbr = rv.rangeValue;
-        if (lineRange.location >= cbr.location &&
-            lineRange.location < NSMaxRange(cbr)) {
-          lineInCodeBlock = YES;
-          break;
-        }
+    FormattingRange *codeBlockRange = nil;
+    for (FormattingRange *r in codeBlockRanges) {
+      if ([self range:r.range containsLineRange:lineRange]) {
+        codeBlockRange = r;
+        break;
       }
     }
+    BOOL lineInCodeBlock = codeBlockRange != nil;
 
     // Emit opening fence when entering code block
     if (lineInCodeBlock && !inCodeBlock) {
@@ -116,7 +122,7 @@
 + (NSString *)blockPrefixForRange:(NSRange)lineRange
                             store:(FormattingStore *)store {
   for (FormattingRange *r in store.allRanges) {
-    if (NSIntersectionRange(r.range, lineRange).length == 0) continue;
+    if (![self range:r.range containsLineRange:lineRange]) continue;
 
     if ([FormattingRange isHeadingType:r.type]) {
       NSInteger level = [FormattingRange headingLevelForType:r.type];
@@ -135,11 +141,19 @@
     }
 
     if (r.type == FormattingTypeOrderedList) {
-      // TODO: proper numbering from store context
-      return @"1. ";
+      NSInteger number = r.listStart > 0 ? r.listStart : 1;
+      return [NSString stringWithFormat:@"%ld. ", (long)number];
     }
   }
   return nil;
+}
+
++ (BOOL)range:(NSRange)range containsLineRange:(NSRange)lineRange {
+  if (lineRange.length > 0) {
+    return NSIntersectionRange(range, lineRange).length > 0;
+  }
+  NSUInteger point = lineRange.location;
+  return point >= range.location && point < NSMaxRange(range);
 }
 
 + (FormattingRange *)listRangeAt:(NSRange)lineRange
@@ -187,29 +201,9 @@
                           into:(NSMutableString *)md {
   if (content.length == 0) return;
 
-  // Check for autolinks first — if the display text IS a URL,
-  // emit it bare without [text](url) wrapping. We handle these
-  // separately so they don't generate events.
-  NSMutableIndexSet *autolinkChars = [NSMutableIndexSet new];
-  for (FormattingRange *r in store.allRanges) {
-    if (r.type != FormattingTypeLink) continue;
-    NSRange intersection = NSIntersectionRange(r.range, sourceRange);
-    if (intersection.length == 0) continue;
-
-    NSString *displayText =
-        [content substringWithRange:
-            NSMakeRange(intersection.location - sourceRange.location,
-                        intersection.length)];
-    if ([displayText hasPrefix:@"http://"] ||
-        [displayText hasPrefix:@"https://"]) {
-      [autolinkChars addIndexesInRange:
-          NSMakeRange(intersection.location - sourceRange.location,
-                      intersection.length)];
-    }
-  }
-
-  // Build events for inline ranges that intersect this line
   NSMutableArray<_MSEvent *> *events = [NSMutableArray new];
+  NSMutableArray<_MSAtom *> *atoms = [NSMutableArray new];
+  NSMutableIndexSet *atomChars = [NSMutableIndexSet new];
 
   for (FormattingRange *r in store.allRanges) {
     if (![FormattingRange isInlineType:r.type]) continue;
@@ -220,10 +214,28 @@
     NSUInteger localStart = intersection.location - sourceRange.location;
     NSUInteger localEnd = localStart + intersection.length;
 
-    // Skip autolinks — they're emitted as bare text
-    if (r.type == FormattingTypeLink &&
-        [autolinkChars containsIndexesInRange:
-            NSMakeRange(localStart, intersection.length)]) {
+    if (r.type == FormattingTypeMention) {
+      _MSAtom *atom = [_MSAtom new];
+      atom.start = localStart;
+      atom.end = localEnd;
+      atom.markdown = [self tagStringForMentionRange:r];
+      [atoms addObject:atom];
+      [atomChars addIndexesInRange:
+          NSMakeRange(localStart, intersection.length)];
+      continue;
+    }
+
+    if (r.type == FormattingTypeLink && [self linkRangeIsAutolink:r
+                                                        localText:[content substringWithRange:
+                                                            NSMakeRange(localStart, intersection.length)]]) {
+      _MSAtom *atom = [_MSAtom new];
+      atom.start = localStart;
+      atom.end = localEnd;
+      atom.markdown = [content substringWithRange:
+          NSMakeRange(localStart, intersection.length)];
+      [atoms addObject:atom];
+      [atomChars addIndexesInRange:
+          NSMakeRange(localStart, intersection.length)];
       continue;
     }
 
@@ -244,21 +256,16 @@
     [events addObject:close];
   }
 
-  if (events.count == 0) {
-    [md appendString:content];
-    return;
-  }
-
-  // Sort: by position, opens before closes at same position,
-  // wider spans open first / close last.
   [events sortUsingComparator:^NSComparisonResult(_MSEvent *a, _MSEvent *b) {
     if (a.position != b.position) {
       return a.position < b.position ? NSOrderedAscending
                                      : NSOrderedDescending;
     }
-    // At same position: opens before closes
+    // At the same position, close previous spans before opening new
+    // adjacent spans so atoms/text at this boundary do not inherit
+    // stale formatting.
     if (a.isOpen != b.isOpen) {
-      return a.isOpen ? NSOrderedAscending : NSOrderedDescending;
+      return a.isOpen ? NSOrderedDescending : NSOrderedAscending;
     }
     // Both opens: wider first. Both closes: narrower first.
     if (a.isOpen) {
@@ -270,35 +277,65 @@
     }
   }];
 
-  // Walk events and emit text + markers
+  [atoms sortUsingComparator:^NSComparisonResult(_MSAtom *a, _MSAtom *b) {
+    if (a.start == b.start) return NSOrderedSame;
+    return a.start < b.start ? NSOrderedAscending : NSOrderedDescending;
+  }];
+
+  NSUInteger eventIndex = 0;
+  NSUInteger atomIndex = 0;
   NSUInteger cursor = 0;
-  for (_MSEvent *event in events) {
-    // Emit text before this event
-    if (event.position > cursor) {
-      [md appendString:[content substringWithRange:
-                            NSMakeRange(cursor, event.position - cursor)]];
-      cursor = event.position;
+  NSInteger codeDepth = 0;
+
+  while (cursor <= content.length) {
+    while (eventIndex < events.count &&
+           events[eventIndex].position <= cursor) {
+      _MSEvent *event = events[eventIndex];
+      if (event.isOpen) {
+        [md appendString:[self openMarkerForEvent:event]];
+        if (event.type == FormattingTypeCode) codeDepth++;
+      } else {
+        if (event.type == FormattingTypeCode && codeDepth > 0) {
+          codeDepth--;
+        }
+        [md appendString:[self closeMarkerForEvent:event]];
+      }
+      eventIndex++;
     }
 
-    if (event.isOpen) {
-      if (event.type == FormattingTypeLink) {
-        [md appendString:@"["];
-      } else {
-        [md appendString:[self openMarkerForType:event.type]];
-      }
-    } else {
-      if (event.type == FormattingTypeLink) {
-        [md appendFormat:@"](%@)", event.url ?: @""];
-      } else {
-        [md appendString:[self closeMarkerForType:event.type]];
-      }
+    if (atomIndex < atoms.count && atoms[atomIndex].start == cursor) {
+      [md appendString:atoms[atomIndex].markdown];
+      cursor = atoms[atomIndex].end;
+      atomIndex++;
+      continue;
     }
-  }
 
-  // Emit remaining text
-  if (cursor < content.length) {
-    [md appendString:[content substringFromIndex:cursor]];
+    if (cursor == content.length) break;
+
+    if (![atomChars containsIndex:cursor]) {
+      NSString *ch = [content substringWithRange:NSMakeRange(cursor, 1)];
+      [md appendString:codeDepth > 0 ? ch : [self escapedText:ch]];
+    }
+    cursor++;
   }
+}
+
++ (BOOL)linkRangeIsAutolink:(FormattingRange *)range localText:(NSString *)text {
+  if (range.autolink) return YES;
+  if ([text isEqualToString:range.url ?: @""]) return YES;
+  return [text hasPrefix:@"http://"] || [text hasPrefix:@"https://"];
+}
+
++ (NSString *)openMarkerForEvent:(_MSEvent *)event {
+  if (event.type == FormattingTypeLink) return @"[";
+  return [self openMarkerForType:event.type];
+}
+
++ (NSString *)closeMarkerForEvent:(_MSEvent *)event {
+  if (event.type == FormattingTypeLink) {
+    return [NSString stringWithFormat:@"](%@)", event.url ?: @""];
+  }
+  return [self closeMarkerForType:event.type];
 }
 
 + (NSString *)openMarkerForType:(FormattingType)type {
@@ -308,12 +345,51 @@
   case FormattingTypeStrikethrough: return @"~~";
   case FormattingTypeCode: return @"`";
   case FormattingTypeSpoiler: return @"||";
+  case FormattingTypeSuperscript: return @"^(";
   default: return @"";
   }
 }
 
 + (NSString *)closeMarkerForType:(FormattingType)type {
+  if (type == FormattingTypeSuperscript) return @")";
   return [self openMarkerForType:type];
+}
+
++ (NSString *)tagStringForMentionRange:(FormattingRange *)range {
+  if (!range.tagName) return @"";
+  NSMutableString *tag = [NSMutableString stringWithFormat:@"<%@", range.tagName];
+  NSArray *keys = [[range.tagProps allKeys]
+      sortedArrayUsingSelector:@selector(compare:)];
+  for (NSString *key in keys) {
+    NSString *value = range.tagProps[key] ?: @"";
+    [tag appendFormat:@" %@=\"%@\"", key, [self escapedAttribute:value]];
+  }
+  [tag appendString:@" />"];
+  return tag;
+}
+
++ (NSString *)escapedAttribute:(NSString *)value {
+  NSString *escaped = [value stringByReplacingOccurrencesOfString:@"&"
+                                                       withString:@"&amp;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@"\""
+                                               withString:@"&quot;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@"<"
+                                               withString:@"&lt;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@">"
+                                               withString:@"&gt;"];
+  return escaped;
+}
+
++ (NSString *)escapedText:(NSString *)text {
+  static NSCharacterSet *chars;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    chars = [NSCharacterSet characterSetWithCharactersInString:@"\\`*_{}[]()#+-.!|>"];
+  });
+  if ([text rangeOfCharacterFromSet:chars].location == NSNotFound) {
+    return text;
+  }
+  return [@"\\" stringByAppendingString:text];
 }
 
 @end

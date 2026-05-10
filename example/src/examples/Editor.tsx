@@ -19,6 +19,15 @@ const initialMarkdown = `\
 **Hello** *world*! This is a ~~demo~~ of the markdown editor.
 
 Try selecting text and using the toolbar below.
+
+> quote
+> quote
+> quote
+
+\`\`\`
+const foo = 123
+const bar = foo * 2
+\`\`\`
 `
 
 const mockUsers = [
@@ -66,11 +75,14 @@ function ToolbarButton({
 export function EditorScreen() {
   const editor = useMarkdownEditor()
   const [styleState, setStyleState] = useState<EditorStyleState>({
+    blockquote: false,
     bold: false,
     italic: false,
     strikethrough: false,
     code: false,
+    codeBlock: false,
     spoiler: false,
+    superscript: false,
     link: null,
     heading: null,
     list: null,
@@ -173,6 +185,11 @@ export function EditorScreen() {
             label="||"
             onPress={editor.toggleSpoiler}
           />
+          <ToolbarButton
+            active={styleState.superscript}
+            label="^"
+            onPress={editor.toggleSuperscript}
+          />
 
           <View style={styles.toolbarSep} />
 
@@ -203,6 +220,16 @@ export function EditorScreen() {
             active={styleState.list === 'ordered'}
             label="OL"
             onPress={editor.toggleOrderedList}
+          />
+          <ToolbarButton
+            active={styleState.blockquote}
+            label=">"
+            onPress={editor.toggleBlockquote}
+          />
+          <ToolbarButton
+            active={styleState.codeBlock}
+            label="```"
+            onPress={() => editor.toggleCodeBlock()}
           />
           <ToolbarButton
             active={styleState.link !== null}
@@ -342,7 +369,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   input: {
-    minHeight: 180,
+    minHeight: 360,
     padding: 16,
   },
   suggestionsContainer: {
@@ -377,9 +404,9 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   previewText: {
-    fontSize: 13,
+    fontSize: 10,
     fontFamily: 'Menlo',
     color: '#555',
-    lineHeight: 20,
+    lineHeight: 14,
   },
 })

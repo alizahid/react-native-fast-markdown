@@ -2,6 +2,7 @@
 
 #import <React/RCTConversions.h>
 #import <React/RCTFabricComponentsPlugins.h>
+#import <QuartzCore/QuartzCore.h>
 #import <react/renderer/components/MarkdownViewSpec/ComponentDescriptors.h>
 #import <react/renderer/components/MarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/MarkdownViewSpec/Props.h>
@@ -15,6 +16,25 @@
 
 using namespace facebook::react;
 
+@interface MarkdownEditorTextView : UITextView
+@end
+
+@implementation MarkdownEditorTextView
+
+- (CGRect)caretRectForPosition:(UITextPosition *)position {
+  CGRect rect = [super caretRectForPosition:position];
+  UIFont *font = self.typingAttributes[NSFontAttributeName];
+  CGFloat height = font.lineHeight;
+  if (height <= 0) return rect;
+
+  CGFloat midY = CGRectGetMidY(rect);
+  rect.origin.y = midY - height / 2.0;
+  rect.size.height = height;
+  return rect;
+}
+
+@end
+
 @interface MarkdownEditorView () <UITextViewDelegate>
 @end
 
@@ -27,6 +47,7 @@ using namespace facebook::react;
 
   FormattingStore *_store;
   InputFormatter *_formatter;
+  NSMutableArray<CALayer *> *_blockBackgroundLayers;
 
   BOOL _suppressFormatting;
 
@@ -46,8 +67,9 @@ using namespace facebook::react;
   if (self) {
     _store = [FormattingStore new];
     _formatter = [InputFormatter new];
+    _blockBackgroundLayers = [NSMutableArray new];
 
-    _textView = [[UITextView alloc] initWithFrame:self.bounds];
+    _textView = [[MarkdownEditorTextView alloc] initWithFrame:self.bounds];
     _textView.delegate = self;
     _textView.autocorrectionType = UITextAutocorrectionTypeDefault;
     _textView.scrollEnabled = YES;
@@ -60,6 +82,7 @@ using namespace facebook::react;
 - (void)layoutSubviews {
   [super layoutSubviews];
   _textView.frame = self.bounds;
+  [self updateBlockBackgroundLayers];
 }
 
 // ---------------------------------------------------------------
@@ -91,8 +114,6 @@ using namespace facebook::react;
     _formatter.baseFont = _baseFont;
     _formatter.baseColor = _baseColor;
     _formatter.baseLineHeight = !isnan(_styleConfig.base.lineHeight) ? _styleConfig.base.lineHeight : 0;
-    _formatter.paragraphSpacing = !isnan(_styleConfig.base.gap) ? _styleConfig.base.gap : 0;
-
     // Re-apply formatting with new styles if we already have content
     if (_textView.text.length > 0) {
       [self applyFullFormatting];
@@ -176,52 +197,8 @@ using namespace facebook::react;
 }
 
 - (NSString *)exportMarkdown {
-  // First serialize normally
-  NSString *serialized = [MarkdownSerializer serializePlainText:_textView.text
-                                                     withStore:_store];
-
-  // Then replace mention labels with their tag text.
-  // Build a mapping of label → tag from the text storage, collecting
-  // each mention's range so we can match it by position.
-  NSTextStorage *ts = _textView.textStorage;
-  NSMutableArray<NSDictionary *> *mentions = [NSMutableArray new];
-  [ts enumerateAttribute:@"MDMentionTag"
-                 inRange:NSMakeRange(0, ts.length)
-                 options:0
-              usingBlock:^(NSString *tag, NSRange range, BOOL *stop) {
-    if (!tag) return;
-    NSString *label = [ts.string substringWithRange:range];
-    [mentions addObject:@{
-      @"label" : label,
-      @"tag" : tag,
-      @"location" : @(range.location),
-    }];
-  }];
-
-  // Replace from end to start so earlier offsets stay valid.
-  // Search backwards from each mention's approximate position to
-  // avoid replacing the wrong occurrence of the same label.
-  NSMutableString *result = [serialized mutableCopy];
-  for (NSDictionary *m in [mentions reverseObjectEnumerator]) {
-    NSString *label = m[@"label"];
-    NSUInteger hint = [m[@"location"] unsignedIntegerValue];
-    // Search for the label nearest to or after its source position.
-    NSRange searchRange = NSMakeRange(
-        MIN(hint, result.length),
-        result.length - MIN(hint, result.length));
-    NSRange found = [result rangeOfString:label
-                                  options:0
-                                    range:searchRange];
-    if (found.location == NSNotFound) {
-      // Fall back to searching the whole string
-      found = [result rangeOfString:label];
-    }
-    if (found.location != NSNotFound) {
-      [result replaceCharactersInRange:found withString:m[@"tag"]];
-    }
-  }
-
-  return [result copy];
+  return [MarkdownSerializer serializePlainText:_textView.text
+                                      withStore:_store];
 }
 
 // ---------------------------------------------------------------
@@ -232,6 +209,166 @@ using namespace facebook::react;
 - (void)applyFullFormatting {
   if (_suppressFormatting) return;
   [_formatter applyAllFormatting:_store toTextStorage:_textView.textStorage];
+  [self updateBlockBackgroundLayers];
+}
+
+- (void)updateBlockBackgroundLayers {
+  for (CALayer *layer in _blockBackgroundLayers) {
+    [layer removeFromSuperlayer];
+  }
+  [_blockBackgroundLayers removeAllObjects];
+
+  if (!_styleConfig || _textView.textStorage.length == 0) return;
+
+  [_textView.layoutManager ensureLayoutForTextContainer:_textView.textContainer];
+
+  for (FormattingRange *range in _store.allRanges) {
+    if (range.type != FormattingTypeCodeBlock &&
+        range.type != FormattingTypeBlockquote) {
+      continue;
+    }
+    if (range.range.length == 0 ||
+        NSMaxRange(range.range) > _textView.textStorage.length) {
+      continue;
+    }
+
+    MarkdownElementStyle *style = range.type == FormattingTypeCodeBlock
+        ? _styleConfig.codeBlock
+        : _styleConfig.blockquote;
+    CALayer *layer = [self blockBackgroundLayerForRange:range.range
+                                                  style:style];
+    if (!layer) continue;
+
+    [_textView.layer insertSublayer:layer atIndex:0];
+    [_blockBackgroundLayers addObject:layer];
+  }
+}
+
+- (CALayer *)blockBackgroundLayerForRange:(NSRange)range
+                                    style:(MarkdownElementStyle *)style {
+  NSLayoutManager *layoutManager = _textView.layoutManager;
+  NSTextContainer *textContainer = _textView.textContainer;
+  NSRange visualRange = [self visualBlockRangeForRange:range];
+  if (visualRange.length == 0) return nil;
+
+  NSRange glyphRange =
+      [layoutManager glyphRangeForCharacterRange:visualRange
+                            actualCharacterRange:nil];
+  if (glyphRange.length == 0) return nil;
+
+  UIFont *rangeFont =
+      [_textView.textStorage attribute:NSFontAttributeName
+                               atIndex:visualRange.location
+                        effectiveRange:nil];
+  if (![rangeFont isKindOfClass:[UIFont class]]) {
+    rangeFont = _baseFont ?: [UIFont systemFontOfSize:UIFont.systemFontSize];
+  }
+  CGFloat ascender = rangeFont.ascender;
+  CGFloat descender = rangeFont.descender;
+
+  __block CGFloat minY = CGFLOAT_MAX;
+  __block CGFloat maxY = -CGFLOAT_MAX;
+  [layoutManager enumerateLineFragmentsForGlyphRange:glyphRange
+                                          usingBlock:^(
+      CGRect rect, CGRect usedRect, NSTextContainer *container,
+      NSRange lineGlyphRange, BOOL *stop) {
+    NSRange intersection = NSIntersectionRange(glyphRange, lineGlyphRange);
+    if (intersection.length == 0) return;
+
+    CGPoint glyphLocation =
+        [layoutManager locationForGlyphAtIndex:intersection.location];
+    CGFloat baseline = CGRectGetMinY(rect) + glyphLocation.y;
+    minY = MIN(minY, baseline - ascender);
+    maxY = MAX(maxY, baseline - descender);
+  }];
+
+  if (minY == CGFLOAT_MAX || maxY <= minY) return nil;
+
+  UIEdgeInsets padding = style ? [style resolvedPaddingInsets] : UIEdgeInsetsZero;
+  UIEdgeInsets margin = style ? [style resolvedMarginInsets] : UIEdgeInsetsZero;
+  UIEdgeInsets borders = style ? [style resolvedBorderWidths] : UIEdgeInsetsZero;
+
+  CGFloat x = _textView.textContainerInset.left + margin.left;
+  CGFloat y = _textView.textContainerInset.top + minY - padding.top - margin.top;
+  CGFloat width = textContainer.size.width - margin.left - margin.right;
+  CGFloat height =
+      (maxY - minY) + padding.top + padding.bottom + margin.top + margin.bottom;
+  if (width <= 0 || height <= 0) return nil;
+
+  UIColor *background = style.backgroundColor;
+  BOOL hasBorder = borders.top > 0 || borders.right > 0 ||
+                   borders.bottom > 0 || borders.left > 0;
+  if (!background && !hasBorder && ![style hasAnyRadius]) return nil;
+
+  CALayer *layer = [CALayer layer];
+  layer.frame = CGRectMake(x, y, width, height);
+  layer.backgroundColor = background.CGColor;
+  layer.masksToBounds = YES;
+  if (!isnan(style.borderRadius)) {
+    layer.cornerRadius = style.borderRadius;
+  }
+
+  [self addBorderLayersToLayer:layer style:style borders:borders];
+  return layer;
+}
+
+- (NSRange)visualBlockRangeForRange:(NSRange)range {
+  NSUInteger textLength = _textView.text.length;
+  NSUInteger start = MIN(range.location, textLength);
+  NSUInteger end = MIN(NSMaxRange(range), textLength);
+  if (start >= end) return NSMakeRange(start, 0);
+
+  while (end > start &&
+         end < textLength &&
+         [_textView.text characterAtIndex:end - 1] == '\n' &&
+         [_textView.text characterAtIndex:end] == '\n') {
+    end--;
+  }
+
+  while (start < end &&
+         start > 0 &&
+         [_textView.text characterAtIndex:start - 1] == '\n' &&
+         [_textView.text characterAtIndex:start] == '\n') {
+    start++;
+  }
+
+  return NSMakeRange(start, end - start);
+}
+
+- (void)addBorderLayersToLayer:(CALayer *)layer
+                         style:(MarkdownElementStyle *)style
+                       borders:(UIEdgeInsets)borders {
+  CGSize size = layer.bounds.size;
+  [self addBorderToLayer:layer
+                   frame:CGRectMake(0, 0, size.width, borders.top)
+                   color:[style resolvedBorderColorForEdge:UIRectEdgeTop]];
+  [self addBorderToLayer:layer
+                   frame:CGRectMake(size.width - borders.right,
+                                    0,
+                                    borders.right,
+                                    size.height)
+                   color:[style resolvedBorderColorForEdge:UIRectEdgeRight]];
+  [self addBorderToLayer:layer
+                   frame:CGRectMake(0,
+                                    size.height - borders.bottom,
+                                    size.width,
+                                    borders.bottom)
+                   color:[style resolvedBorderColorForEdge:UIRectEdgeBottom]];
+  [self addBorderToLayer:layer
+                   frame:CGRectMake(0, 0, borders.left, size.height)
+                   color:[style resolvedBorderColorForEdge:UIRectEdgeLeft]];
+}
+
+- (void)addBorderToLayer:(CALayer *)layer
+                   frame:(CGRect)frame
+                   color:(UIColor *)color {
+  if (CGRectGetWidth(frame) <= 0 || CGRectGetHeight(frame) <= 0 || !color) {
+    return;
+  }
+  CALayer *border = [CALayer layer];
+  border.frame = frame;
+  border.backgroundColor = color.CGColor;
+  [layer addSublayer:border];
 }
 
 
@@ -243,20 +380,90 @@ using namespace facebook::react;
   } mutableCopy];
 
   CGFloat lineHeight = _styleConfig.base.lineHeight;
-  CGFloat gap = _styleConfig.base.gap;
-
   NSMutableParagraphStyle *pStyle = [NSMutableParagraphStyle new];
   if (lineHeight > 0) {
     pStyle.minimumLineHeight = lineHeight;
     pStyle.maximumLineHeight = lineHeight;
   }
-  if (gap > 0) {
-    pStyle.paragraphSpacing = gap;
-  }
+
+  [self applyActiveBlockTypingAttributes:attrs paragraphStyle:pStyle];
 
   attrs[NSParagraphStyleAttributeName] = pStyle;
 
   _textView.typingAttributes = attrs;
+}
+
+- (void)applyActiveBlockTypingAttributes:(NSMutableDictionary *)attrs
+                          paragraphStyle:(NSMutableParagraphStyle *)pStyle {
+  FormattingType blockType = [self activeTypingBlockType];
+  if (blockType != FormattingTypeBlockquote &&
+      blockType != FormattingTypeCodeBlock) {
+    return;
+  }
+
+  MarkdownElementStyle *style = blockType == FormattingTypeCodeBlock
+      ? _styleConfig.codeBlock
+      : _styleConfig.blockquote;
+  UIEdgeInsets padding = style ? [style resolvedPaddingInsets] : UIEdgeInsetsZero;
+  UIEdgeInsets borders = style ? [style resolvedBorderWidths] : UIEdgeInsetsZero;
+  CGFloat indent = borders.left + padding.left;
+
+  pStyle.firstLineHeadIndent = indent;
+  pStyle.headIndent = indent;
+  CGFloat rightInset = borders.right + padding.right;
+  if (rightInset > 0) {
+    pStyle.tailIndent = -rightInset;
+  }
+  if (style.lineHeight > 0) {
+    pStyle.minimumLineHeight = style.lineHeight;
+    pStyle.maximumLineHeight = style.lineHeight;
+  }
+
+  UIFont *font = [style resolvedFontWithBase:_baseFont];
+  if (font) {
+    attrs[NSFontAttributeName] = font;
+  }
+  if (style.color) {
+    attrs[NSForegroundColorAttributeName] = style.color;
+  }
+}
+
+- (FormattingType)activeTypingBlockType {
+  if ([_store.pendingStyles containsObject:@(FormattingTypeCodeBlock)]) {
+    return FormattingTypeCodeBlock;
+  }
+  if ([_store.pendingStyles containsObject:@(FormattingTypeBlockquote)]) {
+    return FormattingTypeBlockquote;
+  }
+  if ([self selectionIsOnEmptyLine]) {
+    return FormattingTypeBold;
+  }
+
+  NSUInteger idx = _textView.selectedRange.location > 0
+      ? _textView.selectedRange.location - 1
+      : 0;
+  if ([_store isEffectivelyActive:FormattingTypeCodeBlock atIndex:idx]) {
+    return FormattingTypeCodeBlock;
+  }
+  if ([_store isEffectivelyActive:FormattingTypeBlockquote atIndex:idx]) {
+    return FormattingTypeBlockquote;
+  }
+  return FormattingTypeBold;
+}
+
+- (BOOL)selectionIsOnEmptyLine {
+  if (_textView.text.length == 0) return YES;
+
+  NSUInteger location =
+      MIN(_textView.selectedRange.location, _textView.text.length);
+  NSRange lineRange =
+      [_textView.text lineRangeForRange:NSMakeRange(location, 0)];
+  if (lineRange.length == 0) return YES;
+
+  NSString *line = [_textView.text substringWithRange:lineRange];
+  NSString *trimmed = [line stringByTrimmingCharactersInSet:
+      [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+  return trimmed.length == 0;
 }
 
 // ---------------------------------------------------------------
@@ -324,7 +531,7 @@ using namespace facebook::react;
 // ---------------------------------------------------------------
 
 - (void)toggleHeading:(NSInteger)level {
-  NSRange lineRange = [self currentLineRange];
+  NSRange lineRange = [self selectedLineRange];
   if (lineRange.length == 0) return;
 
   FormattingType hType = [FormattingRange headingTypeForLevel:level];
@@ -342,6 +549,77 @@ using namespace facebook::react;
       [_store removeRangesOfType:t intersecting:lineRange];
     }
     [_store addRange:[FormattingRange rangeWithType:hType range:lineRange]];
+  }
+
+  [self applyFullFormatting];
+  [self detectAndEmitState];
+  [self emitMarkdownChange];
+}
+
+- (void)toggleBlockType:(FormattingType)type {
+  NSRange lineRange = [self selectedLineRange];
+  if (lineRange.length == 0) {
+    NSNumber *key = @(type);
+    if ([_store.pendingStyles containsObject:key]) {
+      [_store.pendingStyles removeObject:key];
+      [_store.pendingRemovals addObject:key];
+    } else {
+      [_store.pendingRemovals removeObject:key];
+      [_store.pendingStyles addObject:key];
+    }
+    [self detectAndEmitState];
+    return;
+  }
+
+  NSArray *existing = [_store rangesOfType:type intersecting:lineRange];
+  BOOL fullyCovered = [self isRange:lineRange fullyCoveredBy:existing];
+
+  if (fullyCovered) {
+    [_store removeRangesOfType:type intersecting:lineRange];
+  } else {
+    if (type == FormattingTypeBlockquote) {
+      [_store removeRangesOfType:FormattingTypeCodeBlock
+                    intersecting:lineRange];
+    } else if (type == FormattingTypeCodeBlock) {
+      [_store removeRangesOfType:FormattingTypeBlockquote
+                    intersecting:lineRange];
+    }
+    [_store removeRangesOfType:type intersecting:lineRange];
+    [_store addRange:[FormattingRange rangeWithType:type range:lineRange]];
+  }
+
+  [self applyFullFormatting];
+  [self detectAndEmitState];
+  [self emitMarkdownChange];
+}
+
+- (void)toggleCodeBlock {
+  NSRange lineRange = [self selectedLineRange];
+  if (lineRange.length == 0) {
+    NSNumber *key = @(FormattingTypeCodeBlock);
+    if ([_store.pendingStyles containsObject:key]) {
+      [_store.pendingStyles removeObject:key];
+      [_store.pendingRemovals addObject:key];
+    } else {
+      [_store.pendingRemovals removeObject:key];
+      [_store.pendingStyles addObject:key];
+    }
+    [self detectAndEmitState];
+    return;
+  }
+
+  NSArray *existing = [_store rangesOfType:FormattingTypeCodeBlock
+                              intersecting:lineRange];
+  BOOL fullyCovered = [self isRange:lineRange fullyCoveredBy:existing];
+  if (fullyCovered) {
+    [_store removeRangesOfType:FormattingTypeCodeBlock intersecting:lineRange];
+  } else {
+    [_store removeRangesOfType:FormattingTypeBlockquote intersecting:lineRange];
+    [_store removeRangesOfType:FormattingTypeCodeBlock intersecting:lineRange];
+    FormattingRange *range =
+        [FormattingRange rangeWithType:FormattingTypeCodeBlock
+                                 range:lineRange];
+    [_store addRange:range];
   }
 
   [self applyFullFormatting];
@@ -406,8 +684,15 @@ using namespace facebook::react;
 
     // Re-query line range after insertion
     lineRange = [self currentLineRange];
-    [_store addRange:[FormattingRange rangeWithType:listType
-                                             range:lineRange]];
+    FormattingRange *range = [FormattingRange rangeWithType:listType
+                                                      range:lineRange];
+    if (listType == FormattingTypeOrderedList) {
+      range.listStart = [self orderedNumberInLine:
+          [_textView.text substringWithRange:lineRange]];
+    }
+    [_store addRange:range];
+    _textView.selectedRange =
+        NSMakeRange(lineRange.location + bullet.length, 0);
   }
 
   [self applyFullFormatting];
@@ -438,6 +723,22 @@ using namespace facebook::react;
   return 0;
 }
 
+- (NSInteger)orderedNumberInLine:(NSString *)line {
+  static NSRegularExpression *regex;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    regex = [NSRegularExpression regularExpressionWithPattern:@"^(\\d+)\\."
+                                                      options:0
+                                                        error:nil];
+  });
+  NSTextCheckingResult *match =
+      [regex firstMatchInString:line
+                        options:0
+                          range:NSMakeRange(0, MIN(line.length, 10))];
+  if (!match) return 1;
+  return [[line substringWithRange:[match rangeAtIndex:1]] integerValue];
+}
+
 - (NSRange)currentLineRange {
   NSRange range = _textView.selectedRange;
   NSRange lineRange = [_textView.text lineRangeForRange:range];
@@ -448,6 +749,29 @@ using namespace facebook::react;
     lineRange.length--;
   }
   return lineRange;
+}
+
+- (NSRange)selectedLineRange {
+  NSRange selection = _textView.selectedRange;
+  if (_textView.text.length == 0) return NSMakeRange(0, 0);
+
+  NSUInteger start = MIN(selection.location, _textView.text.length);
+  NSUInteger end = MIN(selection.location + selection.length,
+                       _textView.text.length);
+  if (selection.length > 0 && end > start) {
+    end--;
+  }
+
+  NSRange startLine = [_textView.text lineRangeForRange:NSMakeRange(start, 0)];
+  NSRange endLine = [_textView.text lineRangeForRange:NSMakeRange(end, 0)];
+  NSUInteger location = startLine.location;
+  NSUInteger max = NSMaxRange(endLine);
+  if (max > location && max <= _textView.text.length &&
+      [_textView.text characterAtIndex:max - 1] == '\n') {
+    max--;
+  }
+  if (max < location) return NSMakeRange(location, 0);
+  return NSMakeRange(location, max - location);
 }
 
 // ---------------------------------------------------------------
@@ -535,6 +859,19 @@ using namespace facebook::react;
     }
   }
 
+  // --- Blockquote: "> " at start of line ---
+  if (localCursor >= 2 && [line hasPrefix:@"> "]) {
+    NSArray *existing = [_store rangesOfType:FormattingTypeBlockquote
+                                intersecting:lineRange];
+    if (existing.count == 0) {
+      [self autoConvertBlockPrefix:@"> "
+                         lineStart:lineStart
+                          lineText:line
+                              type:FormattingTypeBlockquote];
+      return;
+    }
+  }
+
   // --- Inline code: matching backticks ---
   [self detectInlineCode];
 
@@ -581,8 +918,12 @@ using namespace facebook::react;
   // picks up the formatting.
   NSRange newLineRange = [self lineRangeAt:lineStart];
   if (newLineRange.length > 0) {
-    [_store addRange:[FormattingRange rangeWithType:type
-                                             range:newLineRange]];
+    FormattingRange *range = [FormattingRange rangeWithType:type
+                                                      range:newLineRange];
+    if (type == FormattingTypeOrderedList) {
+      range.listStart = [self orderedNumberInLine:prefix];
+    }
+    [_store addRange:range];
   } else if (contentAfterPrefix.length == 0) {
     // Empty line — defer formatting to pending styles
     [_store.pendingStyles addObject:@(type)];
@@ -670,6 +1011,103 @@ using namespace facebook::react;
     if (searchPos == 0) break;
     searchPos--;
   }
+}
+
+#pragma mark - Block Continuation on Enter
+
+/// Called from shouldChangeTextInRange: when the replacement is a
+/// newline. Returns YES if the newline was handled (caller should
+/// return NO to prevent the default insertion).
+- (BOOL)handleNewlineInBlock:(NSRange)range {
+  NSString *text = _textView.text;
+  if (text.length == 0) return NO;
+
+  NSRange lineRange = [text lineRangeForRange:range];
+  if (lineRange.length > 0 &&
+      [text characterAtIndex:NSMaxRange(lineRange) - 1] == '\n') {
+    lineRange.length--;
+  }
+  NSString *line = [text substringWithRange:lineRange];
+
+  FormattingRange *blockRange =
+      [self blockRangeForLine:lineRange type:FormattingTypeCodeBlock];
+  FormattingType blockType = FormattingTypeCodeBlock;
+  if (!blockRange) {
+    blockRange = [self blockRangeForLine:lineRange
+                                    type:FormattingTypeBlockquote];
+    blockType = FormattingTypeBlockquote;
+  }
+  if (!blockRange) return NO;
+
+  NSString *trimmed = [line stringByTrimmingCharactersInSet:
+      [NSCharacterSet whitespaceCharacterSet]];
+  if (trimmed.length == 0) {
+    [_store.pendingStyles removeObject:@(blockType)];
+    [_store.pendingRemovals removeObject:@(blockType)];
+
+    NSUInteger removeLocation = lineRange.location > 0
+        ? lineRange.location - 1
+        : lineRange.location;
+    NSUInteger removeLength = lineRange.location > 0 ? 1 : lineRange.length;
+    if (removeLength > 0) {
+      [_store removeRangesOfType:blockType
+                    intersecting:NSMakeRange(removeLocation, removeLength)];
+    }
+
+    _suppressFormatting = YES;
+    [_textView.textStorage replaceCharactersInRange:range withString:@"\n"];
+    [_store adjustForEditAt:range.location
+              deletedLength:range.length
+             insertedLength:1];
+    _suppressFormatting = NO;
+
+    _textView.selectedRange = NSMakeRange(range.location + 1, 0);
+    [self applyFullFormatting];
+    [self resetTypingAttributes];
+    [self detectAndEmitState];
+    [self emitMarkdownChange];
+    return YES;
+  }
+
+  _suppressFormatting = YES;
+  [_textView.textStorage replaceCharactersInRange:range withString:@"\n"];
+  [_store adjustForEditAt:range.location
+            deletedLength:range.length
+           insertedLength:1];
+  _suppressFormatting = NO;
+
+  FormattingRange *continued =
+      [FormattingRange rangeWithType:blockType
+                                range:NSMakeRange(lineRange.location,
+                                                   lineRange.length + 1)];
+  [_store addRange:continued];
+  [_store.pendingStyles addObject:@(blockType)];
+
+  _textView.selectedRange = NSMakeRange(range.location + 1, 0);
+  [self applyFullFormatting];
+  [self resetTypingAttributes];
+  [self detectAndEmitState];
+  [self emitMarkdownChange];
+  return YES;
+}
+
+- (FormattingRange *)blockRangeForLine:(NSRange)lineRange
+                                  type:(FormattingType)type {
+  NSArray *ranges = [_store rangesOfType:type intersecting:lineRange];
+  if (ranges.count > 0) return ranges.firstObject;
+
+  if (lineRange.length == 0) {
+    NSUInteger point = lineRange.location;
+    for (FormattingRange *r in _store.allRanges) {
+      if (r.type == type &&
+          point >= r.range.location &&
+          point <= NSMaxRange(r.range)) {
+        return r;
+      }
+    }
+  }
+
+  return nil;
 }
 
 #pragma mark - List Continuation on Enter
@@ -770,8 +1208,12 @@ using namespace facebook::react;
       NSMakeRange(insertAt + insertion.length, 0);
   NSRange newLineRange = [self lineRangeAt:insertAt + 1];
   if (newLineRange.length > 0) {
-    [_store addRange:[FormattingRange rangeWithType:listType
-                                             range:newLineRange]];
+    FormattingRange *newRange =
+        [FormattingRange rangeWithType:listType range:newLineRange];
+    if (listType == FormattingTypeOrderedList) {
+      newRange.listStart = [self orderedNumberInLine:bullet];
+    }
+    [_store addRange:newRange];
   }
 
   [self applyFullFormatting];
@@ -812,9 +1254,11 @@ using namespace facebook::react;
   for (NSTextCheckingResult *match in matches) {
     NSURL *url = match.URL;
     if (!url) continue;
-    [detected addObject:[FormattingRange rangeWithType:FormattingTypeLink
-                                                range:match.range
-                                                  url:url.absoluteString]];
+    FormattingRange *range = [FormattingRange rangeWithType:FormattingTypeLink
+                                                      range:match.range
+                                                        url:url.absoluteString];
+    range.autolink = YES;
+    [detected addObject:range];
   }
 
   // Remove any autodetected links that no longer match (the URL
@@ -858,6 +1302,7 @@ using namespace facebook::react;
         [_store rangesOfType:FormattingTypeLink intersecting:d.range];
     if (overlap.count == 0) {
       [_store addRange:d];
+      [self emitLinkDetected:d.url];
       changed = YES;
     }
   }
@@ -923,6 +1368,73 @@ using namespace facebook::react;
       return;
     }
   }
+}
+
+- (void)insertSpoiler {
+  NSRange range = _textView.selectedRange;
+  NSString *text = range.length > 0
+      ? [_textView.text substringWithRange:range]
+      : @"spoiler";
+
+  _suppressFormatting = YES;
+  [_textView.textStorage replaceCharactersInRange:range withString:text];
+  [_store adjustForEditAt:range.location
+            deletedLength:range.length
+           insertedLength:text.length];
+  _suppressFormatting = NO;
+
+  NSRange spoilerRange = NSMakeRange(range.location, text.length);
+  [_store addRange:[FormattingRange rangeWithType:FormattingTypeSpoiler
+                                            range:spoilerRange]];
+  _textView.selectedRange = range.length > 0
+      ? NSMakeRange(NSMaxRange(spoilerRange), 0)
+      : spoilerRange;
+
+  [self applyFullFormatting];
+  [self detectAndEmitState];
+  [self emitMarkdownChange];
+}
+
+- (void)insertCustomTag:(NSString *)tag propsJSON:(NSString *)propsJSON {
+  if (tag.length == 0) return;
+
+  NSData *data = [propsJSON dataUsingEncoding:NSUTF8StringEncoding];
+  NSDictionary *props =
+      [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] ?: @{};
+
+  NSMutableString *source = [NSMutableString stringWithFormat:@"<%@", tag];
+  NSArray *keys = [[props allKeys] sortedArrayUsingSelector:@selector(compare:)];
+  for (NSString *key in keys) {
+    NSString *value = props[key] ?: @"";
+    [source appendFormat:@" %@=\"%@\"",
+                         key,
+                         [self escapedAttributeValue:value]];
+  }
+  [source appendString:@" />"];
+
+  NSRange range = _textView.selectedRange;
+  _suppressFormatting = YES;
+  [_textView.textStorage replaceCharactersInRange:range withString:source];
+  [_store adjustForEditAt:range.location
+            deletedLength:range.length
+           insertedLength:source.length];
+  _suppressFormatting = NO;
+
+  _textView.selectedRange = NSMakeRange(range.location + source.length, 0);
+  [self applyFullFormatting];
+  [self emitMarkdownChange];
+}
+
+- (NSString *)escapedAttributeValue:(NSString *)value {
+  NSString *escaped = [value stringByReplacingOccurrencesOfString:@"&"
+                                                       withString:@"&amp;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@"\""
+                                               withString:@"&quot;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@"<"
+                                               withString:@"&lt;"];
+  escaped = [escaped stringByReplacingOccurrencesOfString:@">"
+                                               withString:@"&gt;"];
+  return escaped;
 }
 
 // ---------------------------------------------------------------
@@ -1002,24 +1514,6 @@ using namespace facebook::react;
 - (void)insertMentionWithTrigger:(NSString *)trigger
                            label:(NSString *)label
                        propsJSON:(NSString *)propsJSON {
-  if (!_activeMentionTrigger ||
-      ![_activeMentionTrigger isEqualToString:trigger]) {
-    // Not in an active mention for this trigger — just insert
-    // the label at cursor
-    _suppressFormatting = YES;
-    [_textView.textStorage replaceCharactersInRange:_textView.selectedRange
-                                         withString:label];
-    _suppressFormatting = NO;
-    [self applyFullFormatting];
-    return;
-  }
-
-  // Calculate the range to replace (trigger char + query)
-  NSUInteger triggerPos = _mentionStartPos - 1; // the trigger char
-  NSUInteger cursorPos = _textView.selectedRange.location;
-  NSRange replaceRange = NSMakeRange(triggerPos, cursorPos - triggerPos);
-
-  // Map trigger to mention tag name
   NSString *tagName;
   if ([trigger isEqualToString:@"@"]) {
     tagName = @"UserMention";
@@ -1028,28 +1522,40 @@ using namespace facebook::react;
   } else if ([trigger isEqualToString:@"/"]) {
     tagName = @"Command";
   } else {
-    tagName = @"UserMention"; // default
+    tagName = @"UserMention";
   }
 
-  // Build the custom tag text: <TagName id="..." name="..." />
   NSData *data = [propsJSON dataUsingEncoding:NSUTF8StringEncoding];
   NSDictionary *props =
       [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] ?: @{};
-
-  NSMutableString *tagStr = [NSMutableString stringWithFormat:@"<%@", tagName];
-  // Ensure name is set from label if not in props
   NSMutableDictionary *allProps = [props mutableCopy];
   if (!allProps[@"name"]) {
     allProps[@"name"] = label;
   }
-  for (NSString *key in allProps) {
-    [tagStr appendFormat:@" %@=\"%@\"", key, allProps[key]];
-  }
-  [tagStr appendString:@" />"];
-
-  // Display text includes the trigger prefix, matching the
-  // renderer: @James, #general, /deploy
   NSString *displayText = [NSString stringWithFormat:@"%@%@", trigger, label];
+
+  if (!_activeMentionTrigger ||
+      ![_activeMentionTrigger isEqualToString:trigger]) {
+    _suppressFormatting = YES;
+    NSRange range = _textView.selectedRange;
+    [_textView.textStorage replaceCharactersInRange:_textView.selectedRange
+                                         withString:displayText];
+    [_store adjustForEditAt:range.location
+              deletedLength:range.length
+             insertedLength:displayText.length];
+    _suppressFormatting = NO;
+    [_store addRange:[FormattingRange mentionRangeWithTagName:tagName
+                                                     tagProps:allProps
+                                                        range:NSMakeRange(range.location, displayText.length)]];
+    [self applyFullFormatting];
+    [self emitMarkdownChange];
+    return;
+  }
+
+  // Calculate the range to replace (trigger char + query)
+  NSUInteger triggerPos = _mentionStartPos - 1; // the trigger char
+  NSUInteger cursorPos = _textView.selectedRange.location;
+  NSRange replaceRange = NSMakeRange(triggerPos, cursorPos - triggerPos);
 
   // Replace the trigger + query with the display text
   _suppressFormatting = YES;
@@ -1062,34 +1568,9 @@ using namespace facebook::react;
 
   NSRange mentionRange = NSMakeRange(replaceRange.location, displayText.length);
 
-  // Apply mention styling (use the appropriate mention style)
-  MarkdownElementStyle *mentionStyle;
-  if ([trigger isEqualToString:@"@"]) {
-    mentionStyle = _styleConfig.mentionUser;
-  } else if ([trigger isEqualToString:@"#"]) {
-    mentionStyle = _styleConfig.mentionChannel;
-  } else if ([trigger isEqualToString:@"/"]) {
-    mentionStyle = _styleConfig.mentionCommand;
-  }
-
-  if (mentionStyle) {
-    if (mentionStyle.color) {
-      [_textView.textStorage addAttribute:NSForegroundColorAttributeName
-                                    value:mentionStyle.color
-                                    range:mentionRange];
-    }
-    UIFont *mFont = [mentionStyle resolvedFontWithBase:_baseFont];
-    if (mFont) {
-      [_textView.textStorage addAttribute:NSFontAttributeName
-                                    value:mFont
-                                    range:mentionRange];
-    }
-  }
-
-  // Store the mention tag for markdown export
-  [_textView.textStorage addAttribute:@"MDMentionTag"
-                                value:tagStr
-                                range:mentionRange];
+  [_store addRange:[FormattingRange mentionRangeWithTagName:tagName
+                                                   tagProps:allProps
+                                                      range:mentionRange]];
 
   // End the mention
   _activeMentionTrigger = nil;
@@ -1152,8 +1633,14 @@ using namespace facebook::react;
     [self toggleInlineType:FormattingTypeStrikethrough];
   } else if ([commandName isEqualToString:@"toggleCode"]) {
     [self toggleInlineType:FormattingTypeCode];
+  } else if ([commandName isEqualToString:@"toggleSuperscript"]) {
+    [self toggleInlineType:FormattingTypeSuperscript];
   } else if ([commandName isEqualToString:@"toggleHeading"]) {
     [self toggleHeading:[args[0] integerValue]];
+  } else if ([commandName isEqualToString:@"toggleBlockquote"]) {
+    [self toggleBlockType:FormattingTypeBlockquote];
+  } else if ([commandName isEqualToString:@"toggleCodeBlock"]) {
+    [self toggleCodeBlock];
   } else if ([commandName isEqualToString:@"toggleOrderedList"]) {
     [self toggleList:FormattingTypeOrderedList];
   } else if ([commandName isEqualToString:@"toggleUnorderedList"]) {
@@ -1172,9 +1659,11 @@ using namespace facebook::react;
   } else if ([commandName isEqualToString:@"toggleSpoiler"]) {
     [self toggleInlineType:FormattingTypeSpoiler];
   } else if ([commandName isEqualToString:@"insertSpoiler"]) {
-    // TODO
+    [self insertSpoiler];
   } else if ([commandName isEqualToString:@"insertCustomTag"]) {
-    // TODO
+    NSString *tag = args.count > 0 ? args[0] : @"";
+    NSString *propsJSON = args.count > 1 ? args[1] : @"{}";
+    [self insertCustomTag:tag propsJSON:propsJSON];
   }
 }
 
@@ -1195,6 +1684,12 @@ using namespace facebook::react;
       [_store isEffectivelyActive:FormattingTypeStrikethrough atIndex:idx];
   BOOL code = [_store isEffectivelyActive:FormattingTypeCode atIndex:idx];
   BOOL spoiler = [_store isEffectivelyActive:FormattingTypeSpoiler atIndex:idx];
+  BOOL superscript =
+      [_store isEffectivelyActive:FormattingTypeSuperscript atIndex:idx];
+  BOOL blockquote =
+      [_store isEffectivelyActive:FormattingTypeBlockquote atIndex:idx];
+  BOOL codeBlock =
+      [_store isEffectivelyActive:FormattingTypeCodeBlock atIndex:idx];
 
   NSString *linkUrl = [_store effectiveLinkAtIndex:idx] ?: @"";
 
@@ -1224,6 +1719,9 @@ using namespace facebook::react;
       .strikethrough = strike,
       .code = code,
       .spoiler = spoiler,
+      .superscript = superscript,
+      .blockquote = blockquote,
+      .codeBlock = codeBlock,
       .linkUrl = std::string([linkUrl UTF8String]),
       .heading = static_cast<int>(heading),
       .list = std::string([listType UTF8String]),
@@ -1247,6 +1745,13 @@ using namespace facebook::react;
       {.markdown = std::string([markdown UTF8String])});
 }
 
+- (void)emitLinkDetected:(NSString *)url {
+  if (!_eventEmitter || url.length == 0) return;
+  const auto &emitter =
+      static_cast<const MarkdownEditorViewEventEmitter &>(*_eventEmitter);
+  emitter.onLinkDetected({.url = std::string([url UTF8String])});
+}
+
 // ---------------------------------------------------------------
 #pragma mark - UITextViewDelegate
 // ---------------------------------------------------------------
@@ -1259,6 +1764,9 @@ using namespace facebook::react;
   // Handle enter key inside lists
   if ([text isEqualToString:@"\n"]) {
     if ([self handleNewlineInList:range]) {
+      return NO;
+    }
+    if ([self handleNewlineInBlock:range]) {
       return NO;
     }
   }
@@ -1276,8 +1784,9 @@ using namespace facebook::react;
 
     for (NSNumber *typeNum in _store.pendingStyles) {
       FormattingType type = (FormattingType)typeNum.integerValue;
-      [_store addRange:[FormattingRange rangeWithType:type
-                                                range:insertedRange]];
+      FormattingRange *range = [FormattingRange rangeWithType:type
+                                                        range:insertedRange];
+      [_store addRange:range];
     }
 
     // Handle pending removals: carve out the inserted range from
@@ -1362,6 +1871,7 @@ using namespace facebook::react;
   _textView.text = @"";
   _suppressFormatting = NO;
   [_store removeAll];
+  [self updateBlockBackgroundLayers];
 
   // Reset mention tracking — stale triggers from a previous use
   // would fire spurious onMentionChange events.

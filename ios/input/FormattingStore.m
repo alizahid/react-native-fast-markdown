@@ -68,6 +68,11 @@
 
 - (void)addRange:(FormattingRange *)range {
   if (range.range.length == 0) return;
+  if (range.type == FormattingTypeMention) {
+    [_ranges addObject:range];
+    [self sortRanges];
+    return;
+  }
 
   // Merge with adjacent/overlapping ranges of the same type.
   // For links, only merge when the URLs match — merging links with
@@ -79,10 +84,7 @@
   for (FormattingRange *existing in _ranges) {
     if (existing.type != range.type) continue;
 
-    // Don't merge link ranges with different URLs
-    if (range.type == FormattingTypeLink &&
-        range.url && existing.url &&
-        ![range.url isEqualToString:existing.url]) {
+    if (![self canMergeRange:range withRange:existing]) {
       continue;
     }
 
@@ -103,6 +105,11 @@
       rangeWithType:range.type
               range:NSMakeRange(mergedStart, mergedEnd - mergedStart)
                 url:range.url];
+  merged.autolink = range.autolink;
+  merged.tagName = range.tagName;
+  merged.tagProps = range.tagProps;
+  merged.codeLanguage = range.codeLanguage;
+  merged.listStart = range.listStart;
   [_ranges addObject:merged];
   [self sortRanges];
 }
@@ -126,6 +133,11 @@
                   range:NSMakeRange(r.range.location,
                                      range.location - r.range.location)
                     url:r.url];
+      left.autolink = r.autolink;
+      left.tagName = r.tagName;
+      left.tagProps = r.tagProps;
+      left.codeLanguage = r.codeLanguage;
+      left.listStart = r.listStart;
       [toAdd addObject:left];
     }
 
@@ -136,6 +148,11 @@
                   range:NSMakeRange(NSMaxRange(range),
                                      NSMaxRange(r.range) - NSMaxRange(range))
                     url:r.url];
+      right.autolink = r.autolink;
+      right.tagName = r.tagName;
+      right.tagProps = r.tagProps;
+      right.codeLanguage = r.codeLanguage;
+      right.listStart = r.listStart;
       [toAdd addObject:right];
     }
   }
@@ -171,9 +188,27 @@
     NSUInteger rStart = r.range.location;
     NSUInteger rEnd = NSMaxRange(r.range);
 
+    if (deleted == 0 && inserted > 0 && location == rEnd &&
+        [self shouldExtendRangeAtTrailingEdge:r]) {
+      r.range = NSMakeRange(rStart, r.range.length + inserted);
+      continue;
+    }
+
     // Case 1: range is entirely before the edit — no change
     if (rEnd <= location) {
       continue;
+    }
+
+    if (r.type == FormattingTypeMention) {
+      if (deleted == 0 && location > rStart && location < rEnd) {
+        [toRemove addObject:r];
+        continue;
+      }
+      if (deleted > 0 &&
+          NSIntersectionRange(r.range, editRange).length > 0) {
+        [toRemove addObject:r];
+        continue;
+      }
     }
 
     // Case 2: range is entirely after the edit — shift
@@ -282,6 +317,33 @@
                                            : NSOrderedDescending;
   }];
   [self invalidateCache];
+}
+
+- (BOOL)canMergeRange:(FormattingRange *)a withRange:(FormattingRange *)b {
+  if (a.type != b.type) return NO;
+  if (a.type == FormattingTypeMention) return NO;
+  if (a.type == FormattingTypeLink) {
+    BOOL sameURL = (a.url == b.url) || [a.url isEqualToString:b.url];
+    return sameURL && a.autolink == b.autolink;
+  }
+  if (a.type == FormattingTypeCodeBlock) {
+    return (a.codeLanguage == b.codeLanguage) ||
+           [a.codeLanguage isEqualToString:b.codeLanguage];
+  }
+  if (a.type == FormattingTypeOrderedList ||
+      a.type == FormattingTypeUnorderedList) {
+    return a.listStart == b.listStart;
+  }
+  return YES;
+}
+
+- (BOOL)shouldExtendRangeAtTrailingEdge:(FormattingRange *)range {
+  switch (range.type) {
+  case FormattingTypeMention:
+    return NO;
+  default:
+    return YES;
+  }
 }
 
 @end

@@ -175,8 +175,11 @@ editor.insertLink('https://example.com', 'Example')
 | `toggleItalic()` | Toggle *italic* |
 | `toggleStrikethrough()` | Toggle ~~strikethrough~~ |
 | `toggleCode()` | Toggle `inline code` |
+| `toggleSuperscript()` | Toggle superscript |
 | `toggleSpoiler()` | Toggle spoiler formatting |
 | `toggleHeading(level)` | Toggle heading (1-6) |
+| `toggleBlockquote()` | Toggle block quote |
+| `toggleCodeBlock(language?)` | Toggle fenced code block |
 | `toggleOrderedList()` | Toggle numbered list |
 | `toggleUnorderedList()` | Toggle bullet list |
 | `insertLink(url, text?)` | Insert a link |
@@ -282,6 +285,9 @@ interface EditorStyleState {
   strikethrough: boolean
   code: boolean
   spoiler: boolean
+  superscript: boolean
+  blockquote: boolean
+  codeBlock: boolean
   heading: number | null
   link: { url: string } | null
   list: 'ordered' | 'unordered' | null

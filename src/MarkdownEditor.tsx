@@ -234,9 +234,24 @@ export const MarkdownEditor = forwardRef<
           Commands.toggleCode(nativeRef.current)
         }
       },
+      toggleSuperscript() {
+        if (nativeRef.current) {
+          Commands.toggleSuperscript(nativeRef.current)
+        }
+      },
       toggleHeading(level: number) {
         if (nativeRef.current) {
           Commands.toggleHeading(nativeRef.current, level)
+        }
+      },
+      toggleBlockquote() {
+        if (nativeRef.current) {
+          Commands.toggleBlockquote(nativeRef.current)
+        }
+      },
+      toggleCodeBlock(language?: string) {
+        if (nativeRef.current) {
+          Commands.toggleCodeBlock(nativeRef.current, language ?? '')
         }
       },
       toggleOrderedList() {
@@ -304,6 +319,9 @@ export const MarkdownEditor = forwardRef<
         strikethrough: boolean
         code: boolean
         spoiler: boolean
+        superscript: boolean
+        blockquote: boolean
+        codeBlock: boolean
         linkUrl: string
         heading: number
         list: string
@@ -315,6 +333,9 @@ export const MarkdownEditor = forwardRef<
         strikethrough: e.nativeEvent.strikethrough,
         code: e.nativeEvent.code,
         spoiler: e.nativeEvent.spoiler,
+        superscript: e.nativeEvent.superscript,
+        blockquote: e.nativeEvent.blockquote,
+        codeBlock: e.nativeEvent.codeBlock,
         link: e.nativeEvent.linkUrl ? { url: e.nativeEvent.linkUrl } : null,
         heading: e.nativeEvent.heading > 0 ? e.nativeEvent.heading : null,
         list:
@@ -402,7 +423,6 @@ const textPropNames = new Set([
   'fontSize',
   'fontStyle',
   'fontWeight',
-  'gap',
   'letterSpacing',
   'lineHeight',
   'textAlign',

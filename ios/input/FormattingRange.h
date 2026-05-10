@@ -19,6 +19,8 @@ typedef NS_ENUM(NSInteger, FormattingType) {
   FormattingTypeOrderedList,
   FormattingTypeUnorderedList,
   FormattingTypeSpoiler,
+  FormattingTypeSuperscript,
+  FormattingTypeMention,
 };
 
 @interface FormattingRange : NSObject <NSCopying>
@@ -26,11 +28,19 @@ typedef NS_ENUM(NSInteger, FormattingType) {
 @property (nonatomic) FormattingType type;
 @property (nonatomic) NSRange range;
 @property (nonatomic, copy, nullable) NSString *url;
+@property (nonatomic) BOOL autolink;
+@property (nonatomic, copy, nullable) NSString *tagName;
+@property (nonatomic, copy, nullable) NSDictionary<NSString *, NSString *> *tagProps;
+@property (nonatomic, copy, nullable) NSString *codeLanguage;
+@property (nonatomic) NSInteger listStart;
 
 + (instancetype)rangeWithType:(FormattingType)type range:(NSRange)range;
 + (instancetype)rangeWithType:(FormattingType)type
                         range:(NSRange)range
                           url:(nullable NSString *)url;
++ (instancetype)mentionRangeWithTagName:(NSString *)tagName
+                               tagProps:(NSDictionary<NSString *, NSString *> *)tagProps
+                                  range:(NSRange)range;
 
 + (BOOL)isInlineType:(FormattingType)type;
 + (BOOL)isBlockType:(FormattingType)type;

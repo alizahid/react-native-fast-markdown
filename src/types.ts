@@ -361,14 +361,17 @@ export interface ImagePressEvent {
 // --- Editor State ---
 
 export interface EditorStyleState {
+  blockquote: boolean
   bold: boolean
   code: boolean
+  codeBlock: boolean
   heading: number | null
   italic: boolean
   link: { url: string } | null
   list: 'ordered' | 'unordered' | null
   spoiler: boolean
   strikethrough: boolean
+  superscript: boolean
 }
 
 // --- Editor Handle ---
@@ -396,10 +399,12 @@ export interface MarkdownEditorHandle {
   removeLink(): void
   setSelection(start: number, end: number): void
   setValue(markdown: string): void
+  toggleBlockquote(): void
 
   // Formatting toggles
   toggleBold(): void
   toggleCode(): void
+  toggleCodeBlock(language?: string): void
 
   // Block formatting
   toggleHeading(level: number): void
@@ -407,5 +412,6 @@ export interface MarkdownEditorHandle {
   toggleOrderedList(): void
   toggleSpoiler(): void
   toggleStrikethrough(): void
+  toggleSuperscript(): void
   toggleUnorderedList(): void
 }

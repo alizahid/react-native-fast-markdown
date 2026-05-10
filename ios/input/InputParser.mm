@@ -33,6 +33,9 @@
   options.enableTables = false;
   options.enableStrikethrough = true;
   options.enableAutolinks = true;
+  options.customTags.insert("UserMention");
+  options.customTags.insert("ChannelMention");
+  options.customTags.insert("Command");
   options.customTags.insert("Spoiler");
   options.customTags.insert("Superscript");
 
@@ -111,6 +114,7 @@
       [ctx.text appendString:@"\n\n"];
     }
     NSUInteger start = ctx.text.length;
+    ctx.needsNewline = NO;
     for (ASTNodeWrapper *child in node.children) {
       [self walkNode:child
              context:ctx
@@ -133,6 +137,7 @@
       if (ctx.needsNewline) {
         [ctx.text appendString:@"\n"];
       }
+      ctx.needsNewline = NO;
 
       FormattingType listType = node.isOrderedList
                                     ? FormattingTypeOrderedList
@@ -160,10 +165,11 @@
 
       NSUInteger itemLen = ctx.text.length - itemStart;
       if (itemLen > 0) {
-        [ctx.ranges addObject:[FormattingRange
-                                  rangeWithType:listType
-                                          range:NSMakeRange(itemStart,
-                                                             itemLen)]];
+        FormattingRange *range =
+            [FormattingRange rangeWithType:listType
+                                     range:NSMakeRange(itemStart, itemLen)];
+        range.listStart = node.isOrderedList ? node.listStart + idx : 1;
+        [ctx.ranges addObject:range];
       }
 
       ctx.needsNewline = YES;
@@ -191,6 +197,8 @@
       [ctx.ranges addObject:[FormattingRange
                                 rangeWithType:FormattingTypeCodeBlock
                                         range:NSMakeRange(start, len)]];
+      FormattingRange *range = ctx.ranges.lastObject;
+      range.codeLanguage = node.codeLanguage;
     }
     ctx.needsNewline = YES;
     break;
@@ -272,6 +280,8 @@
                                 rangeWithType:FormattingTypeLink
                                         range:NSMakeRange(start, len)
                                           url:node.linkUrl]];
+      FormattingRange *range = ctx.ranges.lastObject;
+      range.autolink = node.isAutolink;
     }
     break;
   }
@@ -282,7 +292,12 @@
   }
 
   case MDNodeTypeSoftBreak: {
-    [ctx.text appendString:@" "];
+    if (blockType &&
+        blockType.integerValue == FormattingTypeBlockquote) {
+      [ctx.text appendString:@"\n"];
+    } else {
+      [ctx.text appendString:@" "];
+    }
     break;
   }
 
@@ -292,7 +307,18 @@
   }
 
   case MDNodeTypeCustomTag: {
-    if ([node.tagName isEqualToString:@"Spoiler"]) {
+    if ([self isMentionTag:node.tagName]) {
+      NSUInteger start = ctx.text.length;
+      NSString *label = [self displayTextForMentionNode:node];
+      [ctx.text appendString:label];
+      NSUInteger len = ctx.text.length - start;
+      if (len > 0) {
+        [ctx.ranges addObject:[FormattingRange
+            mentionRangeWithTagName:node.tagName
+                           tagProps:node.tagProps ?: @{}
+                              range:NSMakeRange(start, len)]];
+      }
+    } else if ([node.tagName isEqualToString:@"Spoiler"]) {
       NSUInteger start = ctx.text.length;
       for (ASTNodeWrapper *child in node.children) {
         [self walkNode:child context:ctx blockType:blockType linkUrl:linkUrl];
@@ -301,6 +327,17 @@
       if (len > 0) {
         [ctx.ranges addObject:[FormattingRange
                                   rangeWithType:FormattingTypeSpoiler
+                                          range:NSMakeRange(start, len)]];
+      }
+    } else if ([node.tagName isEqualToString:@"Superscript"]) {
+      NSUInteger start = ctx.text.length;
+      for (ASTNodeWrapper *child in node.children) {
+        [self walkNode:child context:ctx blockType:blockType linkUrl:linkUrl];
+      }
+      NSUInteger len = ctx.text.length - start;
+      if (len > 0) {
+        [ctx.ranges addObject:[FormattingRange
+                                  rangeWithType:FormattingTypeSuperscript
                                           range:NSMakeRange(start, len)]];
       }
     } else {
@@ -318,6 +355,27 @@
     break;
   }
   }
+}
+
++ (BOOL)isMentionTag:(NSString *)tagName {
+  return [tagName isEqualToString:@"UserMention"] ||
+         [tagName isEqualToString:@"ChannelMention"] ||
+         [tagName isEqualToString:@"Command"];
+}
+
++ (NSString *)displayTextForMentionNode:(ASTNodeWrapper *)node {
+  NSString *prefix = @"@";
+  if ([node.tagName isEqualToString:@"ChannelMention"]) {
+    prefix = @"#";
+  } else if ([node.tagName isEqualToString:@"Command"]) {
+    prefix = @"/";
+  }
+
+  NSString *label = node.tagProps[@"name"];
+  if (label.length == 0) {
+    label = node.tagProps[@"id"] ?: @"";
+  }
+  return [prefix stringByAppendingString:label];
 }
 
 @end

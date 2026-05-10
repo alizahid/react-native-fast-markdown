@@ -13,6 +13,16 @@
   r.type = type;
   r.range = range;
   r.url = url;
+  r.listStart = 1;
+  return r;
+}
+
++ (instancetype)mentionRangeWithTagName:(NSString *)tagName
+                               tagProps:(NSDictionary<NSString *, NSString *> *)tagProps
+                                  range:(NSRange)range {
+  FormattingRange *r = [self rangeWithType:FormattingTypeMention range:range];
+  r.tagName = tagName;
+  r.tagProps = tagProps;
   return r;
 }
 
@@ -21,6 +31,11 @@
   copy.type = _type;
   copy.range = _range;
   copy.url = [_url copy];
+  copy.autolink = _autolink;
+  copy.tagName = [_tagName copy];
+  copy.tagProps = [_tagProps copy];
+  copy.codeLanguage = [_codeLanguage copy];
+  copy.listStart = _listStart;
   return copy;
 }
 
@@ -32,6 +47,8 @@
   case FormattingTypeCode:
   case FormattingTypeLink:
   case FormattingTypeSpoiler:
+  case FormattingTypeSuperscript:
+  case FormattingTypeMention:
     return YES;
   default:
     return NO;
