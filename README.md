@@ -24,6 +24,7 @@ All parsing and rendering happens on the native thread. No JavaScript layout, no
 - **GFM support** - tables, strikethrough, autolinks
 - **Mentions** - `@user`, `#channel`, `/command` with live detection
 - **Spoilers & superscript** - `||spoiler||`, Reddit-style `>!spoiler!<`, and `^super`
+- **Markdown-aware paste** - pasted markdown is imported as rich text, pasted images are emitted to JS
 - **Custom tags** - extensible HTML-like tag system
 - **Deep styling** - per-element style customization
 - **Image pre-sizing** - supply dimensions to eliminate layout shift
@@ -145,7 +146,9 @@ A rich text input that outputs markdown.
 | `onMentionStart` | `(trigger: MentionTrigger) => void` | User typed a trigger character |
 | `onMentionChange` | `(event: { query, trigger }) => void` | Keystroke after trigger |
 | `onMentionEnd` | `(trigger: MentionTrigger) => void` | Mention cancelled |
-| `onPaste` | `(event: OnPasteEvent) => void` | Paste payload before insertion; call `event.preventDefault()` to reject |
+| `onPaste` | `(event: OnPasteEvent) => void` | Paste payload before insertion; call `event.preventDefault()` to reject default insertion |
+
+Pasted text is inserted automatically unless `preventDefault()` is called, and is parsed as markdown before entering the editor. Pasted images are emitted as `{ url, width, height }[]` and are not inserted into the editor content.
 
 ### `useMarkdownEditor()`
 
@@ -304,6 +307,8 @@ interface EditorStyleState {
 
 ## Supported syntax
 
+### Renderer
+
 | Syntax | Example |
 |---|---|
 | Headings | `# H1` through `###### H6` |
@@ -323,6 +328,30 @@ interface EditorStyleState {
 | Spoilers | `||hidden||`, `>!hidden!<` |
 | Superscript | `^word` or `^(words)` |
 | Mentions | `<UserMention id="1" name="Ali" />`, `<ChannelMention id="1" name="general" />`, `<Command id="giphy" />` |
+
+### Editor
+
+The editor is a visual rich-text editor. It imports supported markdown into rich text, lets users edit the visual content, and exports markdown through `onChangeMarkdown`.
+
+| Feature | Markdown/API |
+|---|---|
+| Headings | `# H1` through `###### H6`, `toggleHeading(level)` |
+| Bold | `**bold**`, `toggleBold()` |
+| Italic | `*italic*`, `toggleItalic()` |
+| Strikethrough | `~~deleted~~`, `toggleStrikethrough()` |
+| Spoilers | `||hidden||`, `toggleSpoiler()`, `insertSpoiler()` |
+| Superscript | `^word` or `^(words)`, `toggleSuperscript()` |
+| Mentions | `insertMention('@' \| '#' \| '/', label, props)` |
+| Autolinks | `https://example.com` |
+| Links | `[text](url)`, `insertLink(url, text?)`, `removeLink()` |
+| Inline code | `` `code` ``, `toggleCode()` |
+| Code blocks | Fenced code blocks, `toggleCodeBlock()` |
+| Blockquotes | `> quote`, `toggleBlockquote()` |
+| Ordered lists | `1. item`, `toggleOrderedList()` |
+| Unordered lists | `- item`, `toggleUnorderedList()` |
+| Paste | Markdown text is formatted on paste; images are emitted via `onPaste` |
+
+Renderer-only syntax such as tables, block images, and horizontal rules is not currently editable inside `<MarkdownEditor>`.
 
 ## Sponsors
 
