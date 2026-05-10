@@ -35,6 +35,5 @@ export type {
   MentionPressEvent,
   MentionTrigger,
   MentionType,
-  TaskListItemPressEvent,
 } from './types'
 export { useMarkdownEditor } from './useMarkdownEditor'

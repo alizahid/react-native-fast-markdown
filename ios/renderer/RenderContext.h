@@ -7,7 +7,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 typedef void (^LinkPressHandler)(NSString *url, NSString *title);
 typedef void (^MentionPressHandler)(NSString *user);
-typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
 
 @interface RenderContext : NSObject
 
@@ -18,7 +17,6 @@ typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
 @property (nonatomic, copy, nullable) LinkPressHandler onLinkPress;
 @property (nonatomic, copy, nullable) LinkPressHandler onLinkLongPress;
 @property (nonatomic, copy, nullable) MentionPressHandler onMentionPress;
-@property (nonatomic, copy, nullable) TaskListItemPressHandler onTaskListItemPress;
 
 // Rendering state
 @property (nonatomic, assign) NSInteger listDepth;
@@ -34,7 +32,6 @@ typedef void (^TaskListItemPressHandler)(NSInteger index, BOOL checked);
 @property (nonatomic, assign) NSInteger currentListMaxMarkerDigits;
 @property (nonatomic, assign) BOOL isInsideBlockquote;
 @property (nonatomic, assign) BOOL isInsideCodeBlock;
-@property (nonatomic, assign) NSInteger taskListIndex;
 
 // Style stack for nested inline styles
 @property (nonatomic, strong) NSMutableArray<NSDictionary<NSAttributedStringKey, id> *> *attributeStack;

@@ -117,6 +117,8 @@ using namespace facebook::react;
   // construction time so its sizeThatFits and layoutSubviews
   // reserve the right rect before the actual bytes arrive.
   NSDictionary<NSString *, NSValue *> *_propImageSizes;
+  NSMutableSet<NSString *> *_renderedImageURLs;
+  BOOL _observingImageSizeCache;
 
   NSMutableArray<MarkdownSpoilerOverlay *> *_spoilerOverlays;
   NSMutableArray<MarkdownMentionOverlay *> *_mentionOverlays;
@@ -151,6 +153,7 @@ using namespace facebook::react;
 
     _spoilerOverlays = [NSMutableArray new];
     _mentionOverlays = [NSMutableArray new];
+    _renderedImageURLs = [NSMutableSet new];
 
     // Block parent Pressable when a touch lands on an interactive
     // native element. Non-interactive touches never reach this
@@ -177,17 +180,13 @@ using namespace facebook::react;
     // Listen for async image loads so we can dirty the measurer
     // cache and force Yoga to re-call measureContent with the
     // newly-known natural sizes.
-    [[NSNotificationCenter defaultCenter]
-        addObserver:self
-           selector:@selector(handleImageSizeCacheUpdate:)
-               name:MarkdownImageSizeCacheDidUpdateNotification
-             object:nil];
+    [self startObservingImageSizeCache];
   }
   return self;
 }
 
 - (void)dealloc {
-  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [self stopObservingImageSizeCache];
 }
 
 - (void)layoutSubviews {
@@ -316,13 +315,7 @@ using namespace facebook::react;
            oldProps:(const Props::Shared &)oldProps {
   // Re-register the image-size notification after prepareForRecycle
   // removed the observer.
-  if (!_currentMarkdown) {
-    [[NSNotificationCenter defaultCenter]
-        addObserver:self
-           selector:@selector(handleImageSizeCacheUpdate:)
-               name:MarkdownImageSizeCacheDidUpdateNotification
-             object:nil];
-  }
+  [self startObservingImageSizeCache];
 
   const auto &newViewProps =
       *std::static_pointer_cast<const MarkdownViewProps>(props);
@@ -396,7 +389,6 @@ using namespace facebook::react;
   markdown::ParseOptions options;
   options.enableTables = true;
   options.enableStrikethrough = true;
-  options.enableTaskLists = true;
   options.enableAutolinks = true;
 
   // Built-in custom tags — always recognized so users don't have to
@@ -428,6 +420,8 @@ using namespace facebook::react;
 }
 
 - (void)clearSegments {
+  [_renderedImageURLs removeAllObjects];
+
   for (MarkdownSpoilerOverlay *overlay in _spoilerOverlays) {
     [overlay removeAllOverlays];
   }
@@ -541,6 +535,9 @@ using namespace facebook::react;
   NSURL *url = urlString.length > 0
                    ? [NSURL URLWithString:urlString]
                    : nil;
+  if (urlString.length > 0) {
+    [_renderedImageURLs addObject:urlString];
+  }
 
   CGFloat fallbackWidth = imageStyle.width;
   CGFloat fallbackHeight =
@@ -1087,7 +1084,12 @@ using namespace facebook::react;
 #pragma mark - Remeasure after image load
 
 - (void)handleImageSizeCacheUpdate:(NSNotification *)note {
-  // A block image anywhere in the process just finished loading
+  NSString *url = note.userInfo[@"url"];
+  if (url.length > 0 && ![_renderedImageURLs containsObject:url]) {
+    return;
+  }
+
+  // A block image rendered by this view just finished loading
   // (or a caller pre-seeded a new entry). Invalidate the measurer
   // result cache — entries in it might have been computed against
   // the old default height — and bump the shadow node's state
@@ -1105,11 +1107,30 @@ using namespace facebook::react;
 
 - (void)prepareForRecycle {
   [super prepareForRecycle];
-  [[NSNotificationCenter defaultCenter] removeObserver:self];
+  [self stopObservingImageSizeCache];
   [self clearSegments];
   _currentMarkdown = nil;
   _currentStyleJSON = nil;
   _markdownState.reset();
+}
+
+- (void)startObservingImageSizeCache {
+  if (_observingImageSizeCache) return;
+  [[NSNotificationCenter defaultCenter]
+      addObserver:self
+         selector:@selector(handleImageSizeCacheUpdate:)
+             name:MarkdownImageSizeCacheDidUpdateNotification
+           object:nil];
+  _observingImageSizeCache = YES;
+}
+
+- (void)stopObservingImageSizeCache {
+  if (!_observingImageSizeCache) return;
+  [[NSNotificationCenter defaultCenter]
+      removeObserver:self
+                name:MarkdownImageSizeCacheDidUpdateNotification
+              object:nil];
+  _observingImageSizeCache = NO;
 }
 
 - (void)markNeedsRemeasure {

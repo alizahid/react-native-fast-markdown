@@ -5,6 +5,25 @@
 #import "MarkdownImageSizeCache.h"
 #import "MarkdownPressableOverlayView.h"
 
+static const NSUInteger kMarkdownAnimatedImageDecodedLimit = 96 * 1024 * 1024;
+static const NSUInteger kMarkdownAnimatedImageFrameCountLimit = 240;
+
+static NSUInteger MarkdownImageDecodedCost(UIImage *image) {
+  if (!image) return 0;
+  NSArray<UIImage *> *frames = image.images;
+  if (frames.count > 0) {
+    NSUInteger total = 0;
+    for (UIImage *frame in frames) {
+      total += MarkdownImageDecodedCost(frame);
+    }
+    return total;
+  }
+
+  CGImageRef cgImage = image.CGImage;
+  if (!cgImage) return 0;
+  return CGImageGetBytesPerRow(cgImage) * CGImageGetHeight(cgImage);
+}
+
 /// Decode image data with animated GIF support. For multi-frame
 /// GIFs this extracts every frame and its per-frame delay, then
 /// returns a UIImage created via +animatedImageWithImages:duration:.
@@ -22,14 +41,30 @@ static UIImage *_Nullable MarkdownImageFromData(NSData *_Nonnull data) {
   }
 
   // Multi-frame image — extract every frame + its delay.
+  if (count > kMarkdownAnimatedImageFrameCountLimit) {
+    CGImageRef cgImage = CGImageSourceCreateImageAtIndex(source, 0, NULL);
+    UIImage *firstFrame = cgImage ? [UIImage imageWithCGImage:cgImage] : nil;
+    if (cgImage) CGImageRelease(cgImage);
+    CFRelease(source);
+    return firstFrame;
+  }
+
   NSMutableArray<UIImage *> *frames =
       [[NSMutableArray alloc] initWithCapacity:count];
   NSTimeInterval totalDuration = 0;
+  NSUInteger decodedCost = 0;
 
   for (size_t i = 0; i < count; i++) {
     CGImageRef cgImage =
         CGImageSourceCreateImageAtIndex(source, i, NULL);
     if (!cgImage) continue;
+
+    decodedCost += CGImageGetBytesPerRow(cgImage) * CGImageGetHeight(cgImage);
+    if (decodedCost > kMarkdownAnimatedImageDecodedLimit && frames.count > 0) {
+      CGImageRelease(cgImage);
+      CFRelease(source);
+      return frames.firstObject;
+    }
 
     // Per-frame delay lives in the GIF properties dictionary.
     // Prefer UnclampedDelayTime (may be < 10 ms); fall back to
@@ -76,8 +111,8 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
   dispatch_once(&once, ^{
     cache = [[NSCache alloc] init];
     cache.name = @"MarkdownImageDataCache";
-    cache.countLimit = 1000;
-    cache.totalCostLimit = 1024 * 1024 * 1024; // 1 GB
+    cache.countLimit = 200;
+    cache.totalCostLimit = 128 * 1024 * 1024;
   });
   return cache;
 }
@@ -289,7 +324,8 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
         UIImage *image = MarkdownImageFromData(data);
         if (!image) return;
 
-        NSUInteger cost = data.length;
+        NSUInteger cost = MarkdownImageDecodedCost(image);
+        if (cost == 0) cost = data.length;
         [MarkdownSharedImageCache() setObject:image forKey:key cost:cost];
         [[MarkdownImageSizeCache sharedCache] setSize:image.size
                                          forURLString:key];

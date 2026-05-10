@@ -45,7 +45,8 @@ NSString *const MarkdownImageSizeCacheDidUpdateNotification =
   dispatch_async(dispatch_get_main_queue(), ^{
     [[NSNotificationCenter defaultCenter]
         postNotificationName:MarkdownImageSizeCacheDidUpdateNotification
-                      object:self];
+                      object:self
+                    userInfo:@{@"url" : url}];
   });
 }
 

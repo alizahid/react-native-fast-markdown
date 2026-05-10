@@ -14,7 +14,6 @@
     _currentListMaxMarkerDigits = 0;
     _isInsideBlockquote = NO;
     _isInsideCodeBlock = NO;
-    _taskListIndex = 0;
 
     // Start with empty base; will be replaced when styleConfig is set
     [_attributeStack addObject:@{}];

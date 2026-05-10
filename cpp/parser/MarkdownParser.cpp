@@ -8,12 +8,13 @@
 namespace markdown {
 
 // ---------------------------------------------------------------------------
-// Reddit-style syntax pre-processor
+// Non-standard syntax pre-processor
 // ---------------------------------------------------------------------------
 // Runs a single O(n) pass over the raw markdown BEFORE md4c parses it,
 // converting non-standard Reddit extensions into standard markdown or
 // HTML custom tags that the existing pipelines already handle:
 //
+//   ||spoiler text||              →  <Spoiler>spoiler text</Spoiler>
 //   >!spoiler text!<              →  <Spoiler>spoiler text</Spoiler>
 //   ^word                         →  <Superscript>word</Superscript>
 //   ^(text with spaces)           →  <Superscript>text with spaces</Superscript>
@@ -21,7 +22,7 @@ namespace markdown {
 //   ![gif](giphy|ID|downsized)    →  ![gif](https://…/ID/giphy-downsized.gif)
 //
 // The replacement is skipped inside backtick code spans and fenced
-// code blocks so `>!literal!<` in code stays literal.
+// code blocks so `||literal||` and `>!literal!<` in code stay literal.
 
 static std::string preprocessRedditSyntax(const std::string &input) {
   std::string out;
@@ -56,6 +57,18 @@ static std::string preprocessRedditSyntax(const std::string &input) {
     if (inFence || inCode) {
       out += input[i++];
       continue;
+    }
+
+    // ---- Default spoiler: ||text|| ----
+    if (input[i] == '|' && i + 1 < len && input[i + 1] == '|') {
+      size_t end = input.find("||", i + 2);
+      if (end != std::string::npos && end > i + 2) {
+        out += "<Spoiler>";
+        out.append(input, i + 2, end - (i + 2));
+        out += "</Spoiler>";
+        i = end + 2;
+        continue;
+      }
     }
 
     // ---- Reddit spoiler: >!text!< ----
@@ -172,14 +185,6 @@ void MarkdownParser::applyBlockDetail(ASTNode &node, int blockType,
     node.listType = ListType::Ordered;
     node.listStart = static_cast<int>(d->start);
     node.listTight = d->is_tight != 0;
-    break;
-  }
-  case MD_BLOCK_LI: {
-    auto *d = static_cast<MD_BLOCK_LI_DETAIL *>(detail);
-    node.isTaskItem = d->is_task != 0;
-    if (node.isTaskItem) {
-      node.taskChecked = (d->task_mark == 'x' || d->task_mark == 'X');
-    }
     break;
   }
   case MD_BLOCK_CODE: {
@@ -535,15 +540,13 @@ ASTNode MarkdownParser::parse(const std::string &markdown,
     flags |= MD_FLAG_TABLES;
   if (options.enableStrikethrough)
     flags |= MD_FLAG_STRIKETHROUGH;
-  if (options.enableTaskLists)
-    flags |= MD_FLAG_TASKLISTS;
   if (options.enableAutolinks)
     flags |= MD_FLAG_PERMISSIVEAUTOLINKS;
   if (options.enableLatexMath)
     flags |= MD_FLAG_LATEXMATHSPANS;
 
-  // Pre-process Reddit-style syntax (>!spoiler!<, ^superscript, and
-  // giphy shorthand) before md4c sees the text.
+  // Pre-process non-standard syntax (spoilers, ^superscript, and giphy
+  // shorthand) before md4c sees the text.
   std::string processed = preprocessRedditSyntax(markdown);
 
   // We need HTML callbacks for custom tags — don't disable HTML
