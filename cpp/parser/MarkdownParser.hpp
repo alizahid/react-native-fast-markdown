@@ -9,7 +9,6 @@ namespace markdown {
 struct ParseOptions {
   bool enableTables = true;
   bool enableStrikethrough = true;
-  bool enableTaskLists = true;
   bool enableAutolinks = true;
   bool enableLatexMath = false;
   std::set<std::string> customTags; // registered custom tag names

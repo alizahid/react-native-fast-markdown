@@ -21,9 +21,9 @@ All parsing and rendering happens on the native thread. No JavaScript layout, no
 
 - **Native rendering** - parsed and laid out entirely on the native thread
 - **Rich editor** - full markdown editor with formatting toolbar support
-- **GFM support** - tables, task lists, strikethrough, autolinks
+- **GFM support** - tables, strikethrough, autolinks
 - **Mentions** - `@user`, `#channel`, `/command` with live detection
-- **Spoilers & superscript** - Reddit-style `>!spoiler!<` and `^super`
+- **Spoilers & superscript** - `||spoiler||`, Reddit-style `>!spoiler!<`, and `^super`
 - **Custom tags** - extensible HTML-like tag system
 - **Deep styling** - per-element style customization
 - **Image pre-sizing** - supply dimensions to eliminate layout shift
@@ -107,7 +107,6 @@ Renders a markdown string as native views.
 | `onLinkLongPress` | `(event: LinkPressEvent) => void` | Link long-pressed |
 | `onImagePress` | `(event: ImagePressEvent) => void` | Block image tapped |
 | `onMentionPress` | `(event: MentionPressEvent) => void` | Mention tapped |
-| `onTaskListItemPress` | `(event: TaskListItemPressEvent) => void` | Task checkbox tapped |
 
 Also accepts all `ViewProps` (except `style`).
 
@@ -277,11 +276,6 @@ interface MentionPressEvent {
   [key: string]: string | undefined // extra tag attributes
 }
 
-interface TaskListItemPressEvent {
-  index: number
-  checked: boolean
-}
-
 interface EditorStyleState {
   bold: boolean
   italic: boolean
@@ -309,11 +303,10 @@ interface EditorStyleState {
 | Blockquotes | `> quote` |
 | Ordered lists | `1. item` |
 | Unordered lists | `- item` |
-| Task lists | `- [x] done` |
 | Tables | GFM pipe tables |
 | Horizontal rules | `---` |
 | Autolinks | `https://example.com` |
-| Spoilers | `>!hidden!<` |
+| Spoilers | `||hidden||`, `>!hidden!<` |
 | Superscript | `^word` or `^(words)` |
 | Mentions | `<UserMention id="1" name="Ali" />`, `<ChannelMention id="1" name="general" />`, `<Command id="giphy" />` |
 

@@ -32,7 +32,6 @@
   markdown::ParseOptions options;
   options.enableTables = false;
   options.enableStrikethrough = true;
-  options.enableTaskLists = false;
   options.enableAutolinks = true;
   options.customTags.insert("Spoiler");
   options.customTags.insert("Superscript");

@@ -341,11 +341,6 @@ export interface MentionPressEvent {
   [key: string]: string | undefined
 }
 
-export interface TaskListItemPressEvent {
-  checked: boolean
-  index: number
-}
-
 /** Pre-supplied image metadata passed to `<Markdown images={...}>`.
  *  When the renderer encounters a block-level `![alt](url)` whose
  *  url matches one of these entries, it reserves the supplied

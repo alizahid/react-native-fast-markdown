@@ -37,9 +37,7 @@
 
   // Build bullet/number
   NSString *bullet;
-  if (node.isTaskItem) {
-    bullet = node.taskChecked ? @"[x] " : @"[ ] ";
-  } else if (context.currentListIsOrdered) {
+  if (context.currentListIsOrdered) {
     // Left-pad the number with figure spaces (U+2007 — a digit-width
     // whitespace character in most fonts) so the periods line up for
     // mixed-width markers like 1./10./11.

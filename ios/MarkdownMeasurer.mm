@@ -383,7 +383,6 @@ static CGFloat MeasureSegmentHeight(ASTNodeWrapper *node,
   markdown::ParseOptions options;
   options.enableTables = true;
   options.enableStrikethrough = true;
-  options.enableTaskLists = true;
   options.enableAutolinks = true;
   // Built-in custom tags — match MarkdownView.renderMarkdown.
   options.customTags.insert("UserMention");

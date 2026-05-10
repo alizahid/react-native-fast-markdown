@@ -48,8 +48,6 @@ typedef NS_ENUM(NSInteger, MDTableAlign) {
 @property (nonatomic, readonly) BOOL isOrderedList;
 @property (nonatomic, readonly) NSInteger listStart;
 @property (nonatomic, readonly) BOOL listTight;
-@property (nonatomic, readonly) BOOL isTaskItem;
-@property (nonatomic, readonly) BOOL taskChecked;
 @property (nonatomic, readonly, copy) NSString *codeLanguage;
 @property (nonatomic, readonly) MDTableAlign tableAlign;
 @property (nonatomic, readonly) NSInteger tableColumnCount;

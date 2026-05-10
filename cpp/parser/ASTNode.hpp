@@ -52,8 +52,6 @@ struct ASTNode {
   ListType listType = ListType::Unordered;
   int listStart = 1;            // start number for ordered lists
   bool listTight = false;
-  bool isTaskItem = false;
-  bool taskChecked = false;
   std::string codeLanguage;     // language for code blocks
   TableAlign tableAlign = TableAlign::Default;
   int tableColumnCount = 0;
@@ -71,9 +69,6 @@ struct ASTNode {
 
   // Children
   std::vector<ASTNode> children;
-
-  // Task list index (assigned during rendering)
-  int taskIndex = -1;
 
   ASTNode() = default;
   explicit ASTNode(NodeType t) : type(t) {}

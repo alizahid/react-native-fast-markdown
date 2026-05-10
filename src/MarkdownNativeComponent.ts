@@ -38,9 +38,6 @@ export interface MarkdownViewNativeProps extends ViewProps {
       mentionProps: string
     }>
   >
-  onTaskListItemPress?: DirectEventHandler<
-    Readonly<{ index: Double; checked: boolean }>
-  >
   styles?: string // JSON-serialized MarkdownStyle
 }
 

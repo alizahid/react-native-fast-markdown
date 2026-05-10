@@ -10,7 +10,6 @@ import {
   type MarkdownStyle,
   type MentionPressEvent,
   type MentionType,
-  type TaskListItemPressEvent,
 } from './types'
 
 export interface MarkdownProps extends Omit<ViewProps, 'style'> {
@@ -44,9 +43,6 @@ export interface MarkdownProps extends Omit<ViewProps, 'style'> {
   /** Called when a mention is pressed */
   onMentionPress?: (event: MentionPressEvent) => void
 
-  /** Called when a task list checkbox is pressed */
-  onTaskListItemPress?: (event: TaskListItemPressEvent) => void
-
   /** Style applied to the markdown container. Block-view props
    *  (background, border, radius, margin, padding, width / height)
    *  apply to the outer container; `gap` sets the vertical spacing
@@ -71,7 +67,6 @@ export function Markdown({
   onLinkPress,
   onLinkLongPress,
   onMentionPress,
-  onTaskListItemPress,
   ...viewProps
 }: MarkdownProps) {
   // Merge the style prop into styles as the internal `base` key.
@@ -155,15 +150,6 @@ export function Markdown({
                 name: e.nativeEvent.mentionName || undefined,
               })
             }
-          : undefined
-      }
-      onTaskListItemPress={
-        onTaskListItemPress
-          ? (e) =>
-              onTaskListItemPress({
-                index: e.nativeEvent.index,
-                checked: e.nativeEvent.checked,
-              })
           : undefined
       }
       styles={serializedStyles}

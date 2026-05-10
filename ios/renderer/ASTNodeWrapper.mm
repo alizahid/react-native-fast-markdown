@@ -58,8 +58,6 @@
 
 - (NSInteger)listStart { return _cppNode->listStart; }
 - (BOOL)listTight { return _cppNode->listTight; }
-- (BOOL)isTaskItem { return _cppNode->isTaskItem; }
-- (BOOL)taskChecked { return _cppNode->taskChecked; }
 
 - (NSString *)codeLanguage {
   return [NSString stringWithUTF8String:_cppNode->codeLanguage.c_str()];
