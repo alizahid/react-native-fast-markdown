@@ -10,11 +10,14 @@ import com.alizahid.markdown.parser.NodeType
 import com.alizahid.markdown.renderer.RenderContext
 import com.alizahid.markdown.style.StyleConfig
 import com.alizahid.markdown.view.MarkdownBlockView
+import com.alizahid.markdown.view.MarkdownImageSizeCache
+import com.alizahid.markdown.view.MarkdownImageView
 import com.alizahid.markdown.view.MarkdownSegmentStack
 import com.alizahid.markdown.view.MarkdownTableLayout
 import com.alizahid.markdown.view.MarkdownTableView
 import com.alizahid.markdown.view.MarkdownTextView
 import com.alizahid.markdown.parser.ListType
+import android.util.Size
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.uimanager.StateWrapper
 import com.facebook.react.views.view.ReactViewGroup
@@ -37,11 +40,14 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
   private var currentStyles: String? = null
   private var currentCustomTags: Set<String> = emptySet()
   private var currentImagesKey: String = ""
+  private var propImageSizes: Map<String, Size> = emptyMap()
 
   /** Set by MarkdownViewManager.updateState — used to trigger remeasure. */
   var stateWrapper: StateWrapper? = null
 
   private var measureRevision: Int = 0
+
+  private val imageSizeListener: (String) -> Unit = { _ -> markNeedsRemeasure() }
 
   init {
     outer.addView(
@@ -86,7 +92,18 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     val key = buildImagesKey(value)
     if (key == currentImagesKey) return
     currentImagesKey = key
+    propImageSizes = parsePropImageSizes(value)
     rebuild()
+  }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    MarkdownImageSizeCache.addListener(imageSizeListener)
+  }
+
+  override fun onDetachedFromWindow() {
+    MarkdownImageSizeCache.removeListener(imageSizeListener)
+    super.onDetachedFromWindow()
   }
 
   private fun rebuild() {
@@ -105,6 +122,13 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
   }
 
   private fun buildSegment(node: AstNode, cfg: StyleConfig): android.view.View? {
+    // `![alt](url)` on its own line parses as Paragraph { Image } —
+    // render it as a real MarkdownImageView block (Glide-backed) instead
+    // of flattening through the attributed-string pipeline. Mirrors iOS
+    // MarkdownView.imageOnlyParagraphChild.
+    RenderContext.imageOnlyParagraphChild(node)?.let { imageNode ->
+      return buildImageSegment(imageNode, cfg)
+    }
     return when (node.type) {
       NodeType.Paragraph, NodeType.Heading, NodeType.CodeBlock -> buildTextSegment(node, cfg)
       NodeType.Blockquote -> buildBlockquoteSegment(node, cfg)
@@ -113,6 +137,37 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
       NodeType.ThematicBreak -> buildThematicBreakSegment(cfg)
       else -> null
     }
+  }
+
+  private fun buildImageSegment(imageNode: AstNode, cfg: StyleConfig): android.view.View {
+    val style = cfg.image
+    val url = imageNode.imageSrc
+    val sizes = MarkdownImageView.pickStyleSizes(style)
+    val fallbackW = sizes[0]
+    val fallbackH = if (sizes[1] > 0) sizes[1] else 200
+    val maxW = sizes[2]
+    val maxH = sizes[3]
+    val propSize = propImageSizes[url]
+
+    val iv = MarkdownImageView(
+      context, url, propSize, fallbackW, fallbackH, maxW, maxH, style.objectFit,
+    )
+    iv.onPress = { pressedUrl, w, h ->
+      MarkdownEventDispatcher.dispatchImagePress(this, pressedUrl, w, h)
+    }
+    val block = MarkdownBlockView(context).apply {
+      setElementStyle(style)
+      setHuggingContent(true)
+    }
+    val m = style.resolvedMarginInsets()
+    val lp = ViewGroup.MarginLayoutParams(
+      ViewGroup.LayoutParams.WRAP_CONTENT,
+      ViewGroup.LayoutParams.WRAP_CONTENT,
+    )
+    lp.setMargins(m.left, m.top, m.right, m.bottom)
+    block.layoutParams = lp
+    block.setContent(iv)
+    return block
   }
 
   private fun buildBlockquoteSegment(node: AstNode, cfg: StyleConfig): android.view.View {
@@ -243,6 +298,19 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
       sb.append(';')
     }
     return sb.toString()
+  }
+
+  private fun parsePropImageSizes(value: ReadableArray?): Map<String, Size> {
+    if (value == null) return emptyMap()
+    val out = mutableMapOf<String, Size>()
+    for (i in 0 until value.size()) {
+      val item = value.getMap(i) ?: continue
+      val url = item.getString("url") ?: continue
+      val w = item.getDouble("width").toInt()
+      val h = item.getDouble("height").toInt()
+      if (w > 0 && h > 0) out[url] = Size(w, h)
+    }
+    return out
   }
 
   /**
