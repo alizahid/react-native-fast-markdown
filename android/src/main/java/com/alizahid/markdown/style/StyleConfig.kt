@@ -53,7 +53,12 @@ class StyleConfig {
   }
 
   companion object {
-    fun fromJson(json: String?): StyleConfig =
-      if (json.isNullOrEmpty()) StyleConfig() else StyleDeserializer.parse(json)
+    /**
+     * `density` should be `Context.resources.displayMetrics.density` —
+     * every length-like field in the JSON is multiplied by it on read
+     * so downstream code can stay in raw pixels.
+     */
+    fun fromJson(json: String?, density: Float): StyleConfig =
+      if (json.isNullOrEmpty()) StyleConfig() else StyleDeserializer.parse(json, density)
   }
 }

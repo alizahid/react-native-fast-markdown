@@ -122,14 +122,28 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
    * width to wrap to and the whole component renders as a blank rect.
    */
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-    super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     val w = MeasureSpec.getSize(widthMeasureSpec)
-    val h = MeasureSpec.getSize(heightMeasureSpec)
-    if (w <= 0) return
-    val hSpec = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED || h <= 0) {
-      MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
-    } else MeasureSpec.makeMeasureSpec(h, MeasureSpec.AT_MOST)
+    val hMode = MeasureSpec.getMode(heightMeasureSpec)
+    val hSize = MeasureSpec.getSize(heightMeasureSpec)
+
+    // Always measure the outer block against the resolved width so its
+    // inner segment stack can wrap text and stack images correctly.
+    val hSpec = when (hMode) {
+      MeasureSpec.UNSPECIFIED -> MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+      else -> MeasureSpec.makeMeasureSpec(hSize, MeasureSpec.AT_MOST)
+    }
     outer.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), hSpec)
+
+    // Report our height based on the spec: EXACTLY pins to spec,
+    // AT_MOST caps content, UNSPECIFIED returns content. Without this,
+    // a ScrollView parent (which uses UNSPECIFIED) would never learn
+    // how tall the markdown content is.
+    val measuredH = when (hMode) {
+      MeasureSpec.EXACTLY -> hSize
+      MeasureSpec.AT_MOST -> minOf(outer.measuredHeight, hSize)
+      else -> outer.measuredHeight
+    }
+    setMeasuredDimension(w, measuredH)
   }
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
@@ -205,7 +219,7 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
 
   private fun rebuild() {
     val ast = MarkdownParserJni.parse(currentMarkdown, currentCustomTags) ?: return
-    val cfg = StyleConfig.fromJson(currentStyles)
+    val cfg = StyleConfig.fromJson(currentStyles, resources.displayMetrics.density)
 
     // Apply outer block style (base)
     outer.setElementStyle(cfg.base)
@@ -253,7 +267,10 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     val url = imageNode.imageSrc
     val sizes = MarkdownImageView.pickStyleSizes(style)
     val fallbackW = sizes[0]
-    val fallbackH = if (sizes[1] > 0) sizes[1] else 200
+    // iOS default is `kDefaultImageHeight = 200.0` (points). Match
+    // visually by scaling to raw pixels.
+    val defaultFallback = (200f * resources.displayMetrics.density).toInt()
+    val fallbackH = if (sizes[1] > 0) sizes[1] else defaultFallback
     val maxW = sizes[2]
     val maxH = sizes[3]
     val propSize = propImageSizes[url]
@@ -340,7 +357,7 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     val innerWidth = (outerWidth -
       bm.left - bm.right - bp.left - bp.right - bb.left - bb.right -
       tm.left - tm.right - tp.left - tp.right - tb.left - tb.right).coerceAtLeast(0)
-    val layout = MarkdownTableLayout.compute(node, cfg, currentCustomTags, innerWidth)
+    val layout = MarkdownTableLayout.compute(node, cfg, currentCustomTags, innerWidth, resources.displayMetrics.density)
     val table = MarkdownTableView(context, layout, cfg)
     return wrapInBlock(table, tableStyle)
   }
@@ -486,9 +503,12 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
   }
 
   private fun pickFontSize(cfg: StyleConfig, style: com.alizahid.markdown.style.ElementStyle): Float {
+    // Style values were already dp-scaled to raw pixels by
+    // StyleDeserializer; the fallback 16 (matches iOS UIFont
+    // systemFontSize) needs the same scaling so units agree.
     if (!style.fontSize.isNaN() && style.fontSize > 0) return style.fontSize
     if (!cfg.base.fontSize.isNaN() && cfg.base.fontSize > 0) return cfg.base.fontSize
-    return 16f * resources.displayMetrics.scaledDensity
+    return 16f * resources.displayMetrics.density
   }
 
   private fun buildImagesKey(value: ReadableArray?): String {
@@ -508,12 +528,15 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
 
   private fun parsePropImageSizes(value: ReadableArray?): Map<String, Size> {
     if (value == null) return emptyMap()
+    val density = resources.displayMetrics.density
     val out = mutableMapOf<String, Size>()
     for (i in 0 until value.size()) {
       val item = value.getMap(i) ?: continue
       val url = item.getString("url") ?: continue
-      val w = item.getDouble("width").toInt()
-      val h = item.getDouble("height").toInt()
+      // JS sends widths/heights in dp; convert to raw pixels so they
+      // share a unit with everything else.
+      val w = (item.getDouble("width") * density).toInt()
+      val h = (item.getDouble("height") * density).toInt()
       if (w > 0 && h > 0) out[url] = Size(w, h)
     }
     return out

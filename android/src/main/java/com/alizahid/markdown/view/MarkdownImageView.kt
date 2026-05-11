@@ -47,8 +47,14 @@ class MarkdownImageView(
   private val imageView = AppCompatImageView(context).apply {
     scaleType = if (objectFit == "contain") ImageView.ScaleType.FIT_CENTER else ImageView.ScaleType.CENTER_CROP
   }
-  private val pressOverlay = ColorDrawable(Color.argb(0, 0, 0, 0))
+  private val pressOverlay = ColorDrawable(Color.TRANSPARENT)
   private var loadGeneration: Int = 0
+  // iOS treats UIImage.size as POINTS; on a 3x device a 480-px-wide GIF
+  // visually displays at 480pt. Glide hands us raw pixels — multiply by
+  // density so the natural size we publish to the cache is in the same
+  // raw-pixel domain the rest of the pipeline uses (style values were
+  // already dp-scaled by StyleDeserializer).
+  private val density: Float = context.resources.displayMetrics.density
 
   init {
     addView(imageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -73,16 +79,23 @@ class MarkdownImageView(
       MotionEvent.ACTION_DOWN -> {
         // Match iOS `[UIColor colorWithWhite:0.0 alpha:0.18]`.
         pressOverlay.color = Color.argb(46, 0, 0, 0)
+        invalidate()
+        // Keep ancestor ScrollViews from claiming the gesture before
+        // we get an UP — same as iOS where the press recogniser locks
+        // the touch immediately.
+        parent?.requestDisallowInterceptTouchEvent(true)
         return true
       }
       MotionEvent.ACTION_UP -> {
         pressOverlay.color = Color.TRANSPARENT
+        invalidate()
         val s = bestKnownNaturalSize()
         onPress?.invoke(url, s.width, s.height)
         return true
       }
       MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
         pressOverlay.color = Color.TRANSPARENT
+        invalidate()
         return true
       }
     }
@@ -105,11 +118,14 @@ class MarkdownImageView(
           target: Target<Drawable>?, dataSource: DataSource, isFirstResource: Boolean,
         ): Boolean {
           if (currentGen != loadGeneration) return false // stale
-          val w = resource.intrinsicWidth
-          val h = resource.intrinsicHeight
-          if (w > 0 && h > 0) {
+          val rawW = resource.intrinsicWidth
+          val rawH = resource.intrinsicHeight
+          if (rawW > 0 && rawH > 0) {
+            // Scale Glide's raw-pixel intrinsic into the dp-scaled
+            // raw-pixel domain we share with style values + iOS points.
+            val w = (rawW * density).toInt()
+            val h = (rawH * density).toInt()
             MarkdownImageSizeCache.put(url, Size(w, h))
-            // Trigger our own remeasure so the new aspect ratio applies.
             requestLayout()
           }
           return false
@@ -125,8 +141,10 @@ class MarkdownImageView(
   fun bestKnownNaturalSize(): Size {
     propSize?.let { if (it.width > 0 && it.height > 0) return it }
     MarkdownImageSizeCache.get(url)?.let { if (it.width > 0 && it.height > 0) return it }
+    // fallbackHeight is the iOS kDefaultImageHeight default scaled to
+    // raw pixels by the caller (MarkdownView.buildImageSegment).
     val w = if (fallbackWidth > 0) fallbackWidth else if (maxWidth > 0) maxWidth else 0
-    val h = if (fallbackHeight > 0) fallbackHeight else 200
+    val h = if (fallbackHeight > 0) fallbackHeight else (200f * density).toInt()
     return Size(w, h)
   }
 

@@ -106,6 +106,7 @@ class MarkdownMentionOverlay(
         val hit = shapeAt(event.x, event.y) ?: return false
         activeShape = hit
         invalidate()
+        parent?.requestDisallowInterceptTouchEvent(true)
         return true
       }
       MotionEvent.ACTION_MOVE -> {

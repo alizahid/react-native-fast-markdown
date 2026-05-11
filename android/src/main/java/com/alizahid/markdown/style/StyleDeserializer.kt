@@ -10,60 +10,68 @@ import org.json.JSONObject
  * record per element. Color values arrive pre-processed by RN as
  * `"#RRGGBB"` / `"rgb(...)"` / `"rgba(...)"` / `Int`; `ColorConvert`
  * handles every form.
+ *
+ * **Density:** every length-like field (fontSize, padding, margin,
+ * borders, radii, gap, width/height/maxWidth/maxHeight, lineHeight,
+ * letterSpacing) is multiplied by `density` on read. RN's JS layer
+ * sends values in dp; iOS treats them as points (visually equivalent).
+ * Android needs them in raw pixels for `setTextSize(COMPLEX_UNIT_PX, …)`,
+ * `setPadding(…)`, `Paint.strokeWidth = …`, etc. Multiplying once at
+ * the boundary lets every downstream code path stay in a single unit.
  */
 internal object StyleDeserializer {
 
-  fun parse(json: String): StyleConfig {
+  fun parse(json: String, density: Float): StyleConfig {
     val root = try {
       JSONObject(json)
     } catch (_: Throwable) {
       return StyleConfig()
     }
     val cfg = StyleConfig()
-    cfg.base = parseElement(root.optJSONObject("base"))
-    cfg.paragraph = parseElement(root.optJSONObject("paragraph"))
-    cfg.heading1 = parseElement(root.optJSONObject("heading1"))
-    cfg.heading2 = parseElement(root.optJSONObject("heading2"))
-    cfg.heading3 = parseElement(root.optJSONObject("heading3"))
-    cfg.heading4 = parseElement(root.optJSONObject("heading4"))
-    cfg.heading5 = parseElement(root.optJSONObject("heading5"))
-    cfg.heading6 = parseElement(root.optJSONObject("heading6"))
-    cfg.blockquote = parseElement(root.optJSONObject("blockquote"))
-    cfg.codeBlock = parseElement(root.optJSONObject("codeBlock"))
-    cfg.list = parseElement(root.optJSONObject("list"))
-    cfg.listItem = parseElement(root.optJSONObject("listItem"))
-    cfg.listBullet = parseElement(root.optJSONObject("listBullet"))
-    cfg.thematicBreak = parseElement(root.optJSONObject("thematicBreak"))
-    cfg.image = parseElement(root.optJSONObject("image"))
-    cfg.table = parseElement(root.optJSONObject("table"))
-    cfg.tableRow = parseElement(root.optJSONObject("tableRow"))
-    cfg.tableHeaderRow = parseElement(root.optJSONObject("tableHeaderRow"))
-    cfg.tableCell = parseElement(root.optJSONObject("tableCell"))
-    cfg.tableHeaderCell = parseElement(root.optJSONObject("tableHeaderCell"))
-    cfg.strong = parseElement(root.optJSONObject("strong"))
-    cfg.emphasis = parseElement(root.optJSONObject("emphasis"))
-    cfg.strikethrough = parseElement(root.optJSONObject("strikethrough"))
-    cfg.code = parseElement(root.optJSONObject("code"))
-    cfg.link = parseElement(root.optJSONObject("link"))
-    cfg.mentionUser = parseElement(root.optJSONObject("mentionUser"))
-    cfg.mentionChannel = parseElement(root.optJSONObject("mentionChannel"))
-    cfg.mentionCommand = parseElement(root.optJSONObject("mentionCommand"))
-    cfg.spoiler = parseElement(root.optJSONObject("spoiler"))
-    cfg.superscript = parseElement(root.optJSONObject("superscript"))
+    cfg.base = parseElement(root.optJSONObject("base"), density)
+    cfg.paragraph = parseElement(root.optJSONObject("paragraph"), density)
+    cfg.heading1 = parseElement(root.optJSONObject("heading1"), density)
+    cfg.heading2 = parseElement(root.optJSONObject("heading2"), density)
+    cfg.heading3 = parseElement(root.optJSONObject("heading3"), density)
+    cfg.heading4 = parseElement(root.optJSONObject("heading4"), density)
+    cfg.heading5 = parseElement(root.optJSONObject("heading5"), density)
+    cfg.heading6 = parseElement(root.optJSONObject("heading6"), density)
+    cfg.blockquote = parseElement(root.optJSONObject("blockquote"), density)
+    cfg.codeBlock = parseElement(root.optJSONObject("codeBlock"), density)
+    cfg.list = parseElement(root.optJSONObject("list"), density)
+    cfg.listItem = parseElement(root.optJSONObject("listItem"), density)
+    cfg.listBullet = parseElement(root.optJSONObject("listBullet"), density)
+    cfg.thematicBreak = parseElement(root.optJSONObject("thematicBreak"), density)
+    cfg.image = parseElement(root.optJSONObject("image"), density)
+    cfg.table = parseElement(root.optJSONObject("table"), density)
+    cfg.tableRow = parseElement(root.optJSONObject("tableRow"), density)
+    cfg.tableHeaderRow = parseElement(root.optJSONObject("tableHeaderRow"), density)
+    cfg.tableCell = parseElement(root.optJSONObject("tableCell"), density)
+    cfg.tableHeaderCell = parseElement(root.optJSONObject("tableHeaderCell"), density)
+    cfg.strong = parseElement(root.optJSONObject("strong"), density)
+    cfg.emphasis = parseElement(root.optJSONObject("emphasis"), density)
+    cfg.strikethrough = parseElement(root.optJSONObject("strikethrough"), density)
+    cfg.code = parseElement(root.optJSONObject("code"), density)
+    cfg.link = parseElement(root.optJSONObject("link"), density)
+    cfg.mentionUser = parseElement(root.optJSONObject("mentionUser"), density)
+    cfg.mentionChannel = parseElement(root.optJSONObject("mentionChannel"), density)
+    cfg.mentionCommand = parseElement(root.optJSONObject("mentionCommand"), density)
+    cfg.spoiler = parseElement(root.optJSONObject("spoiler"), density)
+    cfg.superscript = parseElement(root.optJSONObject("superscript"), density)
     return cfg
   }
 
-  private fun parseElement(obj: JSONObject?): ElementStyle {
+  private fun parseElement(obj: JSONObject?, density: Float): ElementStyle {
     val s = ElementStyle()
     if (obj == null) return s
 
     s.color = colorOf(obj, "color")
     s.fontFamily = stringOf(obj, "fontFamily")
-    s.fontSize = floatOf(obj, "fontSize")
+    s.fontSize = dpOf(obj, "fontSize", density)
     s.fontStyle = stringOf(obj, "fontStyle")
     s.fontWeight = stringOf(obj, "fontWeight")
-    s.letterSpacing = floatOf(obj, "letterSpacing")
-    s.lineHeight = floatOf(obj, "lineHeight")
+    s.letterSpacing = dpOf(obj, "letterSpacing", density)
+    s.lineHeight = dpOf(obj, "lineHeight", density)
     s.textAlign = stringOf(obj, "textAlign")
     s.textDecorationColor = colorOf(obj, "textDecorationColor")
     s.textDecorationLine = stringOf(obj, "textDecorationLine")
@@ -71,34 +79,34 @@ internal object StyleDeserializer {
 
     s.backgroundColor = colorOf(obj, "backgroundColor")
 
-    s.gap = floatOf(obj, "gap")
-    s.width = floatOf(obj, "width")
-    s.height = floatOf(obj, "height")
-    s.maxWidth = floatOf(obj, "maxWidth")
-    s.maxHeight = floatOf(obj, "maxHeight")
+    s.gap = dpOf(obj, "gap", density)
+    s.width = dpOf(obj, "width", density)
+    s.height = dpOf(obj, "height", density)
+    s.maxWidth = dpOf(obj, "maxWidth", density)
+    s.maxHeight = dpOf(obj, "maxHeight", density)
     s.objectFit = stringOf(obj, "objectFit")
 
-    s.margin = floatOf(obj, "margin")
-    s.marginTop = floatOf(obj, "marginTop")
-    s.marginBottom = floatOf(obj, "marginBottom")
-    s.marginLeft = floatOf(obj, "marginLeft")
-    s.marginRight = floatOf(obj, "marginRight")
-    s.marginHorizontal = floatOf(obj, "marginHorizontal")
-    s.marginVertical = floatOf(obj, "marginVertical")
+    s.margin = dpOf(obj, "margin", density)
+    s.marginTop = dpOf(obj, "marginTop", density)
+    s.marginBottom = dpOf(obj, "marginBottom", density)
+    s.marginLeft = dpOf(obj, "marginLeft", density)
+    s.marginRight = dpOf(obj, "marginRight", density)
+    s.marginHorizontal = dpOf(obj, "marginHorizontal", density)
+    s.marginVertical = dpOf(obj, "marginVertical", density)
 
-    s.padding = floatOf(obj, "padding")
-    s.paddingTop = floatOf(obj, "paddingTop")
-    s.paddingBottom = floatOf(obj, "paddingBottom")
-    s.paddingLeft = floatOf(obj, "paddingLeft")
-    s.paddingRight = floatOf(obj, "paddingRight")
-    s.paddingHorizontal = floatOf(obj, "paddingHorizontal")
-    s.paddingVertical = floatOf(obj, "paddingVertical")
+    s.padding = dpOf(obj, "padding", density)
+    s.paddingTop = dpOf(obj, "paddingTop", density)
+    s.paddingBottom = dpOf(obj, "paddingBottom", density)
+    s.paddingLeft = dpOf(obj, "paddingLeft", density)
+    s.paddingRight = dpOf(obj, "paddingRight", density)
+    s.paddingHorizontal = dpOf(obj, "paddingHorizontal", density)
+    s.paddingVertical = dpOf(obj, "paddingVertical", density)
 
-    s.borderWidth = floatOf(obj, "borderWidth")
-    s.borderTopWidth = floatOf(obj, "borderTopWidth")
-    s.borderBottomWidth = floatOf(obj, "borderBottomWidth")
-    s.borderLeftWidth = floatOf(obj, "borderLeftWidth")
-    s.borderRightWidth = floatOf(obj, "borderRightWidth")
+    s.borderWidth = dpOf(obj, "borderWidth", density)
+    s.borderTopWidth = dpOf(obj, "borderTopWidth", density)
+    s.borderBottomWidth = dpOf(obj, "borderBottomWidth", density)
+    s.borderLeftWidth = dpOf(obj, "borderLeftWidth", density)
+    s.borderRightWidth = dpOf(obj, "borderRightWidth", density)
 
     s.borderColor = colorOf(obj, "borderColor")
     s.borderTopColor = colorOf(obj, "borderTopColor")
@@ -106,11 +114,11 @@ internal object StyleDeserializer {
     s.borderLeftColor = colorOf(obj, "borderLeftColor")
     s.borderRightColor = colorOf(obj, "borderRightColor")
 
-    s.borderRadius = floatOf(obj, "borderRadius")
-    s.borderTopLeftRadius = floatOf(obj, "borderTopLeftRadius")
-    s.borderTopRightRadius = floatOf(obj, "borderTopRightRadius")
-    s.borderBottomLeftRadius = floatOf(obj, "borderBottomLeftRadius")
-    s.borderBottomRightRadius = floatOf(obj, "borderBottomRightRadius")
+    s.borderRadius = dpOf(obj, "borderRadius", density)
+    s.borderTopLeftRadius = dpOf(obj, "borderTopLeftRadius", density)
+    s.borderTopRightRadius = dpOf(obj, "borderTopRightRadius", density)
+    s.borderBottomLeftRadius = dpOf(obj, "borderBottomLeftRadius", density)
+    s.borderBottomRightRadius = dpOf(obj, "borderBottomRightRadius", density)
 
     s.borderStyle = stringOf(obj, "borderStyle")
 
@@ -120,8 +128,13 @@ internal object StyleDeserializer {
   private fun stringOf(obj: JSONObject, key: String): String? =
     if (obj.isNull(key)) null else obj.optString(key, "").ifEmpty { null }
 
-  private fun floatOf(obj: JSONObject, key: String): Float =
-    if (obj.isNull(key) || !obj.has(key)) Float.NaN else obj.optDouble(key, Double.NaN).toFloat()
+  /** Reads a length value from JSON and multiplies by `density` (dp → px). */
+  private fun dpOf(obj: JSONObject, key: String, density: Float): Float {
+    if (obj.isNull(key) || !obj.has(key)) return Float.NaN
+    val v = obj.optDouble(key, Double.NaN)
+    if (v.isNaN()) return Float.NaN
+    return (v * density).toFloat()
+  }
 
   private fun colorOf(obj: JSONObject, key: String): Int? {
     if (obj.isNull(key) || !obj.has(key)) return null

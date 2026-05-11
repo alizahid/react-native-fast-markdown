@@ -60,7 +60,7 @@ class MarkdownTableView(
             text = row.cells[c].text
             val fs = if (!cellStyle.fontSize.isNaN() && cellStyle.fontSize > 0) cellStyle.fontSize
             else if (!styleConfig.base.fontSize.isNaN() && styleConfig.base.fontSize > 0) styleConfig.base.fontSize
-            else 16f
+            else 16f * resources.displayMetrics.density
             setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, fs)
             gravity = when (row.cells[c].align) {
               TableAlign.Center -> android.view.Gravity.CENTER_HORIZONTAL

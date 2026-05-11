@@ -43,6 +43,7 @@ class MarkdownTableLayout private constructor(
       styleConfig: StyleConfig,
       customTags: Set<String>,
       maxWidth: Int,
+      density: Float,
     ): MarkdownTableLayout {
       val columnAligns = mutableListOf<TableAlign>()
       val rowsOut = mutableListOf<Row>()
@@ -52,7 +53,7 @@ class MarkdownTableLayout private constructor(
         isAntiAlias = true
         typeface = baseTf
         textSize = if (!styleConfig.base.fontSize.isNaN() && styleConfig.base.fontSize > 0)
-          styleConfig.base.fontSize else 16f
+          styleConfig.base.fontSize else 16f * density
       }
 
       for (section in tableNode.children) {

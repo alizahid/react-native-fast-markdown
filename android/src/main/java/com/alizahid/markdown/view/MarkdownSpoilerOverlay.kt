@@ -158,6 +158,7 @@ class MarkdownSpoilerOverlay(
         downX = event.x; downY = event.y
         activeShape = hit
         invalidate()
+        parent?.requestDisallowInterceptTouchEvent(true)
         return true
       }
       MotionEvent.ACTION_MOVE -> {

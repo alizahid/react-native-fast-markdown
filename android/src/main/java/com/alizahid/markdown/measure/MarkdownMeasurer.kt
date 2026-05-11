@@ -31,7 +31,12 @@ import kotlin.math.min
  */
 object MarkdownMeasurer {
 
-  private const val DEFAULT_IMAGE_HEIGHT_PX = 200
+  // Density-scaled defaults set on every `measure()` call from the
+  // Context's displayMetrics. iOS measures in points (≈ dp); we need
+  // raw pixels for StaticLayout / Paint.
+  private var cachedDensity: Float = 1f
+  private var defaultImageHeightPx: Int = 200
+  private var defaultFontSizePx: Float = 16f
 
   fun measure(
     context: Context,
@@ -46,7 +51,11 @@ object MarkdownMeasurer {
     val key = buildKey(markdown, styles, customTags, propImageSizes, widthInt)
     MeasurementCache.get(key)?.let { return it }
 
-    val cfg = StyleConfig.fromJson(styles)
+    val density = context.resources.displayMetrics.density
+    cachedDensity = density
+    defaultImageHeightPx = (200f * density).toInt()
+    defaultFontSizePx = 16f * density
+    val cfg = StyleConfig.fromJson(styles, density)
     val baseMargin = cfg.base.resolvedMarginInsets()
     val basePadding = cfg.base.resolvedPaddingInsets()
     val baseBorders = cfg.base.resolvedBorderWidths()
@@ -145,7 +154,7 @@ object MarkdownMeasurer {
       }
       Size(ceil(w).toInt(), ceil(h).toInt())
     } else {
-      val h = if (!style.height.isNaN() && style.height > 0) style.height.toInt() else DEFAULT_IMAGE_HEIGHT_PX
+      val h = if (!style.height.isNaN() && style.height > 0) style.height.toInt() else defaultImageHeightPx
       Size(contentWidth.coerceAtLeast(0), h)
     }
 
@@ -236,7 +245,7 @@ object MarkdownMeasurer {
     val tableInner = innerWidth - margin.left - margin.right -
       padding.left - padding.right - borders.left - borders.right
 
-    val layout = MarkdownTableLayout.compute(node, cfg, customTags, tableInner.coerceAtLeast(0))
+    val layout = MarkdownTableLayout.compute(node, cfg, customTags, tableInner.coerceAtLeast(0), cachedDensity)
     return sizeForBlockStyle(style, layout.totalWidth, layout.totalHeight).height
   }
 
@@ -287,7 +296,7 @@ object MarkdownMeasurer {
   private fun pickFontSize(cfg: StyleConfig, style: ElementStyle): Float {
     if (!style.fontSize.isNaN() && style.fontSize > 0) return style.fontSize
     if (!cfg.base.fontSize.isNaN() && cfg.base.fontSize > 0) return cfg.base.fontSize
-    return 16f
+    return defaultFontSizePx
   }
 
   /**
