@@ -23,7 +23,13 @@ object RendererFactory {
     NodeType.Link to LinkRenderer,
     NodeType.HtmlInline to HtmlPassThroughRenderer,
     NodeType.HtmlBlock to HtmlPassThroughRenderer,
-    // Phase 3 wires up List, ListItem, Blockquote, CodeBlock, ThematicBreak, Table*
+    // Phase 3
+    NodeType.List to ListRenderer,
+    NodeType.ListItem to ListItemRenderer,
+    NodeType.Blockquote to BlockquoteRenderer,
+    NodeType.CodeBlock to CodeBlockRenderer,
+    // ThematicBreak / Table* are rendered at the view layer (no
+    // attributed-string output) — the buildSegment switch handles them.
     // Phase 4 wires up Image
     // Phase 5 wires up CustomTag
   )

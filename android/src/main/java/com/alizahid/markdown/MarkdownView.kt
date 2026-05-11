@@ -11,7 +11,10 @@ import com.alizahid.markdown.renderer.RenderContext
 import com.alizahid.markdown.style.StyleConfig
 import com.alizahid.markdown.view.MarkdownBlockView
 import com.alizahid.markdown.view.MarkdownSegmentStack
+import com.alizahid.markdown.view.MarkdownTableLayout
+import com.alizahid.markdown.view.MarkdownTableView
 import com.alizahid.markdown.view.MarkdownTextView
+import com.alizahid.markdown.parser.ListType
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.uimanager.StateWrapper
 import com.facebook.react.views.view.ReactViewGroup
@@ -103,28 +106,103 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
 
   private fun buildSegment(node: AstNode, cfg: StyleConfig): android.view.View? {
     return when (node.type) {
-      NodeType.Paragraph, NodeType.Heading -> buildTextSegment(node, cfg)
+      NodeType.Paragraph, NodeType.Heading, NodeType.CodeBlock -> buildTextSegment(node, cfg)
+      NodeType.Blockquote -> buildBlockquoteSegment(node, cfg)
+      NodeType.List -> buildListSegment(node, cfg)
+      NodeType.Table -> buildTableSegment(node, cfg)
+      NodeType.ThematicBreak -> buildThematicBreakSegment(cfg)
       else -> null
+    }
+  }
+
+  private fun buildBlockquoteSegment(node: AstNode, cfg: StyleConfig): android.view.View {
+    val style = cfg.blockquote
+    val inner = MarkdownSegmentStack(context).apply {
+      spacing = style.gap.takeUnless { it.isNaN() }?.toInt() ?: 0
+    }
+    for (child in node.children) {
+      val seg = buildSegment(child, cfg) ?: continue
+      inner.addView(seg, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+    return wrapInBlock(inner, style)
+  }
+
+  private fun buildListSegment(node: AstNode, cfg: StyleConfig): android.view.View {
+    val isOrdered = node.listType == ListType.Ordered
+    val listStyle = cfg.list
+    val inner = MarkdownSegmentStack(context).apply {
+      spacing = listStyle.gap.takeUnless { it.isNaN() }?.toInt() ?: 0
+    }
+
+    val itemCount = node.children.count { it.type == NodeType.ListItem }
+    val startNumber = if (isOrdered) maxOf(1, node.listStart) else 0
+    val lastNumber = maxOf(1, startNumber + itemCount - 1)
+    var maxDigits = 1
+    var v = lastNumber
+    while (v >= 10) { maxDigits++; v /= 10 }
+
+    var index = startNumber
+    for (child in node.children) {
+      if (child.type != NodeType.ListItem) continue
+      val tv = makeTextView(cfg.listItem, cfg)
+      val ctx = makeContext(cfg)
+      ctx.pushAttributes(RenderContext.baseAttributesFromStyleConfig(cfg))
+      val spanned = RenderContext.renderListItemContent(
+        child, isOrdered, index, maxDigits, cfg, currentCustomTags,
+      )
+      tv.text = spanned
+      inner.addView(wrapInBlock(tv, cfg.listItem),
+        ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+      if (isOrdered) index++
+    }
+    return wrapInBlock(inner, listStyle)
+  }
+
+  private fun buildTableSegment(node: AstNode, cfg: StyleConfig): android.view.View {
+    val maxW = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+    val layout = MarkdownTableLayout.compute(node, cfg, currentCustomTags, maxW)
+    val table = MarkdownTableView(context, layout, cfg)
+    return wrapInBlock(table, cfg.table)
+  }
+
+  private fun buildThematicBreakSegment(cfg: StyleConfig): android.view.View {
+    val s = cfg.thematicBreak
+    val v = android.view.View(context)
+    val h = if (!s.height.isNaN() && s.height > 0) s.height.toInt() else 1
+    val lp = ViewGroup.MarginLayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, h)
+    v.layoutParams = lp
+    s.backgroundColor?.let { v.setBackgroundColor(it) }
+    return wrapInBlock(v, s)
+  }
+
+  private fun makeTextView(
+    style: com.alizahid.markdown.style.ElementStyle,
+    cfg: StyleConfig,
+  ): MarkdownTextView {
+    return MarkdownTextView(context).apply {
+      val baseSize = pickFontSize(cfg, style)
+      setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, baseSize)
+    }
+  }
+
+  private fun makeContext(cfg: StyleConfig): RenderContext {
+    return RenderContext(cfg, currentCustomTags).apply {
+      onLinkPress = { url, title -> MarkdownEventDispatcher.dispatchLinkPress(this@MarkdownView, url, title) }
+      onLinkLongPress = { url, title -> MarkdownEventDispatcher.dispatchLinkLongPress(this@MarkdownView, url, title) }
     }
   }
 
   private fun buildTextSegment(node: AstNode, cfg: StyleConfig): android.view.View {
     val style = when (node.type) {
       NodeType.Heading -> cfg.styleForHeadingLevel(node.headingLevel)
+      NodeType.CodeBlock -> cfg.codeBlock
       else -> cfg.paragraph
     }
-    val tv = MarkdownTextView(context).apply {
-      val baseSize = pickFontSize(cfg, style)
-      setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, baseSize)
-    }
-    val ctx = RenderContext(cfg, currentCustomTags).apply {
-      onLinkPress = { url, title -> MarkdownEventDispatcher.dispatchLinkPress(this@MarkdownView, url, title) }
-      onLinkLongPress = { url, title -> MarkdownEventDispatcher.dispatchLinkLongPress(this@MarkdownView, url, title) }
-    }
+    val tv = makeTextView(style, cfg)
+    val ctx = makeContext(cfg)
     ctx.pushAttributes(RenderContext.baseAttributesFromStyleConfig(cfg))
     val sb = android.text.SpannableStringBuilder()
     com.alizahid.markdown.renderer.RendererFactory.forType(node.type)?.render(node, sb, ctx)
-    // Trim trailing newline like the static helper does
     val len = sb.length
     if (len > 0 && sb[len - 1] == '\n') sb.delete(len - 1, len)
     tv.text = sb
