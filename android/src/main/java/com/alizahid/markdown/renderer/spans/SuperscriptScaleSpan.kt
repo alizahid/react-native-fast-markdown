@@ -1,6 +1,5 @@
 package com.alizahid.markdown.renderer.spans
 
-import android.graphics.Paint
 import android.text.TextPaint
 import android.text.style.MetricAffectingSpan
 
@@ -12,6 +11,10 @@ import android.text.style.MetricAffectingSpan
  *
  * Defaults match common heuristics: 70% of original size, baseline
  * shifted up by 0.4 × ascent.
+ *
+ * Note: `baselineShift` is a TextPaint property (not on the parent
+ * Paint class), so we type the apply parameter as TextPaint and
+ * forward both update hooks to it.
  */
 class SuperscriptScaleSpan(
   private val sizeRatio: Float = 0.7f,
@@ -21,7 +24,7 @@ class SuperscriptScaleSpan(
   override fun updateDrawState(ds: TextPaint) = apply(ds)
   override fun updateMeasureState(p: TextPaint) = apply(p)
 
-  private fun apply(p: Paint) {
+  private fun apply(p: TextPaint) {
     val originalSize = p.textSize
     val originalAscent = p.ascent()
     p.textSize = originalSize * sizeRatio

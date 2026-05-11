@@ -97,8 +97,10 @@ object CustomTagRenderer : NodeRenderer {
 
   private fun stableId(offset: Int, node: AstNode): String {
     // Hash on offset + tag name + child count to keep IDs stable
-    // across re-renders of the same markdown source.
-    var h = offset.toLong() xor 0x9E3779B97F4A7C15L
+    // across re-renders of the same markdown source. Kotlin Long literals
+    // are signed — express the splittable-hash constant via its
+    // unsigned form so the bit pattern survives without overflow.
+    var h = offset.toLong() xor 0x9E3779B97F4A7C15UL.toLong()
     h = h * 31 + node.tagName.hashCode()
     h = h * 31 + node.children.size
     return "sp_${(h and 0xFFFFFFFFFFFFL).toString(16)}"

@@ -1,8 +1,8 @@
 package com.alizahid.markdown
 
 import com.facebook.react.bridge.ReadableArray
-import com.facebook.react.bridge.ReactStylesDiffMap
 import com.facebook.react.module.annotations.ReactModule
+import com.facebook.react.uimanager.ReactStylesDiffMap
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.StateWrapper
 import com.facebook.react.uimanager.ThemedReactContext
