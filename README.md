@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/react-native-fast-markdown"><img src="https://img.shields.io/npm/v/react-native-fast-markdown?color=A02F6F&label=npm" alt="npm"></a>
   <a href="https://github.com/alizahid/react-native-fast-markdown/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/react-native-fast-markdown?color=668C0B" alt="license"></a>
-  <img src="https://img.shields.io/badge/platform-iOS-5E409D" alt="platform">
+  <img src="https://img.shields.io/badge/platform-iOS%20%7C%20Android-5E409D" alt="platform">
   <img src="https://img.shields.io/badge/architecture-Fabric-205EA6" alt="architecture">
 </p>
 
@@ -39,6 +39,15 @@ cd ios && pod install
 
 > Requires React Native >= 0.76 with the New Architecture (Fabric) enabled.
 
+### Android
+
+Android requires `minSdk` 24 (Android 7.0) or newer. Image loading uses [Glide](https://github.com/bumptech/glide), pulled in automatically. No manual linking — autolinking discovers the Gradle module.
+
+### Platform differences
+
+- **Link long-press preview**: iOS shows the system webpage-preview popover for `http(s)` URLs and only emits `onLinkLongPress` for custom schemes. Android has no equivalent native popover, so `onLinkLongPress` fires for every URL — build your own preview UI when you need one.
+- **Editor**: `MarkdownEditor` is currently iOS-only. The renderer (`Markdown`) is supported on both platforms.
+
 ## Quick start
 
 ### Renderer
@@ -63,7 +72,9 @@ This is **bold**, *italic*, and ~~struck~~.
 }
 ```
 
-### Editor
+### Editor (iOS only)
+
+> The editor is currently iOS-only. The renderer (`<Markdown>`) is supported on iOS and Android.
 
 ```tsx
 import { MarkdownEditor, useMarkdownEditor } from 'react-native-fast-markdown'
