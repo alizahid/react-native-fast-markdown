@@ -1,9 +1,6 @@
 {
-  "platforms": ["ios", "android"],
+  "platforms": ["ios"],
   "ios": {
     "podspecPath": "./react-native-fast-markdown.podspec"
-  },
-  "android": {
-    "modules": ["com.alizahid.markdown.MarkdownPackage"]
   }
 }

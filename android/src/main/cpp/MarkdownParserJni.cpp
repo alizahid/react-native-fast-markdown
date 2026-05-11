@@ -227,6 +227,15 @@ Java_com_alizahid_markdown_jni_MarkdownParserJni_nativeParse(
   options.enableStrikethrough = true;
   options.enableAutolinks = true;
 
+  // Auto-register the five built-in custom tags so they work out of the
+  // box (mentions, spoilers, superscript). Matches the iOS contract — JS
+  // callers don't need to pass them via the customTags prop.
+  options.customTags.insert("UserMention");
+  options.customTags.insert("ChannelMention");
+  options.customTags.insert("Command");
+  options.customTags.insert("Spoiler");
+  options.customTags.insert("Superscript");
+
   if (customTagsArray != nullptr) {
     jsize n = env->GetArrayLength(customTagsArray);
     for (jsize i = 0; i < n; ++i) {
