@@ -14,6 +14,6 @@ class MarkdownPackage : ReactPackage {
 
   override fun createViewManagers(
     reactContext: ReactApplicationContext,
-  ): List<ViewManager<out View, out ReactShadowNode<*>>> = emptyList()
-  // Phase 2 will return listOf(MarkdownViewManager()) here.
+  ): List<ViewManager<out View, out ReactShadowNode<*>>> =
+    listOf(MarkdownViewManager())
 }
