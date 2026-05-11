@@ -121,20 +121,20 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
    * RNSVGSvgView. Without this the inner segment stack never gets a
    * width to wrap to and the whole component renders as a blank rect.
    *
-   * We always measure `outer` with UNSPECIFIED height so it returns
-   * its true content height regardless of what Fabric / parent told
-   * us. The reported measured dimension then picks the right shape:
-   *   - EXACTLY  → pin to spec (Fabric mode — Yoga gave us an exact size)
-   *   - AT_MOST  → cap content to spec
-   *   - UNSPECIFIED → return content (ScrollView parent path)
-   *
-   * Critically: when EXACTLY(0) (which Fabric sends when there's no
-   * measure function and no explicit height), we still report 0 to
-   * Fabric — but `onLayout` lays `outer` out at its real content
-   * height. Android doesn't clip children by default, so content
-   * stays visible. iOS does the same trick via its shadow-node
-   * measurer; until the Android Fabric measure-function hook lands
-   * this is the closest equivalent.
+   * Height-reporting rules:
+   *   - UNSPECIFIED         → return content (ScrollView parent path).
+   *   - AT_MOST(s)          → min(content, s).
+   *   - EXACTLY(s), s > 0   → s. The user (or Yoga) gave us an explicit
+   *                            height; respect it.
+   *   - EXACTLY(0)          → content. This is what Fabric passes for a
+   *                            `<Markdown>` with no measure function and
+   *                            no explicit height — Yoga literally has
+   *                            no idea how tall we are. Until we wire
+   *                            a Fabric measure-function we have to
+   *                            self-report, otherwise sibling Markdown
+   *                            instances collapse to y=0 and a parent
+   *                            ScrollView never learns there's anything
+   *                            to scroll past.
    */
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
     val w = MeasureSpec.getSize(widthMeasureSpec)
@@ -148,7 +148,7 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
 
     val contentH = outer.measuredHeight
     val measuredH = when (hMode) {
-      MeasureSpec.EXACTLY -> hSize
+      MeasureSpec.EXACTLY -> if (hSize > 0) hSize else contentH
       MeasureSpec.AT_MOST -> minOf(contentH, hSize)
       else -> contentH
     }
