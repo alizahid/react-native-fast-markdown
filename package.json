@@ -31,12 +31,16 @@
     "lib",
     "cpp",
     "ios",
+    "android",
     "react-native-fast-markdown.podspec",
     "react-native.config.js",
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
-    "!**/.*"
+    "!**/.*",
+    "!android/build",
+    "!android/.cxx",
+    "!android/.gradle"
   ],
   "scripts": {
     "clean": "del-cli lib",
@@ -67,6 +71,9 @@
     "name": "MarkdownViewSpec",
     "type": "components",
     "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "com.alizahid.markdown"
+    },
     "ios": {
       "componentProvider": {
         "MarkdownView": "MarkdownView",

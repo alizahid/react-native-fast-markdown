@@ -11,9 +11,6 @@ module.exports = {
     [pkg.name]: {
       // biome-ignore lint/correctness/noGlobalDirnameFilename: go away
       root: path.join(__dirname, '..'),
-      platforms: {
-        ios: {},
-      },
     },
   },
 }
