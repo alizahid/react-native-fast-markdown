@@ -11,6 +11,7 @@ import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
 import com.alizahid.markdown.style.ElementStyle
 import com.bumptech.glide.Glide
+import kotlin.math.min
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
@@ -70,17 +71,18 @@ class MarkdownImageView(
   override fun onTouchEvent(event: MotionEvent): Boolean {
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
-        pressOverlay.color = Color.argb(64, 0, 0, 0)
+        // Match iOS `[UIColor colorWithWhite:0.0 alpha:0.18]`.
+        pressOverlay.color = Color.argb(46, 0, 0, 0)
         return true
       }
       MotionEvent.ACTION_UP -> {
-        pressOverlay.color = Color.argb(0, 0, 0, 0)
+        pressOverlay.color = Color.TRANSPARENT
         val s = bestKnownNaturalSize()
         onPress?.invoke(url, s.width, s.height)
         return true
       }
       MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
-        pressOverlay.color = Color.argb(0, 0, 0, 0)
+        pressOverlay.color = Color.TRANSPARENT
         return true
       }
     }
@@ -129,39 +131,49 @@ class MarkdownImageView(
   }
 
   /**
-   * Applies objectFit math: `cover` (default) sizes to (maxW, maxH)
-   * exactly and crops; `contain` aspect-fits inside (maxW, maxH).
-   * Mirrors iOS MarkdownImageView.blockSizeForNaturalSize.
+   * Applies objectFit math. Bit-for-bit port of iOS
+   * `+ [MarkdownImageView blockSizeForNaturalSize:...]`:
+   *
+   * - Default `cover` (when objectFit is anything but "contain") +
+   *   BOTH maxWidth and maxHeight set → reserved rect is exactly
+   *   (maxW, maxH) and the image fills via CENTER_CROP.
+   * - Otherwise (contain, OR cover with only one max set) → use the
+   *   image's natural size scaled down to fit whichever max
+   *   constraint(s) are present (preserve aspect ratio).
+   * - In every case, finally clamp to `availableWidth` (a hard
+   *   layout constraint, not a style preference), preserving
+   *   whatever aspect ratio resulted.
    */
   private fun blockSizeForNaturalSize(natural: Size, availableWidth: Int): Size {
-    val effMaxW = if (maxWidth > 0) maxWidth.coerceAtMost(availableWidth) else availableWidth
-    val effMaxH = if (maxHeight > 0) maxHeight else Int.MAX_VALUE
-
     if (natural.width <= 0 || natural.height <= 0) {
-      return Size(effMaxW, fallbackHeight.coerceAtMost(effMaxH).coerceAtLeast(1))
+      val w = if (fallbackWidth > 0) fallbackWidth else availableWidth
+      return Size(w.coerceAtLeast(1), fallbackHeight.coerceAtLeast(1))
     }
 
-    return when (objectFit) {
-      "cover" -> {
-        val w = effMaxW
-        val h = if (effMaxH == Int.MAX_VALUE) {
-          (natural.height.toLong() * w / natural.width).toInt()
-        } else effMaxH
-        Size(w.coerceAtLeast(1), h.coerceAtLeast(1))
-      }
-      else -> {
-        // contain (default if unspecified — matches RN expected behavior
-        // for missing objectFit on a block image)
-        val ratio = natural.width.toFloat() / natural.height.toFloat()
-        var w = effMaxW
-        var h = (w / ratio).toInt()
-        if (h > effMaxH) {
-          h = effMaxH
-          w = (h * ratio).toInt()
-        }
-        Size(w.coerceAtLeast(1), h.coerceAtLeast(1))
-      }
+    val cover = objectFit != "contain"
+    var w: Float
+    var h: Float
+    if (cover && maxWidth > 0 && maxHeight > 0) {
+      w = maxWidth.toFloat()
+      h = maxHeight.toFloat()
+    } else {
+      w = natural.width.toFloat()
+      h = natural.height.toFloat()
+      var scale = 1f
+      if (maxWidth > 0 && w > maxWidth) scale = min(scale, maxWidth / w)
+      if (maxHeight > 0 && h > maxHeight) scale = min(scale, maxHeight / h)
+      w *= scale
+      h *= scale
     }
+
+    if (availableWidth > 0 && w > availableWidth) {
+      val s = availableWidth / w
+      w *= s
+      h *= s
+    }
+
+    return Size(kotlin.math.ceil(w).toInt().coerceAtLeast(1),
+                kotlin.math.ceil(h).toInt().coerceAtLeast(1))
   }
 
   companion object {

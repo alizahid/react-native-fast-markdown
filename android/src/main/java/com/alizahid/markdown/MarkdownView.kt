@@ -136,6 +136,8 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
 
   private fun walkHit(v: android.view.View, x: Int, y: Int, hit: android.graphics.Rect): Boolean {
     if (v is MarkdownPressableOverlay) return true
+    if (v is MarkdownSpoilerOverlay) return true
+    if (v is MarkdownMentionOverlay) return true
     if (v is MarkdownImageView) return true
     if (v is MarkdownTableView) return v.canScrollHorizontally(1) || v.canScrollHorizontally(-1)
     if (v is MarkdownTextView) {
@@ -176,12 +178,21 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
 
     stack.removeAllViews()
     for (child in ast.children) {
-      val seg = buildSegment(child, cfg) ?: continue
+      val seg = buildSegment(child, cfg, inheritedAttrs = null) ?: continue
       stack.addView(seg, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
   }
 
-  private fun buildSegment(node: AstNode, cfg: StyleConfig): android.view.View? {
+  /**
+   * `inheritedAttrs` cascades parent-block text styling (e.g. a
+   * blockquote's color/fontStyle) into children. Pass `null` at the
+   * top level — RenderContext.baseAttributesFromStyleConfig is used.
+   */
+  private fun buildSegment(
+    node: AstNode,
+    cfg: StyleConfig,
+    inheritedAttrs: Map<String, Any?>?,
+  ): android.view.View? {
     // `![alt](url)` on its own line parses as Paragraph { Image } —
     // render it as a real MarkdownImageView block (Glide-backed) instead
     // of flattening through the attributed-string pipeline. Mirrors iOS
@@ -190,12 +201,15 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
       return buildImageSegment(imageNode, cfg)
     }
     return when (node.type) {
-      NodeType.Paragraph, NodeType.Heading, NodeType.CodeBlock -> buildTextSegment(node, cfg)
-      NodeType.Blockquote -> buildBlockquoteSegment(node, cfg)
-      NodeType.List -> buildListSegment(node, cfg)
+      NodeType.Blockquote -> buildBlockquoteSegment(node, cfg, inheritedAttrs)
+      NodeType.List -> buildListSegment(node, cfg, inheritedAttrs)
       NodeType.Table -> buildTableSegment(node, cfg)
       NodeType.ThematicBreak -> buildThematicBreakSegment(cfg)
-      else -> null
+      // Everything else — paragraph, heading, codeBlock, CustomTag at
+      // top level (e.g. a standalone <Spoiler>…</Spoiler>), even
+      // unrecognised types — falls through to the text-block path.
+      // Mirrors iOS addSegmentForNode's `else` branch.
+      else -> buildTextSegment(node, cfg, inheritedAttrs)
     }
   }
 
@@ -230,19 +244,27 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     return block
   }
 
-  private fun buildBlockquoteSegment(node: AstNode, cfg: StyleConfig): android.view.View {
+  private fun buildBlockquoteSegment(
+    node: AstNode, cfg: StyleConfig, inheritedAttrs: Map<String, Any?>?,
+  ): android.view.View {
     val style = cfg.blockquote
     val inner = MarkdownSegmentStack(context).apply {
       spacing = style.gap.takeUnless { it.isNaN() }?.toInt() ?: 0
     }
+    // Cascade blockquote text style into children. Mirrors iOS
+    // addBlockquoteSegment's childAttrsFrozen.
+    val parentAttrs = inheritedAttrs ?: RenderContext.baseAttributesFromStyleConfig(cfg)
+    val childAttrs = RenderContext.resolveAttrs(style, parentAttrs)
     for (child in node.children) {
-      val seg = buildSegment(child, cfg) ?: continue
+      val seg = buildSegment(child, cfg, childAttrs) ?: continue
       inner.addView(seg, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
     return wrapInBlock(inner, style)
   }
 
-  private fun buildListSegment(node: AstNode, cfg: StyleConfig): android.view.View {
+  private fun buildListSegment(
+    node: AstNode, cfg: StyleConfig, inheritedAttrs: Map<String, Any?>?,
+  ): android.view.View {
     val isOrdered = node.listType == ListType.Ordered
     val listStyle = cfg.list
     val inner = MarkdownSegmentStack(context).apply {
@@ -260,13 +282,12 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     for (child in node.children) {
       if (child.type != NodeType.ListItem) continue
       val tv = makeTextView(cfg.listItem, cfg)
-      val ctx = makeContext(cfg)
-      ctx.pushAttributes(RenderContext.baseAttributesFromStyleConfig(cfg))
       val spanned = RenderContext.renderListItemContent(
         child, isOrdered, index, maxDigits, cfg, currentCustomTags,
+        inheritedAttrs = inheritedAttrs,
       )
-      tv.text = spanned
-      inner.addView(wrapInBlock(tv, cfg.listItem),
+      val container = textContainerWithOverlays(tv.apply { text = spanned }, spanned, cfg)
+      inner.addView(wrapInBlock(container, cfg.listItem),
         ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
       if (isOrdered) index++
     }
@@ -274,10 +295,19 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
   }
 
   private fun buildTableSegment(node: AstNode, cfg: StyleConfig): android.view.View {
-    val maxW = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-    val layout = MarkdownTableLayout.compute(node, cfg, currentCustomTags, maxW)
+    val outerWidth = (width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels)
+    // Subtract base margin/padding/borders + table wrapper margin/padding/
+    // borders so the table sees the same inner width the measurer reserved.
+    // Matches iOS addTableSegment.
+    val bm = cfg.base.resolvedMarginInsets(); val bp = cfg.base.resolvedPaddingInsets(); val bb = cfg.base.resolvedBorderWidths()
+    val tableStyle = cfg.table
+    val tm = tableStyle.resolvedMarginInsets(); val tp = tableStyle.resolvedPaddingInsets(); val tb = tableStyle.resolvedBorderWidths()
+    val innerWidth = (outerWidth -
+      bm.left - bm.right - bp.left - bp.right - bb.left - bb.right -
+      tm.left - tm.right - tp.left - tp.right - tb.left - tb.right).coerceAtLeast(0)
+    val layout = MarkdownTableLayout.compute(node, cfg, currentCustomTags, innerWidth)
     val table = MarkdownTableView(context, layout, cfg)
-    return wrapInBlock(table, cfg.table)
+    return wrapInBlock(table, tableStyle)
   }
 
   private fun buildThematicBreakSegment(cfg: StyleConfig): android.view.View {
@@ -300,26 +330,23 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     }
   }
 
-  private fun makeContext(cfg: StyleConfig): RenderContext {
-    return RenderContext(cfg, currentCustomTags).apply {
-      onLinkPress = { url, title -> MarkdownEventDispatcher.dispatchLinkPress(this@MarkdownView, url, title) }
-      onLinkLongPress = { url, title -> MarkdownEventDispatcher.dispatchLinkLongPress(this@MarkdownView, url, title) }
-    }
-  }
-
-  private fun buildTextSegment(node: AstNode, cfg: StyleConfig): android.view.View {
+  private fun buildTextSegment(
+    node: AstNode, cfg: StyleConfig, inheritedAttrs: Map<String, Any?>?,
+  ): android.view.View {
     val style = when (node.type) {
       NodeType.Heading -> cfg.styleForHeadingLevel(node.headingLevel)
       NodeType.CodeBlock -> cfg.codeBlock
+      NodeType.Paragraph -> cfg.paragraph
       else -> cfg.paragraph
     }
     val tv = makeTextView(style, cfg)
-    val ctx = makeContext(cfg)
-    ctx.pushAttributes(RenderContext.baseAttributesFromStyleConfig(cfg))
-    val sb = android.text.SpannableStringBuilder()
-    com.alizahid.markdown.renderer.RendererFactory.forType(node.type)?.render(node, sb, ctx)
-    val len = sb.length
-    if (len > 0 && sb[len - 1] == '\n') sb.delete(len - 1, len)
+    // Use the same thread-safe rendering helper the measurer uses so
+    // runtime + measurement produce identical output for the same
+    // inputs. inheritedAttrs cascades parent block styling (e.g. a
+    // blockquote's color) into this segment.
+    val sb = android.text.SpannableStringBuilder(
+      RenderContext.renderNodeToSpanned(node, cfg, currentCustomTags, inheritedAttrs),
+    )
 
     // If this top-level segment is a block-level CustomTag (e.g. a
     // `<Spoiler>…</Spoiler>` on its own line), stamp every existing
@@ -336,21 +363,44 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     }
 
     tv.text = sb
-
+    // textContainerWithOverlays rebinds LinkClickableSpans so they
+    // dispatch through this view — the static RenderContext helper
+    // builds them without view-side callbacks.
     val container = textContainerWithOverlays(tv, sb, cfg)
     return wrapInBlock(container, style)
+  }
+
+  private fun rebindLinkSpans(sb: android.text.SpannableStringBuilder) {
+    val spans = sb.getSpans(0, sb.length, com.alizahid.markdown.renderer.spans.LinkClickableSpan::class.java)
+    for (old in spans) {
+      val s = sb.getSpanStart(old); val e = sb.getSpanEnd(old); val f = sb.getSpanFlags(old)
+      sb.removeSpan(old)
+      sb.setSpan(
+        com.alizahid.markdown.renderer.spans.LinkClickableSpan(
+          old.url, old.title,
+          { url, title -> MarkdownEventDispatcher.dispatchLinkPress(this, url, title) },
+          { url, title -> MarkdownEventDispatcher.dispatchLinkLongPress(this, url, title) },
+        ),
+        s, e, f,
+      )
+    }
   }
 
   /**
    * Wraps a MarkdownTextView in a FrameLayout that also hosts spoiler /
    * mention overlays. Overlays subscribe to the text view's
    * onLayoutChanged callback so they recompute glyph rects after layout.
+   *
+   * Also rebinds any LinkClickableSpans so they dispatch onLinkPress /
+   * onLinkLongPress through this view's event dispatcher — the static
+   * RenderContext helper builds spans without view-side callbacks.
    */
   private fun textContainerWithOverlays(
     tv: MarkdownTextView,
     content: android.text.Spanned,
     cfg: StyleConfig,
   ): android.view.View {
+    if (content is android.text.SpannableStringBuilder) rebindLinkSpans(content)
     val hasSpoilers = content.getSpans(0, content.length, SpoilerMarkerSpan::class.java).isNotEmpty()
     val hasMentions = content.getSpans(0, content.length, MentionSpan::class.java).isNotEmpty()
     if (!hasSpoilers && !hasMentions) return tv

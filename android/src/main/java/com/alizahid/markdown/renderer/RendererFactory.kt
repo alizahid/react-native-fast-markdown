@@ -3,9 +3,18 @@ package com.alizahid.markdown.renderer
 import com.alizahid.markdown.parser.NodeType
 
 /**
- * Static lookup table: AST node type → renderer singleton.
- * Mirrors ios/renderer/RendererFactory. Renderers are stateless; per-render
+ * Static lookup table: AST node type → renderer singleton. Mirrors
+ * ios/renderer/RendererFactory.m. Renderers are stateless — per-render
  * state lives on the RenderContext.
+ *
+ * Block-level nodes (Blockquote, List, Table, ThematicBreak) ALSO have
+ * a renderer entry so they degrade gracefully when rendered inline
+ * (e.g. nested inside a CustomTag); top-level use goes through
+ * MarkdownView.buildSegment which builds dedicated views.
+ *
+ * HtmlBlock / HtmlInline are intentionally absent — iOS has no entry
+ * either; unknown HTML falls back to no-op (its raw content stays
+ * invisible).
  */
 object RendererFactory {
 
@@ -20,20 +29,17 @@ object RendererFactory {
     NodeType.Emphasis to EmphasisRenderer,
     NodeType.Strikethrough to StrikethroughRenderer,
     NodeType.Code to CodeRenderer,
+    NodeType.CodeBlock to CodeBlockRenderer,
     NodeType.Link to LinkRenderer,
-    NodeType.HtmlInline to HtmlPassThroughRenderer,
-    NodeType.HtmlBlock to HtmlPassThroughRenderer,
-    // Phase 3
     NodeType.List to ListRenderer,
     NodeType.ListItem to ListItemRenderer,
     NodeType.Blockquote to BlockquoteRenderer,
-    NodeType.CodeBlock to CodeBlockRenderer,
-    // ThematicBreak / Table* are rendered at the view layer (no
-    // attributed-string output) — the buildSegment switch handles them.
-    // Image stays as TextRenderer (alt text) for inline contexts;
-    // block-level images go through MarkdownView.buildImageSegment.
-    NodeType.Image to TextRenderer,
-    // Phase 5
+    NodeType.Image to ImageRenderer,
+    NodeType.Table to TableRenderer,
+    NodeType.TableHead to TableRenderer,
+    NodeType.TableBody to TableRenderer,
+    NodeType.TableRow to TableRenderer,
+    NodeType.TableCell to TableRenderer,
     NodeType.CustomTag to CustomTagRenderer,
   )
 

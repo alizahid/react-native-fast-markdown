@@ -99,6 +99,35 @@ object StyleAttributes {
   }
 
   /**
+   * Applies only the paragraph-level properties (lineHeight, textAlign)
+   * from a style. Mirrors iOS
+   * `+ [StyleAttributes applyParagraphPropertiesFromStyle:toAttrs:]` —
+   * block renderers use this to cascade BASE properties before the
+   * element-specific style, so headings/paragraphs inherit base
+   * lineHeight / textAlign when their own style doesn't override.
+   */
+  fun applyParagraphProperties(
+    style: ElementStyle?,
+    into: SpannableStringBuilder,
+    start: Int,
+    end: Int,
+  ) {
+    if (style == null || start >= end) return
+    val flags = Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+    if (!style.lineHeight.isNaN() && style.lineHeight > 0f) {
+      into.setSpan(LineHeightSpan(style.lineHeight.toInt()), start, end, flags)
+    }
+    style.textAlign?.let {
+      val align = when (it) {
+        "center" -> Layout.Alignment.ALIGN_CENTER
+        "right" -> Layout.Alignment.ALIGN_OPPOSITE
+        else -> Layout.Alignment.ALIGN_NORMAL
+      }
+      into.setSpan(AlignmentSpan.Standard(align), start, end, flags)
+    }
+  }
+
+  /**
    * Decorates the existing TypefaceSpan from the platform — sometimes
    * cheaper than building a full Typeface when only a family swap is
    * needed.

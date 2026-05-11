@@ -136,9 +136,12 @@ class ElementStyle {
     return r.left != 0 || r.top != 0 || r.right != 0 || r.bottom != 0
   }
 
-  fun hasAnyRadius(): Boolean = !borderRadius.isNaN() ||
-    !borderTopLeftRadius.isNaN() || !borderTopRightRadius.isNaN() ||
-    !borderBottomLeftRadius.isNaN() || !borderBottomRightRadius.isNaN()
+  fun hasAnyRadius(): Boolean =
+    (!borderRadius.isNaN() && borderRadius > 0f) ||
+    (!borderTopLeftRadius.isNaN() && borderTopLeftRadius > 0f) ||
+    (!borderTopRightRadius.isNaN() && borderTopRightRadius > 0f) ||
+    (!borderBottomLeftRadius.isNaN() && borderBottomLeftRadius > 0f) ||
+    (!borderBottomRightRadius.isNaN() && borderBottomRightRadius > 0f)
 
   fun hasNonUniformBorders(): Boolean {
     val r = resolvedBorderWidths()

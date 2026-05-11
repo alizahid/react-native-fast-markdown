@@ -47,13 +47,9 @@ object LineBreakRenderer : NodeRenderer {
   }
 }
 
-object HtmlPassThroughRenderer : NodeRenderer {
-  // Phase 5 (CustomTagRenderer) will replace this for known custom tags.
-  // Standard HTML is rendered as raw text for parity with iOS default.
-  override fun render(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
-    TextRenderer.render(node, into, ctx)
-  }
-}
+// HtmlBlock / HtmlInline are no longer mapped in RendererFactory —
+// iOS doesn't register them either; their raw content stays invisible
+// (custom tags are routed via CustomTagRenderer, not this path).
 
 object StrongRenderer : NodeRenderer {
   override fun render(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
@@ -108,10 +104,14 @@ object StrikethroughRenderer : NodeRenderer {
       resolvedAttrs[ATTR_TYPEFACE] as? Typeface,
       resolvedAttrs[ATTR_FONT_SIZE] as? Float,
     )
-    // Always strike through, even if style didn't set textDecorationLine
-    if (style.textDecorationLine == null) {
-      into.setSpan(android.text.style.StrikethroughSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
+    // Strike trait is the whole point of this renderer — always draw it,
+    // regardless of whether the style's textDecorationLine was set.
+    // Color falls back through textDecorationColor → text color (matches
+    // iOS: `strikeColor = style.textDecorationColor ?: style.color`).
+    val strikeColor = style.textDecorationColor ?: style.color
+    val span = if (strikeColor != null) ColoredStrikethroughSpan(strikeColor)
+    else android.text.style.StrikethroughSpan()
+    into.setSpan(span, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     ctx.popAttributes()
   }
 }

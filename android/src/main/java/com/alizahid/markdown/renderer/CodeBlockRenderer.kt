@@ -39,6 +39,10 @@ object CodeBlockRenderer : NodeRenderer {
     if (style.fontFamily == null) {
       into.setSpan(MonospaceTypefaceSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
+    // Ensure code block ends with a newline so subsequent blocks
+    // separate cleanly when rendered into a shared buffer. Mirrors
+    // iOS CodeBlockRenderer.m's trailing-newline guard.
+    if (into.isNotEmpty() && into[into.length - 1] != '\n') into.append('\n')
     ctx.popAttributes()
     ctx.isInsideCodeBlock = wasInside
   }

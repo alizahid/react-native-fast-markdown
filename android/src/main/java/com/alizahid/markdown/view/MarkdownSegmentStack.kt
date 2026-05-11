@@ -43,7 +43,14 @@ class MarkdownSegmentStack(context: Context) : ViewGroup(context) {
       if (child.visibility == View.GONE) continue
       val lp = child.layoutParams as MarginLayoutParams
       val cw = (innerWidth - lp.leftMargin - lp.rightMargin).coerceAtLeast(0)
-      val cWidthSpec = MeasureSpec.makeMeasureSpec(cw, MeasureSpec.AT_MOST)
+      // Hugging-content blocks (image segments) measure with AT_MOST so
+      // they shrink to their preferred natural width. Everything else
+      // measures EXACTLY so blocks span the full row — matches iOS
+      // SegmentWidth(availableWidth) behavior in MarkdownSegmentStackView.
+      val hugging = child is MarkdownBlockView && child.huggingContent
+      val cWidthSpec = MeasureSpec.makeMeasureSpec(
+        cw, if (hugging) MeasureSpec.AT_MOST else MeasureSpec.EXACTLY,
+      )
       val cHeightSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
       child.measure(cWidthSpec, cHeightSpec)
       totalHeight += child.measuredHeight + lp.topMargin + lp.bottomMargin

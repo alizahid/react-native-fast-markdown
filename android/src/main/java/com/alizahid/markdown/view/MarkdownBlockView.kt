@@ -25,7 +25,8 @@ class MarkdownBlockView(context: Context) : FrameLayout(context) {
   private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
   private val clipPath = Path()
   private val tmpRect = RectF()
-  private var huggingContent: Boolean = false
+  var huggingContent: Boolean = false
+    private set
 
   fun setHuggingContent(hug: Boolean) {
     huggingContent = hug
