@@ -28,6 +28,11 @@ import kotlin.math.min
 open class MarkdownPressableOverlay(context: Context) : View(context) {
 
   protected var shapePath: Path? = null
+    set(value) {
+      field = value
+      hitRegionDirty = true
+      invalidate()
+    }
   protected var normalColor: Int = Color.TRANSPARENT
   protected var pressedColor: Int = Color.argb(31, 0, 0, 0)
 
@@ -40,12 +45,6 @@ open class MarkdownPressableOverlay(context: Context) : View(context) {
 
   init {
     setWillNotDraw(false)
-  }
-
-  fun setShapePath(path: Path?) {
-    shapePath = path
-    hitRegionDirty = true
-    invalidate()
   }
 
   fun setColors(normal: Int, pressed: Int) {
