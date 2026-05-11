@@ -120,28 +120,37 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
    * ourselves on every pass — same shape as react-native-svg's
    * RNSVGSvgView. Without this the inner segment stack never gets a
    * width to wrap to and the whole component renders as a blank rect.
+   *
+   * We always measure `outer` with UNSPECIFIED height so it returns
+   * its true content height regardless of what Fabric / parent told
+   * us. The reported measured dimension then picks the right shape:
+   *   - EXACTLY  → pin to spec (Fabric mode — Yoga gave us an exact size)
+   *   - AT_MOST  → cap content to spec
+   *   - UNSPECIFIED → return content (ScrollView parent path)
+   *
+   * Critically: when EXACTLY(0) (which Fabric sends when there's no
+   * measure function and no explicit height), we still report 0 to
+   * Fabric — but `onLayout` lays `outer` out at its real content
+   * height. Android doesn't clip children by default, so content
+   * stays visible. iOS does the same trick via its shadow-node
+   * measurer; until the Android Fabric measure-function hook lands
+   * this is the closest equivalent.
    */
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
     val w = MeasureSpec.getSize(widthMeasureSpec)
     val hMode = MeasureSpec.getMode(heightMeasureSpec)
     val hSize = MeasureSpec.getSize(heightMeasureSpec)
 
-    // Always measure the outer block against the resolved width so its
-    // inner segment stack can wrap text and stack images correctly.
-    val hSpec = when (hMode) {
-      MeasureSpec.UNSPECIFIED -> MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
-      else -> MeasureSpec.makeMeasureSpec(hSize, MeasureSpec.AT_MOST)
-    }
-    outer.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), hSpec)
+    outer.measure(
+      MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY),
+      MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+    )
 
-    // Report our height based on the spec: EXACTLY pins to spec,
-    // AT_MOST caps content, UNSPECIFIED returns content. Without this,
-    // a ScrollView parent (which uses UNSPECIFIED) would never learn
-    // how tall the markdown content is.
+    val contentH = outer.measuredHeight
     val measuredH = when (hMode) {
       MeasureSpec.EXACTLY -> hSize
-      MeasureSpec.AT_MOST -> minOf(outer.measuredHeight, hSize)
-      else -> outer.measuredHeight
+      MeasureSpec.AT_MOST -> minOf(contentH, hSize)
+      else -> contentH
     }
     setMeasuredDimension(w, measuredH)
   }
@@ -149,15 +158,12 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     super.onLayout(changed, l, t, r, b)
     val w = r - l
-    val h = b - t
     if (w <= 0) return
-    // Re-measure here too: Fabric often skips onMeasure entirely (it
-    // calls setLeft/Top/Right/Bottom directly), so our first chance to
-    // size the outer block is in onLayout.
-    if (outer.measuredWidth != w) {
-      val hSpec = if (h > 0) MeasureSpec.makeMeasureSpec(h, MeasureSpec.AT_MOST)
-      else MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
-      outer.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), hSpec)
+    if (outer.measuredWidth != w || outer.measuredHeight == 0) {
+      outer.measure(
+        MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY),
+        MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
+      )
     }
     outer.layout(0, 0, outer.measuredWidth, outer.measuredHeight)
   }
