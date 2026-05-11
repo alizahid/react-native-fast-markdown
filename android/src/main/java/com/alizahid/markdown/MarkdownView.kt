@@ -12,12 +12,18 @@ import com.alizahid.markdown.style.StyleConfig
 import com.alizahid.markdown.view.MarkdownBlockView
 import com.alizahid.markdown.view.MarkdownImageSizeCache
 import com.alizahid.markdown.view.MarkdownImageView
+import com.alizahid.markdown.view.MarkdownMentionOverlay
 import com.alizahid.markdown.view.MarkdownSegmentStack
+import com.alizahid.markdown.view.MarkdownSpoilerOverlay
 import com.alizahid.markdown.view.MarkdownTableLayout
 import com.alizahid.markdown.view.MarkdownTableView
 import com.alizahid.markdown.view.MarkdownTextView
 import com.alizahid.markdown.parser.ListType
+import com.alizahid.markdown.renderer.spans.MentionSpan
+import com.alizahid.markdown.renderer.spans.SpoilerMarkerSpan
+import android.graphics.Color
 import android.util.Size
+import android.widget.FrameLayout
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.uimanager.StateWrapper
 import com.facebook.react.views.view.ReactViewGroup
@@ -260,9 +266,70 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     com.alizahid.markdown.renderer.RendererFactory.forType(node.type)?.render(node, sb, ctx)
     val len = sb.length
     if (len > 0 && sb[len - 1] == '\n') sb.delete(len - 1, len)
+
+    // If this top-level segment is a block-level CustomTag (e.g. a
+    // `<Spoiler>…</Spoiler>` on its own line), stamp every existing
+    // spoiler span with `isBlock = true` so the overlay draws a solid
+    // rectangle instead of a staircase polygon. Mirrors iOS
+    // MarkdownSpoilerIsBlockKey flow.
+    if (node.type == NodeType.CustomTag) {
+      val existing = sb.getSpans(0, sb.length, SpoilerMarkerSpan::class.java)
+      for (sp in existing) {
+        val s = sb.getSpanStart(sp); val e = sb.getSpanEnd(sp); val f = sb.getSpanFlags(sp)
+        sb.removeSpan(sp)
+        sb.setSpan(SpoilerMarkerSpan(sp.id, isBlock = true), s, e, f)
+      }
+    }
+
     tv.text = sb
 
-    return wrapInBlock(tv, style)
+    val container = textContainerWithOverlays(tv, sb, cfg)
+    return wrapInBlock(container, style)
+  }
+
+  /**
+   * Wraps a MarkdownTextView in a FrameLayout that also hosts spoiler /
+   * mention overlays. Overlays subscribe to the text view's
+   * onLayoutChanged callback so they recompute glyph rects after layout.
+   */
+  private fun textContainerWithOverlays(
+    tv: MarkdownTextView,
+    content: android.text.Spanned,
+    cfg: StyleConfig,
+  ): android.view.View {
+    val hasSpoilers = content.getSpans(0, content.length, SpoilerMarkerSpan::class.java).isNotEmpty()
+    val hasMentions = content.getSpans(0, content.length, MentionSpan::class.java).isNotEmpty()
+    if (!hasSpoilers && !hasMentions) return tv
+
+    val frame = FrameLayout(context)
+    frame.addView(tv, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+
+    if (hasSpoilers) {
+      val color = cfg.spoiler.backgroundColor ?: Color.argb(255, 60, 60, 60)
+      val radius = if (!cfg.spoiler.borderRadius.isNaN() && cfg.spoiler.borderRadius > 0) cfg.spoiler.borderRadius else 4f
+      val overlay = MarkdownSpoilerOverlay(context, tv, color, radius)
+      frame.addView(overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+      tv.onLayoutChanged = { overlay.update() }
+    }
+    if (hasMentions) {
+      val overlay = MarkdownMentionOverlay(context, tv).apply {
+        onPress = { span ->
+          val propsJson = mentionPropsToJson(span)
+          MarkdownEventDispatcher.dispatchMentionPress(this@MarkdownView, span.type, span.id, span.name, propsJson)
+        }
+      }
+      frame.addView(overlay, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+      val previous = tv.onLayoutChanged
+      tv.onLayoutChanged = { previous?.invoke(); overlay.update() }
+    }
+    return frame
+  }
+
+  private fun mentionPropsToJson(span: MentionSpan): String {
+    if (span.props.isEmpty()) return "{}"
+    val obj = org.json.JSONObject()
+    for ((k, v) in span.props) obj.put(k, v)
+    return obj.toString()
   }
 
   private fun wrapInBlock(content: android.view.View, style: com.alizahid.markdown.style.ElementStyle): android.view.View {

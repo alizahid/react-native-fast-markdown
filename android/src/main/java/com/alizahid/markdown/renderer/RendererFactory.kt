@@ -30,8 +30,11 @@ object RendererFactory {
     NodeType.CodeBlock to CodeBlockRenderer,
     // ThematicBreak / Table* are rendered at the view layer (no
     // attributed-string output) — the buildSegment switch handles them.
-    // Phase 4 wires up Image
-    // Phase 5 wires up CustomTag
+    // Image stays as TextRenderer (alt text) for inline contexts;
+    // block-level images go through MarkdownView.buildImageSegment.
+    NodeType.Image to TextRenderer,
+    // Phase 5
+    NodeType.CustomTag to CustomTagRenderer,
   )
 
   fun forType(type: NodeType): NodeRenderer? = registry[type]
