@@ -114,6 +114,41 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
   }
 
   /**
+   * ReactViewGroup doesn't measure / lay out children added in Java
+   * (those it manages were positioned externally by Fabric via setFrame).
+   * Our outer block is hand-built, so we drive its measure + layout
+   * ourselves on every pass — same shape as react-native-svg's
+   * RNSVGSvgView. Without this the inner segment stack never gets a
+   * width to wrap to and the whole component renders as a blank rect.
+   */
+  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    val w = MeasureSpec.getSize(widthMeasureSpec)
+    val h = MeasureSpec.getSize(heightMeasureSpec)
+    if (w <= 0) return
+    val hSpec = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED || h <= 0) {
+      MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+    } else MeasureSpec.makeMeasureSpec(h, MeasureSpec.AT_MOST)
+    outer.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), hSpec)
+  }
+
+  override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+    super.onLayout(changed, l, t, r, b)
+    val w = r - l
+    val h = b - t
+    if (w <= 0) return
+    // Re-measure here too: Fabric often skips onMeasure entirely (it
+    // calls setLeft/Top/Right/Bottom directly), so our first chance to
+    // size the outer block is in onLayout.
+    if (outer.measuredWidth != w) {
+      val hSpec = if (h > 0) MeasureSpec.makeMeasureSpec(h, MeasureSpec.AT_MOST)
+      else MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+      outer.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), hSpec)
+    }
+    outer.layout(0, 0, outer.measuredWidth, outer.measuredHeight)
+  }
+
+  /**
    * On ACTION_DOWN, walk descendants to see if any "interactive" view
    * (link span, mention/spoiler overlay, image, scrollable table) sits
    * under the touch point. If so, ask ancestors not to intercept the
