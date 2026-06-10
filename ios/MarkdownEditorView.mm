@@ -745,10 +745,14 @@ using namespace facebook::react;
     if ([line hasPrefix:@"- "]) return 2;
     if ([line hasPrefix:@"* "]) return 2;
   } else if (type == FormattingTypeOrderedList) {
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^\\d+\\.\\s"
-                             options:0
-                               error:nil];
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^\\d+\\.\\s"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0
@@ -832,10 +836,14 @@ using namespace facebook::react;
 
   // --- Headings: "# " through "###### " at start of line ---
   {
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^(#{1,6})\\s"
-                             options:0
-                               error:nil];
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^(#{1,6})\\s"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0
@@ -872,10 +880,14 @@ using namespace facebook::react;
 
   // --- Ordered list: "1. " (or any number) at start of line ---
   {
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^(\\d+\\.\\s)"
-                             options:0
-                               error:nil];
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^(\\d+\\.\\s)"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0
@@ -1210,10 +1222,14 @@ using namespace facebook::react;
   NSString *bullet;
   if (listType == FormattingTypeOrderedList) {
     // Increment number
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^(\\d+)"
-                             options:0
-                               error:nil];
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^(\\d+)"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0
@@ -1274,9 +1290,14 @@ using namespace facebook::react;
     }
   }
 
-  NSDataDetector *detector =
-      [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink
-                                      error:nil];
+  // NSDataDetector creation is expensive (it spins up ICU machinery)
+  // and this runs on word boundaries while typing — build it once.
+  static NSDataDetector *detector;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    detector = [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink
+                                               error:nil];
+  });
   if (!detector) return;
 
   NSArray<NSTextCheckingResult *> *matches =
