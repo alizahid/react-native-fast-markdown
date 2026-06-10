@@ -218,8 +218,17 @@
       continue;
     }
 
-    // Case 3: edit is entirely inside the range — expand/shrink
-    if (rStart < location && rEnd > location + deleted) {
+    // Case 3: the range covers the edit — expand/shrink in place.
+    // Boundaries are inclusive for replacements (deleted > 0 &&
+    // inserted > 0) so rewriting covered text keeps its formatting:
+    // keyboards with autocorrect/predictive input routinely replace
+    // the current word on every keystroke (e.g. "a" → "ab"), and a
+    // strict check would fall through to the removal case below and
+    // silently drop the range after the first character.
+    BOOL coversEdit = (deleted > 0 && inserted > 0)
+        ? (rStart <= location && rEnd >= location + deleted)
+        : (rStart < location && rEnd > location + deleted);
+    if (coversEdit) {
       r.range = NSMakeRange(rStart,
                              (NSUInteger)((NSInteger)r.range.length + delta));
       continue;

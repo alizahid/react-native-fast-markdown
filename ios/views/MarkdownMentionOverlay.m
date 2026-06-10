@@ -70,9 +70,6 @@ static const void *kMentionDataKey = &kMentionDataKey;
       textLength == _cachedTextLength) {
     return;
   }
-  _cachedWidth = width;
-  _cachedTextHash = textHash;
-  _cachedTextLength = textLength;
 
   NSLayoutManager *layoutManager = textView.layoutManager;
   NSTextContainer *textContainer = textView.textContainer;
@@ -104,6 +101,12 @@ static const void *kMentionDataKey = &kMentionDataKey;
   }];
 
   [self removeAllOverlays];
+  // removeAllOverlays resets the short-circuit cache, so stamp the
+  // new values after it — stamping before would leave the cache
+  // zeroed and force a full rebuild on every layout pass.
+  _cachedWidth = width;
+  _cachedTextHash = textHash;
+  _cachedTextLength = textLength;
 
   for (NSDictionary *hit in mentionHits) {
     NSDictionary *data = hit[@"data"];

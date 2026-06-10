@@ -37,8 +37,13 @@ static const NSUInteger kMaxCacheEntries = 256;
 
 - (void)cacheSize:(CGSize)size forKey:(NSString *)key {
   os_unfair_lock_lock(&_lock);
+  // Only track the key once — appending a duplicate would let the
+  // FIFO eviction below remove a freshly-updated entry while its
+  // stale slot lingers in _order.
+  if (!_cache[key]) {
+    [_order addObject:key];
+  }
   _cache[key] = [NSValue valueWithCGSize:size];
-  [_order addObject:key];
 
   while (_order.count > kMaxCacheEntries) {
     NSString *oldKey = _order.firstObject;

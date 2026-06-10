@@ -86,6 +86,13 @@ using namespace facebook::react;
 
   BOOL _hasPendingPasteRange;
   NSRange _pendingPasteRange;
+
+  // Caret location the in-flight edit is expected to produce. Lets
+  // textViewDidChangeSelection tell selection changes caused by
+  // typing (pending styles survive) apart from real cursor moves
+  // (pending styles are cleared).
+  BOOL _selectionChangeIsFromEdit;
+  NSUInteger _expectedSelectionLocation;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider {
@@ -408,6 +415,15 @@ using namespace facebook::react;
 
 
 
+/// Moves the caret as part of an edit flow (newline continuation,
+/// auto-formatting, list toggles) without textViewDidChangeSelection
+/// treating it as a cursor move and clearing pending styles.
+- (void)setEditFlowSelection:(NSRange)range {
+  _selectionChangeIsFromEdit = YES;
+  _expectedSelectionLocation = range.location;
+  _textView.selectedRange = range;
+}
+
 - (void)resetTypingAttributes {
   NSMutableDictionary *attrs = [@{
     NSFontAttributeName : _baseFont ?: [UIFont systemFontOfSize:16],
@@ -726,8 +742,8 @@ using namespace facebook::react;
           [_textView.text substringWithRange:lineRange]];
     }
     [_store addRange:range];
-    _textView.selectedRange =
-        NSMakeRange(lineRange.location + bullet.length, 0);
+    [self setEditFlowSelection:
+        NSMakeRange(lineRange.location + bullet.length, 0)];
   }
 
   [self applyFullFormatting];
@@ -745,10 +761,14 @@ using namespace facebook::react;
     if ([line hasPrefix:@"- "]) return 2;
     if ([line hasPrefix:@"* "]) return 2;
   } else if (type == FormattingTypeOrderedList) {
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^\\d+\\.\\s"
-                             options:0
-                               error:nil];
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^\\d+\\.\\s"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0
@@ -832,10 +852,14 @@ using namespace facebook::react;
 
   // --- Headings: "# " through "###### " at start of line ---
   {
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^(#{1,6})\\s"
-                             options:0
-                               error:nil];
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^(#{1,6})\\s"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0
@@ -872,10 +896,14 @@ using namespace facebook::react;
 
   // --- Ordered list: "1. " (or any number) at start of line ---
   {
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^(\\d+\\.\\s)"
-                             options:0
-                               error:nil];
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^(\\d+\\.\\s)"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0
@@ -971,7 +999,7 @@ using namespace facebook::react;
   if (newCursor > _textView.text.length) {
     newCursor = _textView.text.length;
   }
-  _textView.selectedRange = NSMakeRange(newCursor, 0);
+  [self setEditFlowSelection:NSMakeRange(newCursor, 0)];
 
   [self emitMarkdownChange];
 }
@@ -1033,8 +1061,8 @@ using namespace facebook::react;
         NSRange codeRange = NSMakeRange(searchPos, content.length);
         [_store addRange:[FormattingRange rangeWithType:FormattingTypeCode
                                                   range:codeRange]];
-        _textView.selectedRange =
-            NSMakeRange(searchPos + content.length, 0);
+        [self setEditFlowSelection:
+            NSMakeRange(searchPos + content.length, 0)];
 
         [self applyFullFormatting];
         [self emitMarkdownChange];
@@ -1096,7 +1124,7 @@ using namespace facebook::react;
              insertedLength:1];
     _suppressFormatting = NO;
 
-    _textView.selectedRange = NSMakeRange(range.location + 1, 0);
+    [self setEditFlowSelection:NSMakeRange(range.location + 1, 0)];
     [self applyFullFormatting];
     [self resetTypingAttributes];
     [self detectAndEmitState];
@@ -1118,7 +1146,7 @@ using namespace facebook::react;
   [_store addRange:continued];
   [_store.pendingStyles addObject:@(blockType)];
 
-  _textView.selectedRange = NSMakeRange(range.location + 1, 0);
+  [self setEditFlowSelection:NSMakeRange(range.location + 1, 0)];
   [self applyFullFormatting];
   [self resetTypingAttributes];
   [self detectAndEmitState];
@@ -1210,10 +1238,14 @@ using namespace facebook::react;
   NSString *bullet;
   if (listType == FormattingTypeOrderedList) {
     // Increment number
-    NSRegularExpression *regex = [NSRegularExpression
-        regularExpressionWithPattern:@"^(\\d+)"
-                             options:0
-                               error:nil];
+    static NSRegularExpression *regex;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+      regex = [NSRegularExpression
+          regularExpressionWithPattern:@"^(\\d+)"
+                               options:0
+                                 error:nil];
+    });
     NSTextCheckingResult *match =
         [regex firstMatchInString:line
                           options:0
@@ -1239,8 +1271,8 @@ using namespace facebook::react;
   _suppressFormatting = NO;
 
   // Create a list range for the new line
-  _textView.selectedRange =
-      NSMakeRange(insertAt + insertion.length, 0);
+  [self setEditFlowSelection:
+      NSMakeRange(insertAt + insertion.length, 0)];
   NSRange newLineRange = [self lineRangeAt:insertAt + 1];
   if (newLineRange.length > 0) {
     FormattingRange *newRange =
@@ -1274,9 +1306,14 @@ using namespace facebook::react;
     }
   }
 
-  NSDataDetector *detector =
-      [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink
-                                      error:nil];
+  // NSDataDetector creation is expensive (it spins up ICU machinery)
+  // and this runs on word boundaries while typing — build it once.
+  static NSDataDetector *detector;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    detector = [NSDataDetector dataDetectorWithTypes:NSTextCheckingTypeLink
+                                               error:nil];
+  });
   if (!detector) return;
 
   NSArray<NSTextCheckingResult *> *matches =
@@ -2028,7 +2065,13 @@ using namespace facebook::react;
     }
   }
 
-  [_store clearPending];
+  // Pending styles stay active across keystrokes — a toggled style
+  // remains in effect until the user toggles it off or moves the
+  // caret. Record where this edit will land the caret so
+  // textViewDidChangeSelection can tell the resulting selection
+  // change apart from a real cursor move.
+  _selectionChangeIsFromEdit = YES;
+  _expectedSelectionLocation = range.location + inserted;
 
   return YES;
 }
@@ -2050,8 +2093,20 @@ using namespace facebook::react;
 - (void)textViewDidChangeSelection:(UITextView *)textView {
   if (_suppressFormatting) return;
 
-  // Clear pending styles on cursor move (they're ephemeral)
-  [_store clearPending];
+  // Selection changes caused by an in-flight edit (the caret
+  // advancing as the user types) keep pending styles alive so a
+  // toggled style applies until it's toggled off. Real cursor
+  // moves (tap, arrow keys, setSelection) clear them.
+  NSRange selection = textView.selectedRange;
+  BOOL causedByEdit = _selectionChangeIsFromEdit &&
+                      selection.length == 0 &&
+                      selection.location == _expectedSelectionLocation;
+  if (!causedByEdit) {
+    // Disarm only on a real move — UIKit can notify more than once
+    // for the same edit, and the duplicate shouldn't clear pending.
+    _selectionChangeIsFromEdit = NO;
+    [_store clearPending];
+  }
 
   // End active mention if cursor moved away from the mention area
   if (_activeMentionTrigger) {
@@ -2111,6 +2166,7 @@ using namespace facebook::react;
   _mentionStartPos = 0;
   _mentionTriggers = nil;
   _hasPendingPasteRange = NO;
+  _selectionChangeIsFromEdit = NO;
 }
 
 @end

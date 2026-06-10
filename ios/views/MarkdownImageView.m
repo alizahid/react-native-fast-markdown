@@ -336,6 +336,7 @@ static NSCache<NSString *, UIImage *> *MarkdownSharedImageCache(void) {
           // Discard if a newer load has started (view recycled or
           // URL changed).
           if (strongSelf->_loadGeneration != generation) return;
+          strongSelf->_task = nil;
           strongSelf->_imageView.image = image;
         });
       }];
