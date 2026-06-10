@@ -1,20 +1,19 @@
 package com.alizahid.markdown.renderer
 
-import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import com.alizahid.markdown.parser.AstNode
-import com.alizahid.markdown.renderer.RenderContext.Companion.ATTR_FONT_SIZE
-import com.alizahid.markdown.renderer.RenderContext.Companion.ATTR_TYPEFACE
-import com.alizahid.markdown.renderer.RenderContext.Companion.resolveAttrs
+import com.alizahid.markdown.renderer.RenderContext.Companion.applyAttributes
+import com.alizahid.markdown.renderer.RenderContext.Companion.mergeStyleAttrs
 import com.alizahid.markdown.renderer.spans.MentionSpan
 import com.alizahid.markdown.renderer.spans.SpoilerMarkerSpan
 import com.alizahid.markdown.renderer.spans.SuperscriptScaleSpan
+import com.alizahid.markdown.style.ElementStyle
 
 /**
  * Custom-tag dispatcher. Recognises the three mention tags + Spoiler +
- * Superscript and applies appropriate spans; unknown tags fall through
- * to their children. Mirrors ios/renderer/CustomTagRenderer.m.
+ * Superscript; unknown tags fall through to their children. Mirrors
+ * ios/renderer/CustomTagRenderer.m.
  */
 object CustomTagRenderer : NodeRenderer {
 
@@ -29,15 +28,15 @@ object CustomTagRenderer : NodeRenderer {
       USER_MENTION_TAG -> renderMention(node, "user", "@", ctx.styleConfig.mentionUser, into, ctx)
       CHANNEL_MENTION_TAG -> renderMention(node, "channel", "#", ctx.styleConfig.mentionChannel, into, ctx)
       COMMAND_TAG -> renderMention(node, "command", "/", ctx.styleConfig.mentionCommand, into, ctx)
-      SPOILER_TAG -> renderSpoiler(node, into, ctx, isBlock = false)
+      SPOILER_TAG -> renderSpoiler(node, into, ctx)
       SUPERSCRIPT_TAG -> renderSuperscript(node, into, ctx)
-      else -> renderGeneric(node, into, ctx)
+      else -> ctx.renderChildren(node, into)
     }
   }
 
   private fun renderMention(
     node: AstNode, type: String, prefix: String,
-    style: com.alizahid.markdown.style.ElementStyle,
+    style: ElementStyle,
     into: SpannableStringBuilder, ctx: RenderContext,
   ) {
     val tagProps = node.tagProps
@@ -45,64 +44,41 @@ object CustomTagRenderer : NodeRenderer {
     val name = tagProps["name"] ?: ""
     val extras = tagProps.filterKeys { it != "id" && it != "name" }
 
+    // Display the prefix plus the name (or id as a fallback when name is
+    // missing — typical for command mentions like `/help`).
     val label = name.ifEmpty { id }
-    val displayText = "$prefix$label"
 
-    val resolved = resolveAttrs(style, ctx.currentAttributes())
     val start = into.length
-    into.append(displayText)
-    val end = into.length
-    StyleAttributes.apply(
-      style, into, start, end,
-      resolved[ATTR_TYPEFACE] as? Typeface,
-      resolved[ATTR_FONT_SIZE] as? Float,
-    )
-    into.setSpan(MentionSpan(type, id, name, extras), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    into.append(prefix).append(label)
+    applyAttributes(mergeStyleAttrs(style, ctx.currentAttributes()), into, start, into.length)
+    into.setSpan(MentionSpan(type, id, name, extras), start, into.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
   }
 
-  /**
-   * `renderSpoiler` is also called from `MarkdownView.buildSegment`
-   * when a top-level segment is a CustomTag named Spoiler — in that
-   * case the overlay is forced to be a solid rect rather than a
-   * staircase polygon (mirrors iOS MarkdownSpoilerIsBlockKey logic).
-   */
-  internal fun renderSpoiler(
-    node: AstNode, into: SpannableStringBuilder, ctx: RenderContext, isBlock: Boolean,
-  ) {
-    val spoilerId = stableId(into.length, node)
+  private fun renderSpoiler(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
+    // Character offset as a stable ID so reveal state persists across
+    // re-renders of the same markdown (mirrors iOS "spoiler_%lu").
+    val spoilerId = "spoiler_${into.length}"
     val start = into.length
     ctx.renderChildren(node, into)
-    val end = into.length
-    if (start == end) return
-    into.setSpan(SpoilerMarkerSpan(spoilerId, isBlock), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    if (into.length > start) {
+      into.setSpan(
+        SpoilerMarkerSpan(spoilerId, isBlock = false),
+        start, into.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+    }
   }
 
   private fun renderSuperscript(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
-    val style = ctx.styleConfig.superscript
-    val resolved = resolveAttrs(style, ctx.currentAttributes())
+    ctx.pushAttributes(mergeStyleAttrs(ctx.styleConfig.superscript, ctx.currentAttributes()))
     val start = into.length
     ctx.renderChildren(node, into)
     val end = into.length
-    StyleAttributes.apply(
-      style, into, start, end,
-      resolved[ATTR_TYPEFACE] as? Typeface,
-      resolved[ATTR_FONT_SIZE] as? Float,
-    )
-    into.setSpan(SuperscriptScaleSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-  }
-
-  private fun renderGeneric(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
-    ctx.renderChildren(node, into)
-  }
-
-  private fun stableId(offset: Int, node: AstNode): String {
-    // Hash on offset + tag name + child count to keep IDs stable
-    // across re-renders of the same markdown source. Kotlin Long literals
-    // are signed — express the splittable-hash constant via its
-    // unsigned form so the bit pattern survives without overflow.
-    var h = offset.toLong() xor 0x9E3779B97F4A7C15UL.toLong()
-    h = h * 31 + node.tagName.hashCode()
-    h = h * 31 + node.children.size
-    return "sp_${(h and 0xFFFFFFFFFFFFL).toString(16)}"
+    if (end > start) {
+      // Applied after the children's size spans, so the 0.7 scale
+      // multiplies whatever size each run resolved to — mirrors Core
+      // Text's kCTSuperscriptAttributeName fallback behavior.
+      into.setSpan(SuperscriptScaleSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    ctx.popAttributes()
   }
 }

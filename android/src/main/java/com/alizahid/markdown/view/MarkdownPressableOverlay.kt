@@ -201,19 +201,18 @@ open class MarkdownPressableOverlay(context: Context) : View(context) {
     }
 
     /**
-     * Brightness-shifted pressed color, mirroring iOS's
-     * MarkdownSpoilerPressedColor — adjusts HSV value by ±0.15 with
-     * polarity flipping based on the source brightness so very-dark
-     * colors lighten on press and light colors darken.
+     * Brightness-shifted pressed color. Exact port of iOS's
+     * MarkdownSpoilerPressedColor: darken to 85% by default; if the
+     * color is already very dark (brightness < 0.2), lighten by +0.15
+     * instead so the feedback stays visible. Alpha preserved — the
+     * cover stays opaque during the press so hidden text can't peek.
      */
     fun pressedColorFor(base: Int): Int {
       val hsv = FloatArray(3)
       Color.colorToHSV(base, hsv)
-      hsv[2] = if (hsv[2] > 0.5f) (hsv[2] - 0.15f).coerceAtLeast(0f)
-      else (hsv[2] + 0.15f).coerceAtMost(1f)
+      hsv[2] = if (hsv[2] < 0.2f) (hsv[2] + 0.15f).coerceAtMost(1f) else hsv[2] * 0.85f
       val rgb = Color.HSVToColor(hsv)
-      val a = Color.alpha(base)
-      return Color.argb(a, Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+      return Color.argb(Color.alpha(base), Color.red(rgb), Color.green(rgb), Color.blue(rgb))
     }
   }
 }

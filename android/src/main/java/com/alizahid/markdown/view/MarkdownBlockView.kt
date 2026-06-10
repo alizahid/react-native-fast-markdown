@@ -40,24 +40,38 @@ class MarkdownBlockView(context: Context) : FrameLayout(context) {
 
   fun setContent(view: View) {
     removeAllViews()
-    addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+    // Preserve layout params the caller already configured (e.g. the
+    // thematic break's explicit height) instead of stomping them with
+    // MATCH_PARENT × WRAP_CONTENT.
+    val lp = view.layoutParams ?: LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT)
+    addView(view, lp)
   }
 
   private fun applyInsets() {
     val s = elementStyle ?: return
     val p = s.resolvedPaddingInsets()
-    setPadding(p.left, p.top, p.right, p.bottom)
+    val b = s.resolvedBorderWidths()
+    // Content is inset by padding + border widths — mirrors iOS
+    // MarkdownBlockView.layoutSubviews (contentX = padding + border).
+    setPadding(p.left + b.left, p.top + b.top, p.right + b.right, p.bottom + b.bottom)
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
     super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+    var w = measuredWidth
+    var h = measuredHeight
     // hugging content: shrink width to first child's measured width
     if (huggingContent && childCount > 0) {
-      val child = getChildAt(0)
-      val cw = child.measuredWidth + paddingLeft + paddingRight
-      val h = measuredHeight
-      setMeasuredDimension(cw, h)
+      w = getChildAt(0).measuredWidth + paddingLeft + paddingRight
     }
+    // Explicit style width/height override the content-derived
+    // border-box size — mirrors iOS sizeThatFits.
+    val s = elementStyle
+    if (s != null) {
+      if (!s.width.isNaN() && s.width > 0) w = s.width.toInt()
+      if (!s.height.isNaN() && s.height > 0) h = s.height.toInt()
+    }
+    setMeasuredDimension(w, h)
   }
 
   override fun draw(canvas: Canvas) {

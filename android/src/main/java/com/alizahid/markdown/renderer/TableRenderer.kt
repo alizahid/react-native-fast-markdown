@@ -3,33 +3,34 @@ package com.alizahid.markdown.renderer
 import android.text.SpannableStringBuilder
 import com.alizahid.markdown.parser.AstNode
 import com.alizahid.markdown.parser.NodeType
+import com.alizahid.markdown.renderer.RenderContext.Companion.applyAttributes
 
 /**
- * Text fallback for tables when rendered inline (e.g. nested inside a
- * blockquote — top-level tables go through the dedicated table view
- * in MarkdownView.buildTableSegment). Mirrors
- * ios/renderer/TableRenderer.m: cells separated by ` | `, rows
- * separated by newlines.
+ * Text fallback for tables rendered inline (e.g. nested inside a
+ * blockquote — top-level tables get the dedicated MarkdownTableView in
+ * MarkdownView.buildTableSegment). Mirrors ios/renderer/TableRenderer.m:
+ * cells separated by ` | `, rows on their own line.
  */
 object TableRenderer : NodeRenderer {
   override fun render(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
     when (node.type) {
-      NodeType.Table, NodeType.TableHead, NodeType.TableBody -> ctx.renderChildren(node, into)
-
       NodeType.TableRow -> {
-        into.append("| ")
+        appendWithAttrs(into, "| ", ctx)
         for (cell in node.children) {
           if (cell.type == NodeType.TableCell) {
             ctx.renderChildren(cell, into)
           }
-          into.append(" | ")
+          appendWithAttrs(into, " | ", ctx)
         }
-        into.append('\n')
+        appendWithAttrs(into, "\n", ctx)
       }
-
-      NodeType.TableCell -> ctx.renderChildren(node, into)
-
       else -> ctx.renderChildren(node, into)
     }
+  }
+
+  private fun appendWithAttrs(into: SpannableStringBuilder, text: String, ctx: RenderContext) {
+    val start = into.length
+    into.append(text)
+    applyAttributes(ctx.currentAttributes(), into, start, into.length)
   }
 }

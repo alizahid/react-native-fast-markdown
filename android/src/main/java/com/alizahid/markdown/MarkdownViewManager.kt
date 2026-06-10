@@ -98,7 +98,7 @@ class MarkdownViewManager :
     attachmentsPositions: FloatArray?,
   ): Long {
     val markdown = props?.getString("markdown") ?: ""
-    if (markdown.isEmpty() || width <= 0f) {
+    if (props == null || markdown.isEmpty() || width <= 0f) {
       return YogaMeasureOutput.make(width, 0f)
     }
     // Yoga's measure callback hands us dp (Fabric's internal layout

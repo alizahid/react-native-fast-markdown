@@ -311,8 +311,7 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
     }
     // Cascade blockquote text style into children. Mirrors iOS
     // addBlockquoteSegment's childAttrsFrozen.
-    val parentAttrs = inheritedAttrs ?: RenderContext.baseAttributesFromStyleConfig(cfg)
-    val childAttrs = RenderContext.resolveAttrs(style, parentAttrs)
+    val childAttrs = com.alizahid.markdown.renderer.blockChildAttrs(style, cfg, inheritedAttrs)
     for (child in node.children) {
       val seg = buildSegment(child, cfg, childAttrs) ?: continue
       inner.addView(seg, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

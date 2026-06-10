@@ -1,82 +1,95 @@
 package com.alizahid.markdown.renderer
 
-import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import com.alizahid.markdown.parser.AstNode
-import com.alizahid.markdown.renderer.RenderContext.Companion.ATTR_FONT_SIZE
-import com.alizahid.markdown.renderer.RenderContext.Companion.ATTR_TYPEFACE
-import com.alizahid.markdown.renderer.RenderContext.Companion.resolveAttrs
+import com.alizahid.markdown.renderer.RenderContext.Companion.mergeStyleAttrs
+import com.alizahid.markdown.style.ElementStyle
+import com.alizahid.markdown.style.StyleConfig
 
 /**
- * Block renderers that produce attributed text (paragraph, heading).
- * True container blocks (list, blockquote, table) are wrapped into a
- * MarkdownBlockView at the view layer — but the renderers exist so
- * nested cases (e.g. paragraph inside blockquote) render to a single
- * SpannableStringBuilder.
+ * Block renderers that produce attributed text. Mirrors
+ * ParagraphRenderer.m / HeadingRenderer.m / BlockquoteRenderer.m:
+ * character styling cascades through the attribute stack (leaf-applied),
+ * while paragraph-level properties (lineHeight, textAlign) are applied
+ * over the block's own range here.
  */
 
 /**
- * Applies the BASE style's paragraph-level properties (lineHeight,
- * textAlign) before any element-specific style. Mirrors iOS
- * `+ [StyleAttributes applyParagraphPropertiesFromStyle:base toAttrs:]`
- * being called before `applyStyle:paragraph` in ParagraphRenderer.m —
- * without this, top-level paragraphs lose any line height set on the
- * base style.
+ * Applies paragraph-level spans over `[start, end)`, with the element
+ * style winning over the base style. Paragraphs cascade lineHeight /
+ * textAlign from base (iOS applyParagraphPropertiesFromStyle:base);
+ * headings deliberately don't — base lineHeight tuned for body text
+ * clips against large heading fonts (see iOS HeadingRenderer.m, which
+ * only applies the heading's own style).
  */
-private fun applyBaseParagraphProps(
-  ctx: RenderContext,
+internal fun applyBlockParagraphProps(
+  style: ElementStyle,
+  base: ElementStyle?,
   into: SpannableStringBuilder,
   start: Int,
   end: Int,
 ) {
   if (start >= end) return
-  val base = ctx.styleConfig.base
-  // Only line-height + text-align matter here; font/color cascades via
-  // the attribute stack.
-  if ((!base.lineHeight.isNaN() && base.lineHeight > 0) || base.textAlign != null) {
-    StyleAttributes.applyParagraphProperties(base, into, start, end)
+  val lineHeight = when {
+    !style.lineHeight.isNaN() && style.lineHeight > 0 -> style.lineHeight
+    base != null && !base.lineHeight.isNaN() && base.lineHeight > 0 -> base.lineHeight
+    else -> Float.NaN
   }
+  val align = style.textAlign ?: base?.textAlign
+  StyleAttributes.applyParagraphProperties(lineHeight, align, into, start, end)
 }
 
 object ParagraphRenderer : NodeRenderer {
   override fun render(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
     val style = ctx.styleConfig.paragraph
-    val inherited = ctx.currentAttributes()
-    val resolved = resolveAttrs(style, inherited)
-    ctx.pushAttributes(resolved)
+    ctx.pushAttributes(mergeStyleAttrs(style, ctx.currentAttributes()))
     val start = into.length
     ctx.renderChildren(node, into)
     val end = into.length
-    applyBaseParagraphProps(ctx, into, start, end)
-    StyleAttributes.apply(
-      style, into, start, end,
-      resolved[ATTR_TYPEFACE] as? Typeface,
-      resolved[ATTR_FONT_SIZE] as? Float,
-    )
-    // Append a trailing newline so multiple paragraphs (e.g. inside a
-    // blockquote) separate correctly when rendered into a single buffer.
-    // The static `renderNodeToSpanned` helper trims one trailing newline
-    // for top-level use, so this is harmless there.
-    if (end > start) into.append('\n')
+    applyBlockParagraphProps(style, ctx.styleConfig.base, into, start, end)
     ctx.popAttributes()
+    // Paragraph spacing — mirrors iOS: append a separating newline when
+    // the buffer has content, so stacked paragraphs (e.g. inside a
+    // blockquote) split into lines. The static renderNodeToSpanned
+    // helper trims trailing newlines for top-level use.
+    if (into.isNotEmpty()) into.append('\n')
   }
 }
 
 object HeadingRenderer : NodeRenderer {
   override fun render(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
     val style = ctx.styleConfig.styleForHeadingLevel(node.headingLevel)
-    val inherited = ctx.currentAttributes()
-    val resolved = resolveAttrs(style, inherited)
-    ctx.pushAttributes(resolved)
+    ctx.pushAttributes(mergeStyleAttrs(style, ctx.currentAttributes()))
     val start = into.length
     ctx.renderChildren(node, into)
     val end = into.length
-    StyleAttributes.apply(
-      style, into, start, end,
-      resolved[ATTR_TYPEFACE] as? Typeface,
-      resolved[ATTR_FONT_SIZE] as? Float,
-    )
-    if (end > start) into.append('\n')
+    // Headings apply only their own paragraph props — no base cascade.
+    applyBlockParagraphProps(style, base = null, into, start, end)
     ctx.popAttributes()
+    into.append('\n')
   }
 }
+
+object BlockquoteRenderer : NodeRenderer {
+  override fun render(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
+    val style = ctx.styleConfig.blockquote
+    val wasInside = ctx.isInsideBlockquote
+    ctx.isInsideBlockquote = true
+    ctx.pushAttributes(mergeStyleAttrs(style, ctx.currentAttributes()))
+    ctx.renderChildren(node, into)
+    ctx.popAttributes()
+    ctx.isInsideBlockquote = wasInside
+  }
+}
+
+/**
+ * Shared helper for view-layer cascades: the attributes children of a
+ * container block (blockquote) inherit. Mirrors the childAttrs
+ * composition in iOS addBlockquoteSegment.
+ */
+fun blockChildAttrs(
+  style: ElementStyle,
+  cfg: StyleConfig,
+  inherited: Map<String, Any?>?,
+): Map<String, Any?> =
+  mergeStyleAttrs(style, inherited ?: RenderContext.baseAttributesFromStyleConfig(cfg))

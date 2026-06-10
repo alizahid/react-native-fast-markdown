@@ -25,9 +25,10 @@ import kotlin.math.min
  * branch-for-branch so the height Yoga reserves matches the height the
  * runtime view layer renders.
  *
- * The output is meant to be consumed by a future Yoga measure-function
- * wiring; until that lands the runtime view's own `onMeasure` is what
- * sizes the component. Keeping this in sync now prevents drift later.
+ * Reached from the shadow thread via MarkdownViewMeasurableShadowNode
+ * (C++) → FabricUIManager.measure → MarkdownViewManager.measure — the
+ * Android counterpart of iOS's MarkdownViewShadowNode.measureContent
+ * calling MarkdownMeasurer directly.
  */
 object MarkdownMeasurer {
 
@@ -175,8 +176,7 @@ object MarkdownMeasurer {
     val childInner = innerWidth - margin.left - margin.right -
       padding.left - padding.right - borders.left - borders.right
 
-    val parentAttrs = inheritedAttrs ?: RenderContext.baseAttributesFromStyleConfig(cfg)
-    val childAttrs = RenderContext.resolveAttrs(style, parentAttrs)
+    val childAttrs = com.alizahid.markdown.renderer.blockChildAttrs(style, cfg, inheritedAttrs)
 
     var total = 0; var visible = 0
     for (child in node.children) {

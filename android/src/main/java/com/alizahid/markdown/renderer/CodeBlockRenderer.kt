@@ -1,49 +1,37 @@
 package com.alizahid.markdown.renderer
 
-import android.graphics.Typeface
 import android.text.SpannableStringBuilder
-import android.text.Spanned
 import com.alizahid.markdown.parser.AstNode
-import com.alizahid.markdown.renderer.RenderContext.Companion.ATTR_FONT_SIZE
-import com.alizahid.markdown.renderer.RenderContext.Companion.ATTR_TYPEFACE
-import com.alizahid.markdown.renderer.RenderContext.Companion.resolveAttrs
-import com.alizahid.markdown.renderer.spans.MonospaceTypefaceSpan
+import com.alizahid.markdown.renderer.RenderContext.Companion.applyAttributes
+import com.alizahid.markdown.renderer.RenderContext.Companion.mergeStyleAttrs
 
 /**
- * Fenced code block. The block view (MarkdownView builds it) draws the
- * background tint / border / radius — this renderer fills the attributed
- * string with the monospaced code text. Mirrors
- * ios/renderer/CodeBlockRenderer.m.
+ * Fenced code block. The wrapping MarkdownBlockView draws the tinted
+ * box / border / radius; this renderer fills the attributed string with
+ * the monospaced code text. Mirrors ios/renderer/CodeBlockRenderer.m.
  */
 object CodeBlockRenderer : NodeRenderer {
   override fun render(node: AstNode, into: SpannableStringBuilder, ctx: RenderContext) {
     val style = ctx.styleConfig.codeBlock
     val wasInside = ctx.isInsideCodeBlock
     ctx.isInsideCodeBlock = true
-    val resolved = resolveAttrs(style, ctx.currentAttributes())
-    ctx.pushAttributes(resolved)
+    ctx.pushAttributes(mergeStyleAttrs(style, ctx.currentAttributes(), defaultMonospace = true))
 
     val start = into.length
     if (node.content.isNotEmpty()) {
+      // md4c delivers fenced-code content on the node, not as children.
       into.append(node.content.trimEnd('\n'))
+      applyAttributes(ctx.currentAttributes(), into, start, into.length)
     } else {
       ctx.renderChildren(node, into)
     }
-    val end = into.length
+    applyBlockParagraphProps(style, base = null, into, start, into.length)
 
-    StyleAttributes.apply(
-      style, into, start, end,
-      resolved[ATTR_TYPEFACE] as? Typeface,
-      resolved[ATTR_FONT_SIZE] as? Float,
-    )
-    if (style.fontFamily == null) {
-      into.setSpan(MonospaceTypefaceSpan(), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
-    // Ensure code block ends with a newline so subsequent blocks
-    // separate cleanly when rendered into a shared buffer. Mirrors
-    // iOS CodeBlockRenderer.m's trailing-newline guard.
-    if (into.isNotEmpty() && into[into.length - 1] != '\n') into.append('\n')
     ctx.popAttributes()
     ctx.isInsideCodeBlock = wasInside
+
+    // Ensure the block ends with a newline so subsequent blocks separate
+    // cleanly in a shared buffer — mirrors iOS CodeBlockRenderer.m.
+    if (into.isNotEmpty() && into[into.length - 1] != '\n') into.append('\n')
   }
 }
