@@ -100,19 +100,30 @@ class MarkdownMentionOverlay(
     canvas.restoreToCount(saved)
   }
 
+  private val touchSlop: Int = android.view.ViewConfiguration.get(context).scaledTouchSlop
+  private var downX: Float = 0f
+  private var downY: Float = 0f
+
   override fun onTouchEvent(event: MotionEvent): Boolean {
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
         val hit = shapeAt(event.x, event.y) ?: return false
+        downX = event.x; downY = event.y
         activeShape = hit
         invalidate()
-        parent?.requestDisallowInterceptTouchEvent(true)
+        // Don't pre-emptively block ancestor intercept — that breaks
+        // scrolling when a finger lands on a mention.
         return true
       }
       MotionEvent.ACTION_MOVE -> {
-        if (activeShape != null && shapeAt(event.x, event.y) !== activeShape) {
-          activeShape = null
-          invalidate()
+        if (activeShape != null) {
+          val moved = kotlin.math.abs(event.x - downX) > touchSlop ||
+            kotlin.math.abs(event.y - downY) > touchSlop
+          if (moved || shapeAt(event.x, event.y) !== activeShape) {
+            activeShape = null
+            invalidate()
+            return false
+          }
         }
       }
       MotionEvent.ACTION_UP -> {

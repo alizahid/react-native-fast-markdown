@@ -6,16 +6,18 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.util.Size
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.appcompat.widget.AppCompatImageView
 import com.alizahid.markdown.style.ElementStyle
 import com.bumptech.glide.Glide
-import kotlin.math.min
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
+import kotlin.math.abs
+import kotlin.math.min
 
 /**
  * Block-level image view. Loads via Glide (memory + disk caching + GIF
@@ -56,11 +58,33 @@ class MarkdownImageView(
   // already dp-scaled by StyleDeserializer).
   private val density: Float = context.resources.displayMetrics.density
 
+  // Touch tracking — we don't pre-emptively block ancestor intercepts
+  // on DOWN (that was making it impossible to scroll a ScrollView whose
+  // finger started on an image). Instead we wait until UP: if the touch
+  // moved past slop, the ScrollView has already won; if not, we fire
+  // onPress.
+  private val touchSlop: Int = ViewConfiguration.get(context).scaledTouchSlop
+  private var downX: Float = 0f
+  private var downY: Float = 0f
+
   init {
     addView(imageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     foreground = pressOverlay
     isClickable = true
+  }
+
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    // Defer Glide.with(view) until we're actually attached — calling it
+    // earlier in init {} can no-op on Fabric because the view's window
+    // isn't wired up yet, and the request manager gets bound to a
+    // lifecycle that never resumes.
     loadImage()
+  }
+
+  override fun onDetachedFromWindow() {
+    Glide.with(context.applicationContext).clear(imageView)
+    super.onDetachedFromWindow()
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -80,17 +104,32 @@ class MarkdownImageView(
         // Match iOS `[UIColor colorWithWhite:0.0 alpha:0.18]`.
         pressOverlay.color = Color.argb(46, 0, 0, 0)
         invalidate()
-        // Keep ancestor ScrollViews from claiming the gesture before
-        // we get an UP — same as iOS where the press recogniser locks
-        // the touch immediately.
-        parent?.requestDisallowInterceptTouchEvent(true)
+        downX = event.x
+        downY = event.y
         return true
       }
+      MotionEvent.ACTION_MOVE -> {
+        if (abs(event.x - downX) > touchSlop || abs(event.y - downY) > touchSlop) {
+          // The user is scrolling, not tapping. Drop the press tint so
+          // we don't leave a stale highlight, and let the ScrollView
+          // ancestor take the gesture by NOT consuming further events.
+          if (pressOverlay.color != Color.TRANSPARENT) {
+            pressOverlay.color = Color.TRANSPARENT
+            invalidate()
+          }
+          return false
+        }
+      }
       MotionEvent.ACTION_UP -> {
+        val wasPressed = pressOverlay.color != Color.TRANSPARENT
         pressOverlay.color = Color.TRANSPARENT
         invalidate()
-        val s = bestKnownNaturalSize()
-        onPress?.invoke(url, s.width, s.height)
+        if (wasPressed && abs(event.x - downX) <= touchSlop &&
+          abs(event.y - downY) <= touchSlop
+        ) {
+          val s = bestKnownNaturalSize()
+          onPress?.invoke(url, s.width, s.height)
+        }
         return true
       }
       MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_OUTSIDE -> {
@@ -105,13 +144,21 @@ class MarkdownImageView(
   private fun loadImage() {
     if (url.isEmpty()) return
     val currentGen = ++loadGeneration
-    Glide.with(this)
+    // Application context: Glide.with(View) walks up the parent chain
+    // looking for an Activity / Fragment, and in Fabric our view may
+    // not have one — falling back to the application context is the
+    // same path Glide takes internally when no host is found, but
+    // avoids a NPE inside Glide.with(view) when the lookup fails.
+    Glide.with(context.applicationContext)
       .load(url)
       .listener(object : RequestListener<Drawable> {
         override fun onLoadFailed(
           e: GlideException?, model: Any?,
           target: Target<Drawable>, isFirstResource: Boolean,
-        ): Boolean = false
+        ): Boolean {
+          android.util.Log.w("MarkdownImageView", "Glide load failed for $url", e)
+          return false
+        }
 
         override fun onResourceReady(
           resource: Drawable, model: Any,

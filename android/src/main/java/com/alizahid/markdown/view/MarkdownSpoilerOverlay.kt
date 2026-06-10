@@ -150,6 +150,8 @@ class MarkdownSpoilerOverlay(
     }
   }
 
+  private val touchSlop: Int = android.view.ViewConfiguration.get(context).scaledTouchSlop
+
   override fun onTouchEvent(event: MotionEvent): Boolean {
     when (event.actionMasked) {
       MotionEvent.ACTION_DOWN -> {
@@ -158,13 +160,22 @@ class MarkdownSpoilerOverlay(
         downX = event.x; downY = event.y
         activeShape = hit
         invalidate()
-        parent?.requestDisallowInterceptTouchEvent(true)
+        // Don't pre-emptively block ancestor intercept — that breaks
+        // scrolling. We commit to the press on UP only when the touch
+        // hasn't moved past slop.
         return true
       }
       MotionEvent.ACTION_MOVE -> {
-        if (activeShape != null && shapeAt(event.x, event.y) !== activeShape) {
-          activeShape = null
-          invalidate()
+        // Cancel the pending press the moment the user scrolls past
+        // slop OR drags off the shape.
+        if (activeShape != null) {
+          val moved = kotlin.math.abs(event.x - downX) > touchSlop ||
+            kotlin.math.abs(event.y - downY) > touchSlop
+          if (moved || shapeAt(event.x, event.y) !== activeShape) {
+            activeShape = null
+            invalidate()
+            return false
+          }
         }
       }
       MotionEvent.ACTION_UP -> {

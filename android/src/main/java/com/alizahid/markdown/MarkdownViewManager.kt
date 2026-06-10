@@ -129,7 +129,12 @@ class MarkdownViewManager :
     val size = MarkdownMeasurer.measure(
       context, markdown, styles, customTags, propImageSizes, widthPx,
     )
-    return YogaMeasureOutput.make(width, size.height / density)
+    val heightDp = size.height / density
+    android.util.Log.d(
+      "MarkdownViewManager",
+      "measure: w=${width}dp h=${heightDp}dp (px=${size.height}, density=$density) markdown=${markdown.take(60)}",
+    )
+    return YogaMeasureOutput.make(width, heightDp)
   }
 
   companion object {
