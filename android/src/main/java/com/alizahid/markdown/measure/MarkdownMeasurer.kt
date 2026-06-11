@@ -70,11 +70,17 @@ object MarkdownMeasurer {
     var visibleSegments = 0
     for (child in ast.children) {
       val h = measureSegmentHeight(child, cfg, customTags, propImageSizes, innerWidth, null)
+      android.util.Log.d(
+        "MarkdownMeasurer",
+        "  segment type=${child.type} h=${h}px content=\"${child.content.take(40)}\" tag=${child.tagName}",
+      )
       if (h > 0) {
         totalHeight += h
         visibleSegments++
       }
     }
+
+
     val gap = if (!cfg.base.gap.isNaN()) cfg.base.gap.toInt() else 0
     if (visibleSegments > 1) totalHeight += gap * (visibleSegments - 1)
 

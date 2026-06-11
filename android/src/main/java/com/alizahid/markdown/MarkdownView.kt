@@ -13,7 +13,6 @@ import com.alizahid.markdown.view.MarkdownBlockView
 import com.alizahid.markdown.view.MarkdownImageSizeCache
 import com.alizahid.markdown.view.MarkdownImageView
 import com.alizahid.markdown.view.MarkdownMentionOverlay
-import com.alizahid.markdown.view.MarkdownPressableOverlay
 import com.alizahid.markdown.view.MarkdownSegmentStack
 import com.alizahid.markdown.view.MarkdownSpoilerOverlay
 import com.alizahid.markdown.view.MarkdownTableLayout
@@ -169,59 +168,17 @@ class MarkdownView(context: Context) : ReactViewGroup(context) {
   }
 
   /**
-   * On ACTION_DOWN, walk descendants to see if any "interactive" view
-   * (link span, mention/spoiler overlay, image, scrollable table) sits
-   * under the touch point. If so, ask ancestors not to intercept the
-   * touch so a parent `<Pressable>` doesn't swallow it. Mirrors iOS
-   * MarkdownTouchBlockingRecognizer.
+   * Touch routing. Each interactive descendant (image, mention overlay,
+   * spoiler overlay, link span) now does its own touch-slop-based tap-
+   * vs-scroll arbitration, so we don't need a pre-emptive disallow-
+   * intercept here — that was permanently locking parent ScrollViews
+   * out of any gesture whose DOWN landed on interactive content.
+   *
+   * We still return false unconditionally (don't intercept) so taps
+   * reach the leaves; the ScrollView's own onInterceptTouchEvent
+   * decides on MOVE whether the gesture is a scroll.
    */
-  override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean {
-    if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
-      if (touchHitsInteractive(this, ev.x.toInt(), ev.y.toInt())) {
-        parent?.requestDisallowInterceptTouchEvent(true)
-      }
-    }
-    return false
-  }
-
-  private fun touchHitsInteractive(root: android.view.View, x: Int, y: Int): Boolean {
-    val hit = android.graphics.Rect()
-    return walkHit(root, x, y, hit)
-  }
-
-  private fun walkHit(v: android.view.View, x: Int, y: Int, hit: android.graphics.Rect): Boolean {
-    if (v is MarkdownPressableOverlay) return true
-    if (v is MarkdownSpoilerOverlay) return true
-    if (v is MarkdownMentionOverlay) return true
-    if (v is MarkdownImageView) return true
-    if (v is MarkdownTableView) return v.canScrollHorizontally(1) || v.canScrollHorizontally(-1)
-    if (v is MarkdownTextView) {
-      val span = linkSpanAt(v, x, y)
-      if (span) return true
-    }
-    if (v is ViewGroup) {
-      for (i in 0 until v.childCount) {
-        val child = v.getChildAt(i)
-        child.getHitRect(hit)
-        if (hit.contains(x, y)) {
-          if (walkHit(child, x - child.left, y - child.top, hit)) return true
-        }
-      }
-    }
-    return false
-  }
-
-  private fun linkSpanAt(tv: MarkdownTextView, x: Int, y: Int): Boolean {
-    val layout = tv.layout ?: return false
-    val xx = (x - tv.totalPaddingLeft + tv.scrollX).coerceAtLeast(0)
-    val yy = (y - tv.totalPaddingTop + tv.scrollY).coerceAtLeast(0)
-    if (xx > layout.width || yy > layout.height) return false
-    val line = layout.getLineForVertical(yy)
-    val offset = layout.getOffsetForHorizontal(line, xx.toFloat())
-    val text = tv.text as? android.text.Spanned ?: return false
-    val spans = text.getSpans(offset, offset, com.alizahid.markdown.renderer.spans.LinkClickableSpan::class.java)
-    return spans.isNotEmpty()
-  }
+  override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean = false
 
   private fun rebuild() {
     val ast = MarkdownParserJni.parse(currentMarkdown, currentCustomTags) ?: return
