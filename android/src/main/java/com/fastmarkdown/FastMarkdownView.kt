@@ -38,6 +38,18 @@ class FastMarkdownView(context: Context) : ViewGroup(context), MarkdownHost {
     stack.host = this
   }
 
+  /** Fabric view recycling: clear all per-content state. */
+  fun resetForRecycle() {
+    markdown = ""
+    stylesJson = ""
+    boundKey = null
+    boundWidth = 0
+    propImageSizes.clear()
+    loadedImageSizes.clear()
+    revealedSpoilers.clear()
+    stack.setBlocks(emptyList(), 0f)
+  }
+
   override fun onImageIntrinsicSize(url: String, widthDp: Float, heightDp: Float) {
     if (!propImageSizes.containsKey(url) && !loadedImageSizes.containsKey(url)) {
       loadedImageSizes[url] = floatArrayOf(widthDp, heightDp)

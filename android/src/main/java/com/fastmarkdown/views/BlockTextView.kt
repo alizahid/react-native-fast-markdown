@@ -40,6 +40,8 @@ class BlockTextView(context: Context) : View(context) {
   fun setTextLayout(value: StaticLayout) {
     if (layout !== value) {
       layout = value
+      contentDescription = value.text
+      importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
       requestLayout()
       invalidate()
     }

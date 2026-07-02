@@ -45,6 +45,14 @@ class FastMarkdownViewManager : SimpleViewManager<FastMarkdownView>(),
     view?.setImages(value)
   }
 
+  override fun prepareToRecycleView(
+    reactContext: ThemedReactContext,
+    view: FastMarkdownView,
+  ): FastMarkdownView {
+    view.resetForRecycle()
+    return view
+  }
+
   override fun updateState(
     view: FastMarkdownView,
     props: com.facebook.react.uimanager.ReactStylesDiffMap,

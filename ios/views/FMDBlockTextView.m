@@ -1,5 +1,8 @@
 #import "FMDBlockTextView.h"
 
+@interface FMDBlockTextView () <UIGestureRecognizerDelegate>
+@end
+
 @implementation FMDBlockTextView {
   NSLayoutManager *_layoutManager;
   NSTextContainer *_textContainer;
@@ -16,6 +19,10 @@
     _tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
     _longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self
                                                                action:@selector(handleLongPress:)];
+    // Only claim touches on interactive ranges so a wrapping Pressable
+    // still receives taps on plain text.
+    _tap.delegate = self;
+    _longPress.delegate = self;
     [self addGestureRecognizer:_tap];
     [self addGestureRecognizer:_longPress];
   }
@@ -26,8 +33,17 @@
   if (![_attributedText isEqualToAttributedString:attributedText]) {
     _attributedText = [attributedText copy];
     _layoutManager = nil;
+    self.isAccessibilityElement = YES;
+    self.accessibilityLabel = attributedText.string;
+    self.accessibilityTraits = UIAccessibilityTraitStaticText;
     [self setNeedsDisplay];
   }
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
+  NSDictionary *attributes = [self attributesAtPoint:[recognizer locationInView:self]];
+  return attributes[FMDLinkURLAttributeName] != nil ||
+      attributes[FMDSpoilerIDAttributeName] != nil;
 }
 
 // Lazy TextKit stack for hit-testing and spoiler-range geometry; drawing
