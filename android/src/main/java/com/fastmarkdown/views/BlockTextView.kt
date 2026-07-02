@@ -12,7 +12,21 @@ class BlockTextView(context: Context) : View(context) {
   fun setTextLayout(value: StaticLayout) {
     if (layout !== value) {
       layout = value
+      requestLayout()
       invalidate()
+    }
+  }
+
+  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    // HorizontalScrollView measures children UNSPECIFIED; report the text size.
+    val text = layout
+    if (text != null) {
+      setMeasuredDimension(
+        resolveSize(text.width, widthMeasureSpec),
+        resolveSize(text.height, heightMeasureSpec),
+      )
+    } else {
+      super.onMeasure(widthMeasureSpec, heightMeasureSpec)
     }
   }
 

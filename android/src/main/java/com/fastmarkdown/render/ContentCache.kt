@@ -28,7 +28,8 @@ object ContentCache {
     val content = RenderedContent(
       blocks = blocks,
       gapPx = styles.gap * density,
-      verticalPaddingPx = (styles.paddingTop + styles.paddingBottom) * density,
+      topPaddingPx = styles.paddingTop * density,
+      bottomPaddingPx = styles.paddingBottom * density,
     )
 
     synchronized(cache) {

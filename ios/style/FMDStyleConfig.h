@@ -24,6 +24,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (instancetype)configWithJson:(NSString *)json;
 
+/// Raw JSON section for an element key (layout parsing).
+- (nullable NSDictionary *)rawSectionFor:(NSString *)key;
+
 /// User style for an element key (paragraph, h1..h6, bold, italic,
 /// strikethrough, link, mention, inlineCode, superscript, subscript,
 /// listItem, tableCell, codeBlock, blockQuote). Nil when not provided.

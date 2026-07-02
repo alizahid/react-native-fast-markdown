@@ -34,6 +34,9 @@ class StyleConfig private constructor(private val root: JSONObject) {
     }
   }
 
+  /** Raw JSON section for an element key (layout parsing). */
+  fun rawSection(key: String): JSONObject? = root.optJSONObject(key)
+
   /** User style for an element key; null when not provided. */
   fun textStyleFor(key: String): TextStyleSpec? {
     synchronized(textStyles) {

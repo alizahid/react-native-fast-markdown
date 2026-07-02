@@ -5,16 +5,23 @@ import android.graphics.Color
 import android.view.ViewGroup
 import com.fastmarkdown.render.ContentCache
 import com.fastmarkdown.style.StyleConfig
-import com.fastmarkdown.views.BlockTextView
+import com.fastmarkdown.views.BlockStackView
 
 /**
- * Host view: a vertical stack of block views. Fabric supplies the final
- * frame (the C++ shadow node measured the same cached content), so onLayout
- * only distributes block frames.
+ * Host view: one nested block stack. Fabric supplies the final frame (the
+ * C++ shadow node measured the same cached content), so onLayout only
+ * distributes frames.
  */
 class FastMarkdownView(context: Context) : ViewGroup(context) {
   private var markdown: String = ""
   private var stylesJson: String = ""
+  private var boundKey: Pair<String, String>? = null
+  private var boundWidth: Int = 0
+  private val stack = BlockStackView(context)
+
+  init {
+    addView(stack)
+  }
 
   fun setMarkdown(value: String?) {
     val next = value ?: ""
@@ -52,39 +59,36 @@ class FastMarkdownView(context: Context) : ViewGroup(context) {
 
     val paddingLeftPx = (styles.paddingLeft * density).toInt()
     val paddingRightPx = (styles.paddingRight * density).toInt()
+    val paddingTopPx = (styles.paddingTop * density).toInt()
     val contentWidthPx = (r - l) - paddingLeftPx - paddingRightPx
     if (contentWidthPx <= 0 || markdown.isEmpty()) {
-      removeAllViews()
+      stack.setBlocks(emptyList(), 0f)
+      boundKey = null
       return
     }
 
     val content = ContentCache.get(markdown, stylesJson, fontScale)
-    val blockLayout = content.layoutFor(contentWidthPx)
-    val layouts = blockLayout.layouts
+    val layout = content.layoutFor(contentWidthPx)
 
-    while (childCount > layouts.size) {
-      removeViewAt(childCount - 1)
-    }
-    while (childCount < layouts.size) {
-      addView(BlockTextView(context))
+    val key = markdown to stylesJson
+    if (boundKey != key || boundWidth != contentWidthPx) {
+      boundKey = key
+      boundWidth = contentWidthPx
+      stack.setBlocks(layout.measured, content.gap)
     }
 
-    var y = (styles.paddingTop * density).toInt()
-    val gapPx = (styles.gap * density).toInt()
-    layouts.forEachIndexed { index, layout ->
-      val child = getChildAt(index) as BlockTextView
-      child.setTextLayout(layout)
-      val height = layout.height
-      child.measure(
-        MeasureSpec.makeMeasureSpec(contentWidthPx, MeasureSpec.EXACTLY),
-        MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
-      )
-      child.layout(paddingLeftPx, y, paddingLeftPx + contentWidthPx, y + height)
-      y += height
-      if (index < layouts.size - 1) {
-        y += gapPx
-      }
-    }
+    val contentHeight =
+      (layout.totalHeightPx - (styles.paddingTop + styles.paddingBottom) * density).toInt()
+    stack.measure(
+      MeasureSpec.makeMeasureSpec(contentWidthPx, MeasureSpec.EXACTLY),
+      MeasureSpec.makeMeasureSpec(contentHeight, MeasureSpec.EXACTLY),
+    )
+    stack.layout(
+      paddingLeftPx,
+      paddingTopPx,
+      paddingLeftPx + contentWidthPx,
+      paddingTopPx + contentHeight,
+    )
   }
 
   override fun shouldDelayChildPressedState(): Boolean = false

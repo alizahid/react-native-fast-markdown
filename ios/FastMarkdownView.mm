@@ -13,7 +13,7 @@
 #import "measure/FMDMarkdownMeasurer.h"
 #import "render/FMDContentCache.h"
 #import "style/FMDStyleConfig.h"
-#import "views/FMDBlockTextView.h"
+#import "views/FMDBlockStackView.h"
 
 #import "react/FastMarkdownMeasurer.h"
 
@@ -22,6 +22,9 @@ using namespace facebook::react;
 @implementation FastMarkdownView {
   NSString *_markdown;
   NSString *_stylesJson;
+  FMDBlockStackView *_stack;
+  NSString *_boundKey;
+  CGFloat _boundWidth;
 }
 
 + (void)load {
@@ -55,6 +58,8 @@ using namespace facebook::react;
     _props = defaultProps;
     _markdown = @"";
     _stylesJson = @"";
+    _stack = [[FMDBlockStackView alloc] initWithFrame:CGRectZero];
+    [self addSubview:_stack];
   }
   return self;
 }
@@ -89,9 +94,8 @@ using namespace facebook::react;
   [super prepareForRecycle];
   _markdown = @"";
   _stylesJson = @"";
-  for (UIView *subview in [self.subviews copy]) {
-    [subview removeFromSuperview];
-  }
+  _boundKey = nil;
+  [_stack setBlocks:@[] gap:0];
 }
 
 - (void)rebuildBlocks {
@@ -101,9 +105,8 @@ using namespace facebook::react;
   const CGFloat contentWidth =
       self.bounds.size.width - styles.paddingLeft - styles.paddingRight;
   if (contentWidth <= 0 || _markdown.length == 0) {
-    for (UIView *subview in [self.subviews copy]) {
-      [subview removeFromSuperview];
-    }
+    [_stack setBlocks:@[] gap:0];
+    _boundKey = nil;
     return;
   }
 
@@ -112,26 +115,21 @@ using namespace facebook::react;
   FMDRenderedContent *content = [FMDContentCache contentForMarkdown:_markdown
                                                          stylesJson:_stylesJson
                                                           fontScale:fontScale];
-  NSArray<NSNumber *> *heights = [content blockHeightsForWidth:contentWidth];
-  NSArray<NSAttributedString *> *blocks = content.blocks;
+  FMDWidthLayout *layout = [content layoutForWidth:contentWidth];
 
-  while (self.subviews.count > blocks.count) {
-    [self.subviews.lastObject removeFromSuperview];
-  }
-  while (self.subviews.count < blocks.count) {
-    [self addSubview:[[FMDBlockTextView alloc] initWithFrame:CGRectZero]];
+  NSString *key = [NSString stringWithFormat:@"%lu\x1f%lu",
+                                             (unsigned long)_markdown.hash,
+                                             (unsigned long)_stylesJson.hash];
+  if (![key isEqualToString:_boundKey] || _boundWidth != contentWidth) {
+    _boundKey = key;
+    _boundWidth = contentWidth;
+    [_stack setBlocks:layout.measured gap:content.gap];
   }
 
-  CGFloat y = styles.paddingTop;
-  for (NSUInteger i = 0; i < blocks.count; i++) {
-    FMDBlockTextView *child = (FMDBlockTextView *)self.subviews[i];
-    child.attributedText = blocks[i];
-    child.frame = CGRectMake(styles.paddingLeft, y, contentWidth, heights[i].doubleValue);
-    y += heights[i].doubleValue;
-    if (i + 1 < blocks.count) {
-      y += styles.gap;
-    }
-  }
+  const CGFloat contentHeight =
+      layout.totalHeight - styles.paddingTop - styles.paddingBottom;
+  _stack.frame =
+      CGRectMake(styles.paddingLeft, styles.paddingTop, contentWidth, contentHeight);
 }
 
 @end

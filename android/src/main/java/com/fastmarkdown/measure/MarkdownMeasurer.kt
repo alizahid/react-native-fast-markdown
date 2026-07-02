@@ -25,6 +25,6 @@ object MarkdownMeasurer {
     }
 
     val layout = content.layoutFor(contentWidthPx)
-    return layout.totalHeight / density
+    return layout.totalHeightPx / density
   }
 }

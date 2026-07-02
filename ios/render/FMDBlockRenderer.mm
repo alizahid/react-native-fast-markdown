@@ -16,6 +16,26 @@ NSString *toNSString(const std::string &value) {
   return result != nil ? result : @"";
 }
 
+bool isInlineType(NodeType type) {
+  switch (type) {
+    case NodeType::Text:
+    case NodeType::SoftBreak:
+    case NodeType::HardBreak:
+    case NodeType::Bold:
+    case NodeType::Italic:
+    case NodeType::Strikethrough:
+    case NodeType::Link:
+    case NodeType::InlineCode:
+    case NodeType::Spoiler:
+    case NodeType::Superscript:
+    case NodeType::Subscript:
+    case NodeType::Image:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Fully-resolved text attributes at one point of the inline tree walk.
 struct ResolvedAttrs {
   CGFloat fontSize = 16;
@@ -191,12 +211,185 @@ NSDictionary *attributesDictionary(const ResolvedAttrs &attrs) {
   return attributes;
 }
 
-class InlineWalker {
+class BlockBuilder {
  public:
-  InlineWalker(FMDStyleConfig *styles, CGFloat fontScale)
+  BlockBuilder(FMDStyleConfig *styles, CGFloat fontScale)
       : styles_(styles), fontScale_(fontScale) {}
 
-  NSAttributedString *renderBlockNode(const Node *node) {
+  NSArray<FMDBlock *> *renderBlocks(
+      const std::vector<Node *> &children,
+      NSArray<FMDTextStyle *> *inherited) {
+    NSMutableArray<FMDBlock *> *out = [NSMutableArray new];
+    std::vector<const Node *> inlineRun;
+
+    auto flushInline = [&]() {
+      if (!inlineRun.empty()) {
+        Node synthetic;
+        synthetic.type = NodeType::Paragraph;
+        for (const Node *node : inlineRun) {
+          synthetic.children.push_back(const_cast<Node *>(node));
+        }
+        [out addObject:textBlock(&synthetic, inherited)];
+        inlineRun.clear();
+      }
+    };
+
+    for (const Node *child : children) {
+      if (isInlineType(child->type)) {
+        inlineRun.push_back(child);
+      } else {
+        flushInline();
+        renderBlock(child, inherited, out);
+      }
+    }
+    flushInline();
+    return out;
+  }
+
+  // -- block level ---------------------------------------------------------
+
+  void renderBlock(
+      const Node *node,
+      NSArray<FMDTextStyle *> *inherited,
+      NSMutableArray<FMDBlock *> *out) {
+    switch (node->type) {
+      case NodeType::Paragraph:
+      case NodeType::Heading:
+        [out addObject:textBlock(node, inherited)];
+        break;
+
+      case NodeType::BlockQuote: {
+        FMDLayoutStyle *defaults = [FMDLayoutStyle
+            defaultsWithBackground:nil
+                           padding:UIEdgeInsetsMake(0, 12, 0, 0)
+                      borderRadius:0
+                   borderLeftColor:[UIColor colorWithWhite:0 alpha:0.2]
+                   borderLeftWidth:3];
+        FMDLayoutStyle *layout =
+            [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"blockQuote"] defaults:defaults];
+        NSArray<FMDTextStyle *> *quoteInherited =
+            appendStyle(inherited, [styles_ textStyleFor:@"blockQuote"]);
+        FMDBlock *block = [FMDBlock new];
+        block.kind = FMDBlockKindQuote;
+        block.layoutStyle = layout;
+        block.children = renderBlocks(node->children, quoteInherited);
+        [out addObject:block];
+        break;
+      }
+
+      case NodeType::CodeBlock: {
+        FMDLayoutStyle *defaults = [FMDLayoutStyle
+            defaultsWithBackground:[UIColor colorWithWhite:0 alpha:0.08]
+                           padding:UIEdgeInsetsMake(12, 12, 12, 12)
+                      borderRadius:6
+                   borderLeftColor:nil
+                   borderLeftWidth:0];
+        FMDLayoutStyle *layout =
+            [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"codeBlock"] defaults:defaults];
+
+        ResolvedAttrs attrs;
+        attrs.fontSize = 14 * fontScale_;
+        attrs.family = @"Menlo";
+        attrs.color = UIColor.blackColor;
+        for (FMDTextStyle *style in inherited) {
+          applyStyle(attrs, style, fontScale_);
+        }
+        applyStyle(attrs, [styles_ textStyleFor:@"codeBlock"], fontScale_);
+
+        std::string text = node->text;
+        while (!text.empty() && text.back() == '\n') {
+          text.pop_back();
+        }
+        FMDBlock *block = [FMDBlock new];
+        block.kind = FMDBlockKindCode;
+        block.layoutStyle = layout;
+        block.attributedText =
+            [[NSAttributedString alloc] initWithString:toNSString(text)
+                                            attributes:attributesDictionary(attrs)];
+        [out addObject:block];
+        break;
+      }
+
+      case NodeType::List:
+        [out addObject:listBlock(node, inherited)];
+        break;
+
+      case NodeType::ThematicBreak: {
+        FMDBlock *block = [FMDBlock new];
+        block.kind = FMDBlockKindDivider;
+        block.dividerColor = [UIColor colorWithWhite:0 alpha:0.13];
+        block.dividerThickness = 1;
+        [out addObject:block];
+        break;
+      }
+
+      default: {
+        if (!node->children.empty()) {
+          [out addObjectsFromArray:renderBlocks(node->children, inherited)];
+        } else if (!node->text.empty()) {
+          Node text;
+          text.type = NodeType::Text;
+          text.text = node->text;
+          Node wrapper;
+          wrapper.type = NodeType::Paragraph;
+          wrapper.children.push_back(&text);
+          [out addObject:textBlock(&wrapper, inherited)];
+        }
+        break;
+      }
+    }
+  }
+
+  FMDBlock *listBlock(const Node *node, NSArray<FMDTextStyle *> *inherited) {
+    NSDictionary *listSection = [styles_ rawSectionFor:@"list"];
+    NSDictionary *markerSection = [styles_ rawSectionFor:@"listMarker"];
+
+    auto number = [](NSDictionary *dict, NSString *key, CGFloat fallback) -> CGFloat {
+      NSNumber *value = [dict[key] isKindOfClass:[NSNumber class]] ? dict[key] : nil;
+      return value != nil ? value.doubleValue : fallback;
+    };
+
+    FMDBlock *block = [FMDBlock new];
+    block.kind = FMDBlockKindList;
+    block.listMarginLeft = number(listSection, @"marginLeft", 0);
+    block.markerWidth = number(markerSection, @"width", 24);
+    block.markerMarginLeft = number(markerSection, @"marginLeft", 0);
+
+    NSArray<FMDTextStyle *> *itemInherited =
+        appendStyle(inherited, [styles_ textStyleFor:@"listItem"]);
+
+    ResolvedAttrs markerAttrs;
+    markerAttrs.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
+    markerAttrs.color = UIColor.blackColor;
+    applyStyle(markerAttrs, [styles_ textStyleFor:@"paragraph"], fontScale_);
+    for (FMDTextStyle *style in itemInherited) {
+      applyStyle(markerAttrs, style, fontScale_);
+    }
+    UIColor *markerColor = [FMDTextStyle colorFromJson:markerSection[@"color"]];
+    if (markerColor != nil) {
+      markerAttrs.color = markerColor;
+    }
+
+    NSMutableArray<FMDListRow *> *rows = [NSMutableArray new];
+    int index = node->startIndex;
+    for (const Node *item : node->children) {
+      if (item->type != NodeType::ListItem) {
+        continue;
+      }
+      NSString *markerText =
+          node->ordered ? [NSString stringWithFormat:@"%d.", index] : @"•";
+      FMDListRow *row = [FMDListRow new];
+      row.marker = [[NSAttributedString alloc] initWithString:markerText
+                                                    attributes:attributesDictionary(markerAttrs)];
+      row.content = renderBlocks(item->children, itemInherited);
+      [rows addObject:row];
+      index++;
+    }
+    block.rows = rows;
+    return block;
+  }
+
+  FMDBlock *textBlock(const Node *node, NSArray<FMDTextStyle *> *inherited) {
     NSMutableAttributedString *output = [NSMutableAttributedString new];
 
     ResolvedAttrs base;
@@ -204,6 +397,9 @@ class InlineWalker {
     if (node->type == NodeType::Heading) {
       base.fontSize = [styles_ fontSizeForHeadingLevel:node->level] * fontScale_;
       base.weight = 700;
+      for (FMDTextStyle *style in inherited) {
+        applyStyle(base, style, fontScale_);
+      }
       applyStyle(
           base,
           [styles_ textStyleFor:[NSString stringWithFormat:@"h%d", (int)node->level]],
@@ -211,13 +407,28 @@ class InlineWalker {
     } else {
       base.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
       applyStyle(base, [styles_ textStyleFor:@"paragraph"], fontScale_);
+      for (FMDTextStyle *style in inherited) {
+        applyStyle(base, style, fontScale_);
+      }
     }
 
     walk(output, node, base);
-    return output;
+
+    FMDBlock *block = [FMDBlock new];
+    block.kind = FMDBlockKindText;
+    block.attributedText = output;
+    return block;
   }
 
  private:
+  static NSArray<FMDTextStyle *> *appendStyle(
+      NSArray<FMDTextStyle *> *chain, FMDTextStyle *style) {
+    if (style == nil) {
+      return chain;
+    }
+    return [chain arrayByAddingObject:style];
+  }
+
   void append(NSMutableAttributedString *output, NSString *text, const ResolvedAttrs &attrs) {
     if (text.length == 0) {
       return;
@@ -326,53 +537,21 @@ class InlineWalker {
   CGFloat fontScale_;
 };
 
-void renderBlock(
-    const Node *node,
-    InlineWalker &walker,
-    NSMutableArray<NSAttributedString *> *output) {
-  switch (node->type) {
-    case NodeType::Paragraph:
-    case NodeType::Heading:
-      [output addObject:walker.renderBlockNode(node)];
-      break;
-    default: {
-      if (!node->children.empty()) {
-        for (const Node *child : node->children) {
-          renderBlock(child, walker, output);
-        }
-      } else if (!node->text.empty()) {
-        // Leaf blocks not yet implemented (code blocks arrive in M3).
-        Node wrapper;
-        wrapper.type = NodeType::Paragraph;
-        Node text;
-        text.type = NodeType::Text;
-        text.text = node->text;
-        wrapper.children.push_back(&text);
-        [output addObject:walker.renderBlockNode(&wrapper)];
-      }
-      break;
-    }
-  }
-}
-
 } // namespace
 
 @implementation FMDBlockRenderer
 
-+ (NSArray<NSAttributedString *> *)renderMarkdown:(NSString *)markdown
-                                           styles:(FMDStyleConfig *)styles
-                                        fontScale:(CGFloat)fontScale {
++ (NSArray<FMDBlock *> *)renderMarkdown:(NSString *)markdown
+                                 styles:(FMDStyleConfig *)styles
+                              fontScale:(CGFloat)fontScale {
   const auto document =
       fastmarkdown::parseMarkdown(std::string([markdown UTF8String] ?: ""));
 
-  InlineWalker walker(styles, fontScale);
-  NSMutableArray<NSAttributedString *> *blocks = [NSMutableArray new];
-  if (document->root != nullptr) {
-    for (const Node *child : document->root->children) {
-      renderBlock(child, walker, blocks);
-    }
+  BlockBuilder builder(styles, fontScale);
+  if (document->root == nullptr) {
+    return @[];
   }
-  return blocks;
+  return builder.renderBlocks(document->root->children, @[]);
 }
 
 @end

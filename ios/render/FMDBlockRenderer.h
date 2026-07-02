@@ -1,16 +1,16 @@
 #import <Foundation/Foundation.h>
 
 #import "../style/FMDStyleConfig.h"
+#import "FMDBlock.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-/// AST -> attributed-string blocks. M1 handles paragraph/heading text with
-/// basic bold/italic; the full element set arrives with M2/M3.
+/// AST -> renderable block tree (attribute-stack inline rendering).
 @interface FMDBlockRenderer : NSObject
 
-+ (NSArray<NSAttributedString *> *)renderMarkdown:(NSString *)markdown
-                                           styles:(FMDStyleConfig *)styles
-                                        fontScale:(CGFloat)fontScale;
++ (NSArray<FMDBlock *> *)renderMarkdown:(NSString *)markdown
+                                 styles:(FMDStyleConfig *)styles
+                              fontScale:(CGFloat)fontScale;
 
 @end
 

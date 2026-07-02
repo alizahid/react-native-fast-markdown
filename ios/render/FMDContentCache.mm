@@ -25,13 +25,13 @@
   }
 
   FMDStyleConfig *styles = [FMDStyleConfig configWithJson:stylesJson];
-  NSArray<NSAttributedString *> *blocks = [FMDBlockRenderer renderMarkdown:markdown
-                                                                    styles:styles
-                                                                 fontScale:fontScale];
-  FMDRenderedContent *content =
-      [[FMDRenderedContent alloc] initWithBlocks:blocks
-                                             gap:styles.gap
-                                 verticalPadding:styles.paddingTop + styles.paddingBottom];
+  NSArray<FMDBlock *> *blocks = [FMDBlockRenderer renderMarkdown:markdown
+                                                          styles:styles
+                                                       fontScale:fontScale];
+  FMDRenderedContent *content = [[FMDRenderedContent alloc] initWithBlocks:blocks
+                                                                       gap:styles.gap
+                                                                topPadding:styles.paddingTop
+                                                             bottomPadding:styles.paddingBottom];
   [cache setObject:content forKey:key];
   return content;
 }

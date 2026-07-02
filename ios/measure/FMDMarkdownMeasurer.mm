@@ -18,7 +18,7 @@
   FMDRenderedContent *content = [FMDContentCache contentForMarkdown:markdown
                                                          stylesJson:stylesJson
                                                           fontScale:fontScale];
-  return [content totalHeightForWidth:contentWidth];
+  return [content layoutForWidth:contentWidth].totalHeight;
 }
 
 @end

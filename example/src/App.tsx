@@ -20,9 +20,29 @@ Inline \`const x = 42\` code. Water is H~2~O, area is x^2^ and reddit^style sup 
 
 Both ||discord style|| and >!reddit style!< parse already.
 
-##### Small heading five
+---
 
-###### Tiny heading six`;
+## Blocks
+
+> A block quote with **bold** and a nested paragraph.
+>
+> Second paragraph inside the quote.
+
+- unordered item one with enough text to wrap onto a second line eventually
+- item two with \`inline code\`
+  - nested child item
+  - another nested child
+- item three
+
+1. ordered one
+2. ordered two
+3. ordered three
+
+\`\`\`ts
+function reallyLongFunctionName(parameter: string, another: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 1000));
+}
+\`\`\``;
 
 const styles: MarkdownStyles = {
   headings: {

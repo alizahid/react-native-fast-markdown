@@ -89,6 +89,10 @@
   return value != nil ? value.doubleValue : fallback;
 }
 
+- (nullable NSDictionary *)rawSectionFor:(NSString *)key {
+  return [_root[key] isKindOfClass:[NSDictionary class]] ? _root[key] : nil;
+}
+
 - (nullable FMDTextStyle *)textStyleFor:(NSString *)key {
   @synchronized(self) {
     id cached = _textStyles[key];
