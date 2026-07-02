@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Platform, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Feed } from './screens/Feed';
 import { KitchenSink } from './screens/KitchenSink';
@@ -13,7 +14,8 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('Kitchen Sink');
 
   return (
-    <SafeAreaView style={sheet.container}>
+    <GestureHandlerRootView style={sheet.root}>
+      <SafeAreaView style={sheet.container}>
       <View style={sheet.tabs}>
         {TABS.map((name) => (
           <Pressable
@@ -27,14 +29,18 @@ export default function App() {
           </Pressable>
         ))}
       </View>
-      {tab === 'Kitchen Sink' && <KitchenSink />}
-      {tab === 'Playground' && <Playground />}
-      {tab === 'Feed' && <Feed />}
-    </SafeAreaView>
+        {tab === 'Kitchen Sink' && <KitchenSink />}
+        {tab === 'Playground' && <Playground />}
+        {tab === 'Feed' && <Feed />}
+      </SafeAreaView>
+    </GestureHandlerRootView>
   );
 }
 
 const sheet = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: 'white',

@@ -135,16 +135,24 @@ class BlockTextView(context: Context) : View(context) {
         if (pressedLink != null) {
           postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
         }
+        // Tell ancestors (including gesture-handler roots, which honor this
+        // as "a native view took over") that this press is ours, so a
+        // wrapping Pressable does not also fire for link/spoiler taps.
+        parent?.requestDisallowInterceptTouchEvent(true)
         return true
       }
       MotionEvent.ACTION_MOVE -> {
         val slop = ViewConfiguration.get(context).scaledTouchSlop
         if (abs(event.x - downX) > slop || abs(event.y - downY) > slop) {
           cancelPress()
+          // The finger is dragging: hand the gesture back so scroll views
+          // can intercept and pan.
+          parent?.requestDisallowInterceptTouchEvent(false)
         }
         return pressedLink != null || pressedSpoiler != null
       }
       MotionEvent.ACTION_UP -> {
+        parent?.requestDisallowInterceptTouchEvent(false)
         removeCallbacks(longPressRunnable)
         if (!longPressFired) {
           val spoiler = pressedSpoiler
@@ -163,6 +171,7 @@ class BlockTextView(context: Context) : View(context) {
         return true
       }
       MotionEvent.ACTION_CANCEL -> {
+        parent?.requestDisallowInterceptTouchEvent(false)
         cancelPress()
         return false
       }

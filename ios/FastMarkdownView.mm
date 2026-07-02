@@ -158,6 +158,19 @@ using namespace facebook::react;
   return [self fmdIsInteractiveAtPoint:[touch locationInView:self]];
 }
 
+// Non-interactive points fall through to ancestors so a wrapping pressable
+// becomes the hit view. UIControl-based wrappers (react-native-gesture-handler's
+// button) need the touch delivered to them directly and never fire while this
+// view claims every point. Interactive points stay claimed for the host
+// recognizers; nested code/table scroll views are returned by super unchanged.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  UIView *result = [super hitTest:point withEvent:event];
+  if (result == self && ![self fmdIsInteractiveAtPoint:point]) {
+    return nil;
+  }
+  return result;
+}
+
 // Scrolling always wins: a drag that begins on a link still pans the list
 // (the tap/long-press simply fail on movement).
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer

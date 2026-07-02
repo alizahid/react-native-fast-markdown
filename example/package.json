@@ -13,11 +13,13 @@
   },
   "dependencies": {
     "@expo/metro-runtime": "~57.0.2",
+    "@shopify/flash-list": "2.0.2",
     "expo": "~57.0.1",
     "expo-status-bar": "~57.0.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "react-native": "0.86.0",
+    "react-native-gesture-handler": "~2.32.0",
     "react-native-web": "~0.21.2"
   },
   "private": true,
