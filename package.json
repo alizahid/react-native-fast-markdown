@@ -34,6 +34,7 @@
   "scripts": {
     "example": "bun run --cwd example",
     "clean": "del-cli lib",
+    "test": "bun test src && cpp/tests/run_tests.sh",
     "prepare": "bob build",
     "typecheck": "tsc",
     "release": "release-it --only-version"

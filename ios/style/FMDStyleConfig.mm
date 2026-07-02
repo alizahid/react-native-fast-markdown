@@ -1,7 +1,21 @@
 #import "FMDStyleConfig.h"
 
+@implementation FMDMentionVariant
+
+- (instancetype)initWithPattern:(NSRegularExpression *)pattern
+                          style:(nullable FMDTextStyle *)style {
+  if (self = [super init]) {
+    _pattern = pattern;
+    _style = style;
+  }
+  return self;
+}
+
+@end
+
 @implementation FMDStyleConfig {
-  NSDictionary *_main;
+  NSDictionary *_root;
+  NSMutableDictionary<NSString *, id> *_textStyles;
 }
 
 + (instancetype)configWithJson:(NSString *)json {
@@ -32,34 +46,59 @@
         root = parsed;
       }
     }
-    NSDictionary *main = [root[@"main"] isKindOfClass:[NSDictionary class]] ? root[@"main"] : @{};
-    _main = main;
+    _root = root ?: @{};
+    _textStyles = [NSMutableDictionary new];
 
-    _gap = [self floatFor:@"gap" fallback:12];
-    _paddingLeft = [self floatFor:@"paddingLeft" fallback:0];
-    _paddingRight = [self floatFor:@"paddingRight" fallback:0];
-    _paddingTop = [self floatFor:@"paddingTop" fallback:0];
-    _paddingBottom = [self floatFor:@"paddingBottom" fallback:0];
-    _backgroundColor = [self colorFor:@"backgroundColor"];
+    NSDictionary *main = [_root[@"main"] isKindOfClass:[NSDictionary class]] ? _root[@"main"] : @{};
+    _gap = [self floatFrom:main key:@"gap" fallback:12];
+    _paddingLeft = [self floatFrom:main key:@"paddingLeft" fallback:0];
+    _paddingRight = [self floatFrom:main key:@"paddingRight" fallback:0];
+    _paddingTop = [self floatFrom:main key:@"paddingTop" fallback:0];
+    _paddingBottom = [self floatFrom:main key:@"paddingBottom" fallback:0];
+    _backgroundColor = [FMDTextStyle colorFromJson:main[@"backgroundColor"]];
+
+    NSMutableArray<FMDMentionVariant *> *variants = [NSMutableArray new];
+    NSDictionary *mention =
+        [_root[@"mention"] isKindOfClass:[NSDictionary class]] ? _root[@"mention"] : nil;
+    NSArray *variantPairs =
+        [mention[@"variants"] isKindOfClass:[NSArray class]] ? mention[@"variants"] : @[];
+    for (id pair in variantPairs) {
+      if (![pair isKindOfClass:[NSArray class]] || [pair count] != 2) {
+        continue;
+      }
+      NSString *patternString = [pair[0] isKindOfClass:[NSString class]] ? pair[0] : nil;
+      if (patternString == nil) {
+        continue;
+      }
+      NSRegularExpression *pattern =
+          [NSRegularExpression regularExpressionWithPattern:patternString options:0 error:nil];
+      if (pattern == nil) {
+        continue;
+      }
+      [variants addObject:[[FMDMentionVariant alloc]
+                              initWithPattern:pattern
+                                        style:[FMDTextStyle fromJson:pair[1]]]];
+    }
+    _mentionVariants = variants;
   }
   return self;
 }
 
-- (CGFloat)floatFor:(NSString *)key fallback:(CGFloat)fallback {
-  NSNumber *value = [_main[key] isKindOfClass:[NSNumber class]] ? _main[key] : nil;
+- (CGFloat)floatFrom:(NSDictionary *)dict key:(NSString *)key fallback:(CGFloat)fallback {
+  NSNumber *value = [dict[key] isKindOfClass:[NSNumber class]] ? dict[key] : nil;
   return value != nil ? value.doubleValue : fallback;
 }
 
-- (nullable UIColor *)colorFor:(NSString *)key {
-  NSNumber *value = [_main[key] isKindOfClass:[NSNumber class]] ? _main[key] : nil;
-  if (value == nil) {
-    return nil;
+- (nullable FMDTextStyle *)textStyleFor:(NSString *)key {
+  @synchronized(self) {
+    id cached = _textStyles[key];
+    if (cached != nil) {
+      return cached == NSNull.null ? nil : cached;
+    }
+    FMDTextStyle *style = [FMDTextStyle fromJson:_root[key]];
+    _textStyles[key] = style ?: (id)NSNull.null;
+    return style;
   }
-  uint32_t argb = value.unsignedIntValue;
-  return [UIColor colorWithRed:((argb >> 16) & 0xFF) / 255.0
-                         green:((argb >> 8) & 0xFF) / 255.0
-                          blue:(argb & 0xFF) / 255.0
-                         alpha:((argb >> 24) & 0xFF) / 255.0];
 }
 
 - (CGFloat)fontSizeForHeadingLevel:(NSInteger)level {

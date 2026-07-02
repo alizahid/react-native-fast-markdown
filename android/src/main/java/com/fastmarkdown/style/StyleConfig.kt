@@ -1,22 +1,52 @@
 package com.fastmarkdown.style
 
+import com.fastmarkdown.style.TextStyleSpec.Companion.optColor
+import java.util.regex.Pattern
 import org.json.JSONObject
 
+class MentionVariant(val pattern: Pattern, val style: TextStyleSpec?)
+
 /**
- * Parsed stylesJson with defaults. M1 covers the main container section and
- * default text sizing; per-element styling lands in M2.
+ * Parsed stylesJson with defaults, cached per JSON string.
  */
-class StyleConfig private constructor(private val json: JSONObject) {
-  private val main: JSONObject? = json.optJSONObject("main")
+class StyleConfig private constructor(private val root: JSONObject) {
+  private val main: JSONObject? = root.optJSONObject("main")
+  private val textStyles = HashMap<String, TextStyleSpec?>()
 
   val gap: Float = main.optFloatOr("gap", 12f)
   val paddingLeft: Float = main.optFloatOr("paddingLeft", 0f)
   val paddingRight: Float = main.optFloatOr("paddingRight", 0f)
   val paddingTop: Float = main.optFloatOr("paddingTop", 0f)
   val paddingBottom: Float = main.optFloatOr("paddingBottom", 0f)
-  val backgroundColor: Int? = main.optColor("backgroundColor")
+  val backgroundColor: Int? = main?.optColor("backgroundColor")
 
-  /** Font size (dp) for a heading level 1-6 or body text (level 0). */
+  /** Ordered longest-pattern-first; a link whose URL matches is a mention. */
+  val mentionVariants: List<MentionVariant> = buildList {
+    val variants = root.optJSONObject("mention")?.optJSONArray("variants") ?: return@buildList
+    for (i in 0 until variants.length()) {
+      val pair = variants.optJSONArray(i) ?: continue
+      val patternString = pair.optString(0, "")
+      if (patternString.isEmpty()) {
+        continue
+      }
+      val pattern = runCatching { Pattern.compile(patternString) }.getOrNull() ?: continue
+      add(MentionVariant(pattern, TextStyleSpec.from(pair.optJSONObject(1))))
+    }
+  }
+
+  /** User style for an element key; null when not provided. */
+  fun textStyleFor(key: String): TextStyleSpec? {
+    synchronized(textStyles) {
+      if (textStyles.containsKey(key)) {
+        return textStyles[key]
+      }
+      val style = TextStyleSpec.from(root.optJSONObject(key))
+      textStyles[key] = style
+      return style
+    }
+  }
+
+  /** Built-in default font size (dp) for heading level 1-6 or body (0). */
   fun fontSize(headingLevel: Int): Float = when (headingLevel) {
     1 -> 32f
     2 -> 26f
@@ -47,14 +77,6 @@ class StyleConfig private constructor(private val json: JSONObject) {
     private fun JSONObject?.optFloatOr(key: String, fallback: Float): Float {
       val value = this?.optDouble(key) ?: return fallback
       return if (value.isNaN()) fallback else value.toFloat()
-    }
-
-    private fun JSONObject?.optColor(key: String): Int? {
-      if (this == null || !has(key)) {
-        return null
-      }
-      val value = optLong(key, Long.MIN_VALUE)
-      return if (value == Long.MIN_VALUE) null else value.toInt()
     }
   }
 }

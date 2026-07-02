@@ -1,29 +1,68 @@
 import { ScrollView, StyleSheet } from 'react-native';
-import { FastMarkdownView } from 'react-native-fast-markdown';
+import {
+  FastMarkdownView,
+  type MarkdownStyles,
+} from 'react-native-fast-markdown';
 
 const MARKDOWN = `# Fast Markdown
 
-This is the first paragraph rendered natively on both platforms. It wraps across multiple lines when the text is long enough to exceed the available width.
+Paragraph with **bold**, _italic_, ~~strikethrough~~, and **bold _italic_ nested** runs.
 
-## Inline styles
+## Links & mentions
 
-Text with **bold**, _italic_, and **bold with _italic_ inside** runs.
+Visit [the docs](https://example.com/docs) or ping [@ali](users://ali) in [#general](channels://general).
 
-### Self-sizing
+### Code & science
 
-The view measures its own height on the Fabric layout thread, so this content determines the component frame with no JavaScript layout.
+Inline \`const x = 42\` code. Water is H~2~O, area is x^2^ and reddit^style sup with ^(multi word groups) too.
 
-Short final paragraph.`;
+#### Spoilers (styling lands in M6)
+
+Both ||discord style|| and >!reddit style!< parse already.
+
+##### Small heading five
+
+###### Tiny heading six`;
+
+const styles: MarkdownStyles = {
+  headings: {
+    h1: { color: '#111827' },
+    h2: { color: '#1D4ED8' },
+    h3: { color: '#047857', fontWeight: '600' },
+  },
+  paragraph: { fontSize: 16, color: '#1F2937' },
+  bold: { color: '#B91C1C' },
+  italic: { color: '#7C3AED' },
+  strikethrough: { color: '#9CA3AF' },
+  link: {
+    color: '#2563EB',
+    textDecorationLine: 'underline',
+  },
+  mention: {
+    fontWeight: '600',
+    variants: {
+      '^users://': { color: '#DB2777' },
+      '^channels://': { color: '#059669' },
+    },
+  },
+  inlineCode: {
+    fontFamily: 'Courier',
+    color: '#BE185D',
+    backgroundColor: '#FDF2F8',
+  },
+  superscript: { color: '#EA580C' },
+  subscript: { color: '#0284C7' },
+};
 
 export default function App() {
   return (
-    <ScrollView style={styles.container} contentInsetAdjustmentBehavior="automatic">
-      <FastMarkdownView markdown={MARKDOWN} style={styles.markdown} />
+    <ScrollView style={sheet.container} contentInsetAdjustmentBehavior="automatic">
+      <FastMarkdownView markdown={MARKDOWN} styles={styles} style={sheet.markdown} />
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
+const sheet = StyleSheet.create({
   container: {
     flex: 1,
   },

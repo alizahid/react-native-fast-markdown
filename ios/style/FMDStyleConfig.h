@@ -1,9 +1,15 @@
 #import <UIKit/UIKit.h>
 
+#import "FMDTextStyle.h"
+
 NS_ASSUME_NONNULL_BEGIN
 
-/// Parsed stylesJson with defaults. M1 covers the main container section and
-/// default text sizing; per-element styling lands in M2.
+@interface FMDMentionVariant : NSObject
+@property (nonatomic, readonly) NSRegularExpression *pattern;
+@property (nonatomic, readonly, nullable) FMDTextStyle *style;
+@end
+
+/// Parsed stylesJson with cached instances per JSON string.
 @interface FMDStyleConfig : NSObject
 
 @property (nonatomic, readonly) CGFloat gap;
@@ -13,10 +19,17 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) CGFloat paddingBottom;
 @property (nonatomic, readonly, nullable) UIColor *backgroundColor;
 
-/// Cached per JSON string.
+/// Ordered longest-pattern-first; a link whose URL matches becomes a mention.
+@property (nonatomic, readonly) NSArray<FMDMentionVariant *> *mentionVariants;
+
 + (instancetype)configWithJson:(NSString *)json;
 
-/// Font size for heading level 1-6, or body text (level 0).
+/// User style for an element key (paragraph, h1..h6, bold, italic,
+/// strikethrough, link, mention, inlineCode, superscript, subscript,
+/// listItem, tableCell, codeBlock, blockQuote). Nil when not provided.
+- (nullable FMDTextStyle *)textStyleFor:(NSString *)key;
+
+/// Built-in default font size for a heading level 1-6 or body text (0).
 - (CGFloat)fontSizeForHeadingLevel:(NSInteger)level;
 
 @end
