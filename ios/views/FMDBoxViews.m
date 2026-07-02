@@ -90,6 +90,14 @@ static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
   [self setNeedsLayout];
 }
 
+
+// Never the hit view itself: markdown touches belong to the host component
+// view; only nested scrollers (code blocks, tables) claim touches.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  UIView *hit = [super hitTest:point withEvent:event];
+  return hit == self ? nil : hit;
+}
+
 - (void)layoutSubviews {
   [super layoutSubviews];
   FMDLayoutStyle *style = _measured.block.layoutStyle;
@@ -131,6 +139,14 @@ static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
   [self setNeedsLayout];
 }
 
+
+// Never the hit view itself: markdown touches belong to the host component
+// view; only nested scrollers (code blocks, tables) claim touches.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  UIView *hit = [super hitTest:point withEvent:event];
+  return hit == self ? nil : hit;
+}
+
 - (void)layoutSubviews {
   [super layoutSubviews];
   FMDLayoutStyle *style = _measured.block.layoutStyle;
@@ -169,6 +185,14 @@ static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
     [self addSubview:content];
   }
   [self setNeedsLayout];
+}
+
+
+// Never the hit view itself: markdown touches belong to the host component
+// view; only nested scrollers (code blocks, tables) claim touches.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  UIView *hit = [super hitTest:point withEvent:event];
+  return hit == self ? nil : hit;
 }
 
 - (void)layoutSubviews {

@@ -14,6 +14,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) UIColor *spoilerColor;
 @property (nonatomic, assign) CGFloat spoilerRadius;
 
+/// Attributed-string attributes at a point in this view's coordinates;
+/// nil when the point is not on a glyph. Used by the host for hit testing.
+- (nullable NSDictionary *)attributesAtPoint:(CGPoint)point;
+
 @end
 
 NS_ASSUME_NONNULL_END

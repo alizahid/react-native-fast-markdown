@@ -37,6 +37,12 @@
   [self setNeedsLayout];
 }
 
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  // Touches inside the grid belong to the horizontal scroller.
+  UIView *hit = [super hitTest:point withEvent:event];
+  return hit == self ? nil : hit;
+}
+
 - (void)drawRect:(CGRect)rect {
   FMDBlock *block = _measured.block;
   FMDLayoutStyle *rowStyle = block.rowStyle;
@@ -128,6 +134,14 @@
 
   [_grid bind:measured host:host];
   [self setNeedsLayout];
+}
+
+
+// Never the hit view itself: markdown touches belong to the host component
+// view; only nested scrollers (code blocks, tables) claim touches.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  UIView *hit = [super hitTest:point withEvent:event];
+  return hit == self ? nil : hit;
 }
 
 - (void)layoutSubviews {

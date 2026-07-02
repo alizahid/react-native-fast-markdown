@@ -68,6 +68,14 @@
   return [[UIView alloc] initWithFrame:CGRectZero];
 }
 
+
+// Never the hit view itself: markdown touches belong to the host component
+// view; only nested scrollers (code blocks, tables) claim touches.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  UIView *hit = [super hitTest:point withEvent:event];
+  return hit == self ? nil : hit;
+}
+
 - (void)layoutSubviews {
   [super layoutSubviews];
   const CGFloat width = self.bounds.size.width;

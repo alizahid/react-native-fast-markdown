@@ -20,13 +20,15 @@ using FMDComponentDescriptor = ConcreteComponentDescriptor<FastMarkdownShadowNod
 #import "render/FMDContentCache.h"
 #import "style/FMDStyleConfig.h"
 #import "views/FMDBlockStackView.h"
+#import "views/FMDBlockTextView.h"
+#import "views/FMDImageView.h"
 #import "views/FMDMarkdownHost.h"
 
 #import "react/FastMarkdownMeasurer.h"
 
 using namespace facebook::react;
 
-@interface FastMarkdownView () <FMDMarkdownHost>
+@interface FastMarkdownView () <FMDMarkdownHost, UIGestureRecognizerDelegate>
 @end
 
 @implementation FastMarkdownView {
@@ -85,8 +87,128 @@ using namespace facebook::react;
     _revealedSpoilers = [NSMutableSet new];
     _stack.host = self;
     [self addSubview:_stack];
+
+    // The internal tree is hit-test transparent; the component view owns
+    // link/mention/spoiler/image touch handling (like React Native's Text).
+    UITapGestureRecognizer *tap =
+        [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(fmdHandleTap:)];
+    UILongPressGestureRecognizer *longPress =
+        [[UILongPressGestureRecognizer alloc] initWithTarget:self
+                                                      action:@selector(fmdHandleLongPress:)];
+    tap.delegate = self;
+    longPress.delegate = self;
+    [self addGestureRecognizer:tap];
+    [self addGestureRecognizer:longPress];
   }
   return self;
+}
+
+#pragma mark - Interaction resolution
+
+// Deepest content view at a host-space point (internal views are hit-test
+// transparent, so this walks frames directly). Views that opt out of user
+// interaction (border overlays) are skipped.
+- (UIView *)fmdContentViewAtPoint:(CGPoint)point inView:(UIView *)view {
+  for (UIView *subview in [view.subviews reverseObjectEnumerator]) {
+    if (subview.hidden || subview.alpha < 0.01 || !subview.userInteractionEnabled) {
+      continue;
+    }
+    const CGPoint local = [view convertPoint:point toView:subview];
+    if ([subview pointInside:local withEvent:nil]) {
+      return [self fmdContentViewAtPoint:local inView:subview];
+    }
+  }
+  return view;
+}
+
+- (nullable UIView *)fmdInteractiveViewAtPoint:(CGPoint)point
+                                    localPoint:(CGPoint *)localPoint {
+  UIView *view = [self fmdContentViewAtPoint:point inView:self];
+  while (view != nil && view != self) {
+    if ([view isKindOfClass:[FMDBlockTextView class]] ||
+        [view isKindOfClass:[FMDImageView class]]) {
+      if (localPoint != nil) {
+        *localPoint = [self convertPoint:point toView:view];
+      }
+      return view;
+    }
+    view = view.superview;
+  }
+  return nil;
+}
+
+- (BOOL)fmdIsInteractiveAtPoint:(CGPoint)point {
+  CGPoint local;
+  UIView *view = [self fmdInteractiveViewAtPoint:point localPoint:&local];
+  if ([view isKindOfClass:[FMDImageView class]]) {
+    return ((FMDImageView *)view).imageUrl != nil;
+  }
+  if ([view isKindOfClass:[FMDBlockTextView class]]) {
+    NSDictionary *attributes = [(FMDBlockTextView *)view attributesAtPoint:local];
+    return attributes[FMDLinkURLAttributeName] != nil ||
+        attributes[FMDSpoilerIDAttributeName] != nil;
+  }
+  return NO;
+}
+
+// Touches that do not start on an interactive range are never tracked, so
+// they cannot interfere with an ancestor scroll view's pan.
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer
+       shouldReceiveTouch:(UITouch *)touch {
+  return [self fmdIsInteractiveAtPoint:[touch locationInView:self]];
+}
+
+// Scrolling always wins: a drag that begins on a link still pans the list
+// (the tap/long-press simply fail on movement).
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)recognizer
+    shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)other {
+  return [other.view isKindOfClass:[UIScrollView class]];
+}
+
+- (void)fmdHandleTap:(UITapGestureRecognizer *)recognizer {
+  CGPoint local;
+  UIView *view = [self fmdInteractiveViewAtPoint:[recognizer locationInView:self]
+                                      localPoint:&local];
+  if ([view isKindOfClass:[FMDImageView class]]) {
+    NSString *url = ((FMDImageView *)view).imageUrl;
+    if (url != nil) {
+      [self imagePressed:url];
+    }
+    return;
+  }
+  if (![view isKindOfClass:[FMDBlockTextView class]]) {
+    return;
+  }
+  NSDictionary *attributes = [(FMDBlockTextView *)view attributesAtPoint:local];
+  NSNumber *spoilerId = attributes[FMDSpoilerIDAttributeName];
+  NSString *url = attributes[FMDLinkURLAttributeName];
+
+  if (spoilerId != nil && ![self isSpoilerRevealed:spoilerId.integerValue]) {
+    // First tap reveals; links inside come alive afterwards.
+    [self toggleSpoiler:spoilerId.integerValue];
+  } else if (url != nil) {
+    [self linkPressed:url];
+  } else if (spoilerId != nil) {
+    [self toggleSpoiler:spoilerId.integerValue];
+  }
+}
+
+- (void)fmdHandleLongPress:(UILongPressGestureRecognizer *)recognizer {
+  if (recognizer.state != UIGestureRecognizerStateBegan) {
+    return;
+  }
+  CGPoint local;
+  UIView *view = [self fmdInteractiveViewAtPoint:[recognizer locationInView:self]
+                                      localPoint:&local];
+  if (![view isKindOfClass:[FMDBlockTextView class]]) {
+    return;
+  }
+  NSDictionary *attributes = [(FMDBlockTextView *)view attributesAtPoint:local];
+  NSNumber *spoilerId = attributes[FMDSpoilerIDAttributeName];
+  NSString *url = attributes[FMDLinkURLAttributeName];
+  if (url != nil && (spoilerId == nil || [self isSpoilerRevealed:spoilerId.integerValue])) {
+    [self linkLongPressed:url];
+  }
 }
 
 #pragma mark - FMDMarkdownHost

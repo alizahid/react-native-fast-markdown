@@ -1,32 +1,23 @@
 #import "FMDBlockTextView.h"
 
-@interface FMDBlockTextView () <UIGestureRecognizerDelegate>
-@end
-
 @implementation FMDBlockTextView {
   NSLayoutManager *_layoutManager;
   NSTextContainer *_textContainer;
   NSTextStorage *_textStorage;
-  UITapGestureRecognizer *_tap;
-  UILongPressGestureRecognizer *_longPress;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
   if (self = [super initWithFrame:frame]) {
     self.backgroundColor = UIColor.clearColor;
     self.contentMode = UIViewContentModeRedraw;
-
-    _tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(handleTap:)];
-    _longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:self
-                                                               action:@selector(handleLongPress:)];
-    // Only claim touches on interactive ranges so a wrapping Pressable
-    // still receives taps on plain text.
-    _tap.delegate = self;
-    _longPress.delegate = self;
-    [self addGestureRecognizer:_tap];
-    [self addGestureRecognizer:_longPress];
   }
   return self;
+}
+
+// Hit-test transparent: the host component view owns all touch handling,
+// so ancestor scroll views treat markdown content like any React view.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  return nil;
 }
 
 - (void)setAttributedText:(NSAttributedString *)attributedText {
@@ -38,12 +29,6 @@
     self.accessibilityTraits = UIAccessibilityTraitStaticText;
     [self setNeedsDisplay];
   }
-}
-
-- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)recognizer {
-  NSDictionary *attributes = [self attributesAtPoint:[recognizer locationInView:self]];
-  return attributes[FMDLinkURLAttributeName] != nil ||
-      attributes[FMDSpoilerIDAttributeName] != nil;
 }
 
 // Lazy TextKit stack for hit-testing and spoiler-range geometry; drawing
@@ -130,35 +115,6 @@
     return nil;
   }
   return [_attributedText attributesAtIndex:charIndex effectiveRange:nil];
-}
-
-- (void)handleTap:(UITapGestureRecognizer *)recognizer {
-  NSDictionary *attributes = [self attributesAtPoint:[recognizer locationInView:self]];
-  NSNumber *spoilerId = attributes[FMDSpoilerIDAttributeName];
-  NSString *url = attributes[FMDLinkURLAttributeName];
-
-  if (spoilerId != nil && ![self.host isSpoilerRevealed:spoilerId.integerValue]) {
-    // First tap reveals; links inside come alive afterwards.
-    [self.host toggleSpoiler:spoilerId.integerValue];
-    [self setNeedsDisplay];
-  } else if (url != nil) {
-    [self.host linkPressed:url];
-  } else if (spoilerId != nil) {
-    [self.host toggleSpoiler:spoilerId.integerValue];
-    [self setNeedsDisplay];
-  }
-}
-
-- (void)handleLongPress:(UILongPressGestureRecognizer *)recognizer {
-  if (recognizer.state != UIGestureRecognizerStateBegan) {
-    return;
-  }
-  NSDictionary *attributes = [self attributesAtPoint:[recognizer locationInView:self]];
-  NSNumber *spoilerId = attributes[FMDSpoilerIDAttributeName];
-  NSString *url = attributes[FMDLinkURLAttributeName];
-  if (url != nil && (spoilerId == nil || [self.host isSpoilerRevealed:spoilerId.integerValue])) {
-    [self.host linkLongPressed:url];
-  }
 }
 
 @end

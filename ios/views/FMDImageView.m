@@ -12,11 +12,17 @@
     _imageView = [[UIImageView alloc] initWithFrame:CGRectZero];
     _imageView.contentMode = UIViewContentModeScaleAspectFit;
     [self addSubview:_imageView];
-    [self addGestureRecognizer:[[UITapGestureRecognizer alloc]
-                                   initWithTarget:self
-                                           action:@selector(handleTap)]];
   }
   return self;
+}
+
+// Hit-test transparent: the host component view owns all touch handling.
+- (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event {
+  return nil;
+}
+
+- (nullable NSString *)imageUrl {
+  return _block.imageUrl;
 }
 
 - (void)bind:(FMDBlock *)block {
@@ -40,12 +46,6 @@
                    strongSelf->_imageView.image = image;
                    [strongSelf.host imageIntrinsicSize:image.size forUrl:url];
                  }];
-  }
-}
-
-- (void)handleTap {
-  if (_block.imageUrl != nil) {
-    [self.host imagePressed:_block.imageUrl];
   }
 }
 

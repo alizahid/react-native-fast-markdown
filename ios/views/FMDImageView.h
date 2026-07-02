@@ -10,6 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface FMDImageView : UIView
 
 @property (nonatomic, weak, nullable) id<FMDMarkdownHost> host;
+@property (nonatomic, readonly, nullable) NSString *imageUrl;
 
 - (void)bind:(FMDBlock *)block;
 
