@@ -11,6 +11,7 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
   FMDBlockKindList,
   FMDBlockKindDivider,
   FMDBlockKindImage,
+  FMDBlockKindTable,
 };
 
 @class FMDBlock;
@@ -18,6 +19,11 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
 @interface FMDListRow : NSObject
 @property (nonatomic, strong) NSAttributedString *marker;
 @property (nonatomic, strong) NSArray<FMDBlock *> *content;
+@end
+
+@interface FMDTableRow : NSObject
+@property (nonatomic, assign) BOOL isHeader;
+@property (nonatomic, strong) NSArray<NSAttributedString *> *cells;
 @end
 
 /// One renderable block; blocks nest (quote children, list row content).
@@ -32,6 +38,13 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
 @property (nonatomic, assign) CGFloat markerMarginLeft;
 @property (nonatomic, strong, nullable) UIColor *dividerColor;
 @property (nonatomic, assign) CGFloat dividerThickness;
+
+// Table blocks.
+@property (nonatomic, strong, nullable) NSArray<FMDTableRow *> *tableRows;
+@property (nonatomic, strong, nullable) FMDLayoutStyle *rowStyle;
+@property (nonatomic, assign) UIEdgeInsets cellPadding;
+@property (nonatomic, assign) CGFloat minColumnWidth;
+@property (nonatomic, assign) CGFloat maxColumnWidth;
 
 // Image blocks.
 @property (nonatomic, copy, nullable) NSString *imageUrl;
@@ -52,6 +65,9 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
 @property (nonatomic, strong) NSArray<FMDMeasuredBlock *> *children;
 @property (nonatomic, strong) NSArray<NSNumber *> *markerHeights;
 @property (nonatomic, strong) NSArray<NSArray<FMDMeasuredBlock *> *> *rowContents;
+/// Tables: resolved column widths and per-row heights.
+@property (nonatomic, strong) NSArray<NSNumber *> *columnWidths;
+@property (nonatomic, strong) NSArray<NSNumber *> *rowHeights;
 @end
 
 NS_ASSUME_NONNULL_END

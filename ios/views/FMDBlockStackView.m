@@ -3,6 +3,7 @@
 #import "FMDBlockTextView.h"
 #import "FMDBoxViews.h"
 #import "FMDImageView.h"
+#import "FMDTableView.h"
 
 @implementation FMDBlockStackView {
   NSArray<FMDMeasuredBlock *> *_measured;
@@ -53,6 +54,11 @@
       FMDImageView *view = [[FMDImageView alloc] initWithFrame:CGRectZero];
       view.onIntrinsicSize = self.onImageIntrinsicSize;
       [view bind:measured.block];
+      return view;
+    }
+    case FMDBlockKindTable: {
+      FMDTableView *view = [[FMDTableView alloc] initWithFrame:CGRectZero];
+      [view bind:measured];
       return view;
     }
   }

@@ -33,6 +33,21 @@ sealed class Block {
     val maxHeightPx: Float,
     val placeholderPx: Float,
   ) : Block()
+
+  class TableRowData(val isHeader: Boolean, val cells: List<CharSequence>)
+
+  class Table(
+    val rows: List<TableRowData>,
+    val cellPaint: TextPaint,
+    val style: LayoutStyleSpec,
+    val rowStyle: LayoutStyleSpec,
+    val cellPaddingLeftPx: Float,
+    val cellPaddingRightPx: Float,
+    val cellPaddingTopPx: Float,
+    val cellPaddingBottomPx: Float,
+    val minColumnWidthPx: Float,
+    val maxColumnWidthPx: Float,
+  ) : Block()
 }
 
 /** Layout results for one block at one width. */
@@ -40,13 +55,19 @@ class MeasuredBlock(
   val block: Block,
   val heightPx: Float,
   val textLayout: StaticLayout?,
-  /** Code: unwrapped content width for the scroller. */
+  /** Code/Table: unwrapped content width for the scroller. */
   val contentWidthPx: Float,
   val children: List<MeasuredBlock>,
   /** List rows: marker layouts parallel to children groups. */
   val markerLayouts: List<StaticLayout>,
   /** List rows: measured content per row. */
   val rowContents: List<List<MeasuredBlock>>,
+  /** Tables: resolved column widths. */
+  val columnWidths: FloatArray = FloatArray(0),
+  /** Tables: per-row heights. */
+  val rowHeights: FloatArray = FloatArray(0),
+  /** Tables: cell layouts, row-major. */
+  val cellLayouts: List<List<StaticLayout>> = emptyList(),
 )
 
 /**
@@ -161,6 +182,8 @@ class RenderedContent(
       is Block.Divider ->
         MeasuredBlock(block, block.thicknessPx, null, widthPx, emptyList(), emptyList(), emptyList())
 
+      is Block.Table -> measureTable(block, widthPx)
+
       is Block.Image -> {
         val known = imageSizes[block.url]
         var displayH: Float
@@ -187,6 +210,71 @@ class RenderedContent(
         MeasuredBlock(block, displayH, null, displayW, emptyList(), emptyList(), emptyList())
       }
     }
+  }
+
+  // Intelligent column widths: natural (unwrapped) width per column,
+  // clamped to [min, max]; surplus distributed proportionally when the
+  // table fits, horizontal scroll when it does not.
+  private fun measureTable(block: Block.Table, widthPx: Float): MeasuredBlock {
+    val columnCount = block.rows.maxOfOrNull { it.cells.size } ?: 0
+    if (columnCount == 0) {
+      return MeasuredBlock(block, 0f, null, widthPx, emptyList(), emptyList(), emptyList())
+    }
+
+    val cellPadH = block.cellPaddingLeftPx + block.cellPaddingRightPx
+    val natural = FloatArray(columnCount)
+    for (row in block.rows) {
+      row.cells.forEachIndexed { column, cell ->
+        // Ceil so the later int truncation of the cell width can't force
+        // a wrap that the natural measurement said would fit.
+        val desired =
+          kotlin.math.ceil(Layout.getDesiredWidth(cell, block.cellPaint).toDouble()).toFloat() +
+            cellPadH + 1f
+        if (desired > natural[column]) {
+          natural[column] = desired
+        }
+      }
+    }
+
+    val columnWidths = FloatArray(columnCount) {
+      natural[it].coerceIn(block.minColumnWidthPx, block.maxColumnWidthPx)
+    }
+
+    val availableWidth = widthPx - block.style.paddingLeft - block.style.paddingRight -
+      block.style.borderLeftWidth - block.style.borderRightWidth
+    val total = columnWidths.sum()
+    if (total < availableWidth) {
+      val naturalTotal = natural.sum().coerceAtLeast(1f)
+      val surplus = availableWidth - total
+      for (i in 0 until columnCount) {
+        columnWidths[i] += surplus * (natural[i] / naturalTotal)
+      }
+    }
+    val contentWidth = columnWidths.sum()
+
+    val rowHeights = FloatArray(block.rows.size)
+    val cellPadV = block.cellPaddingTopPx + block.cellPaddingBottomPx
+    val rowExtra = block.rowStyle.borderBottomWidth + block.rowStyle.borderTopWidth
+    val cellLayouts = block.rows.mapIndexed { rowIndex, row ->
+      val layouts = row.cells.mapIndexed { column, cell ->
+        staticLayout(
+          cell,
+          block.cellPaint,
+          (columnWidths[column] - cellPadH).toInt().coerceAtLeast(1),
+          wrap = true,
+        )
+      }
+      rowHeights[rowIndex] =
+        (layouts.maxOfOrNull { it.height.toFloat() } ?: 0f) + cellPadV + rowExtra
+      layouts
+    }
+
+    val height = rowHeights.sum() + block.style.paddingTop + block.style.paddingBottom +
+      block.style.borderTopWidth + block.style.borderBottomWidth
+    return MeasuredBlock(
+      block, height, null, contentWidth, emptyList(), emptyList(), emptyList(),
+      columnWidths, rowHeights, cellLayouts,
+    )
   }
 
   private fun staticLayout(text: CharSequence, paint: TextPaint, widthPx: Int, wrap: Boolean): StaticLayout {

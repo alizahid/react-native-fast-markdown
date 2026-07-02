@@ -56,7 +56,23 @@ Unknown size (placeholder then resize):
 
 Broken URL (placeholder stays):
 
-![broken](https://example.invalid/nope.png)`;
+![broken](https://example.invalid/nope.png)
+
+## Tables
+
+Narrow (stretches to fill):
+
+| Name | Role |
+|------|------|
+| Ali | Author |
+| Kit | Editor |
+
+Wide (scrolls horizontally):
+
+| ID | Package name | Version | Downloads | License | Maintainer | Last publish | Notes |
+|----|--------------|---------|-----------|---------|------------|--------------|-------|
+| 1 | react-native-fast-markdown | 0.1.0 | 120,394 | MIT | @ali | 2 days ago | A really long descriptive note that pads this cell |
+| 2 | react-native-enriched | 1.0.0 | 88,120 | MIT | swmansion | 1 week ago | Another very descriptive note about the package |`;
 
 const styles: MarkdownStyles = {
   headings: {

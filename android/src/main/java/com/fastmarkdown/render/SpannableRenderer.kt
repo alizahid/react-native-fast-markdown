@@ -171,6 +171,8 @@ object SpannableRenderer {
 
       MdNodeType.LIST -> out.add(listBlock(node, context, inherited))
 
+      MdNodeType.TABLE -> out.add(tableBlock(node, context, inherited))
+
       MdNodeType.THEMATIC_BREAK ->
         out.add(Block.Divider(DEFAULT_DIVIDER_COLOR, 1f * context.density))
 
@@ -264,6 +266,74 @@ object SpannableRenderer {
       index++
     }
     return Block.ListBlock(rows, marginLeft, markerWidth, markerMarginLeft)
+  }
+
+  private fun tableBlock(node: MdNode, context: Context, inherited: TextStyleSpec?): Block.Table {
+    val styles = context.styles
+    val density = context.density
+    val tableSection = styles.rawSection("table")
+    val cellSection = styles.rawSection("tableCell")
+
+    val rowDefaults = LayoutStyleSpec(
+      backgroundColor = null,
+      paddingLeft = 0f, paddingRight = 0f, paddingTop = 0f, paddingBottom = 0f,
+      borderRadius = 0f,
+      borderLeftColor = null, borderLeftWidth = 0f,
+      borderRightColor = null, borderRightWidth = 0f,
+      borderTopColor = null, borderTopWidth = 0f,
+      borderBottomColor = 0x1F000000, borderBottomWidth = 1f,
+    )
+
+    val cellText = merge(inherited, styles.textStyleFor("tableCell"))
+    var cellAttrs = ResolvedAttrs(fontSizePx = styles.fontSize(0) * density * context.fontScale)
+    cellAttrs = context.apply(cellAttrs, "paragraph")
+    cellAttrs = context.apply(cellAttrs, cellText)
+
+    val cellPadding = cellSection.optPadding(density, defaultAll = 8f)
+
+    val rows = ArrayList<Block.TableRowData>()
+    for (rowNode in node.children) {
+      if (rowNode.type != MdNodeType.TABLE_ROW) {
+        continue
+      }
+      val isHeader = rowNode.level == 1
+      val cells = rowNode.children
+        .filter { it.type == MdNodeType.TABLE_CELL }
+        .map { cell ->
+          val builder = SpannableStringBuilder()
+          val attrs = if (isHeader) {
+            context.apply(cellAttrs.copy(weight = 700), "tableCell")
+          } else {
+            cellAttrs
+          }
+          walk(builder, cell, attrs, context)
+          builder
+        }
+      rows.add(Block.TableRowData(isHeader, cells))
+    }
+
+    return Block.Table(
+      rows = rows,
+      cellPaint = basePaint(cellAttrs),
+      style = context.layoutStyle("table", LayoutStyleSpec.EMPTY),
+      rowStyle = context.layoutStyle("tableRow", rowDefaults),
+      cellPaddingLeftPx = cellPadding[0],
+      cellPaddingRightPx = cellPadding[1],
+      cellPaddingTopPx = cellPadding[2],
+      cellPaddingBottomPx = cellPadding[3],
+      minColumnWidthPx = (tableSection?.optDpOr("minColumnWidth", 44f) ?: 44f) * density,
+      maxColumnWidthPx = (tableSection?.optDpOr("maxColumnWidth", 320f) ?: 320f) * density,
+    )
+  }
+
+  /** [left, right, top, bottom] px with shorthand expansion done JS-side. */
+  private fun JSONObject?.optPadding(density: Float, defaultAll: Float): FloatArray {
+    return floatArrayOf(
+      (this?.optDpOr("paddingLeft", defaultAll) ?: defaultAll) * density,
+      (this?.optDpOr("paddingRight", defaultAll) ?: defaultAll) * density,
+      (this?.optDpOr("paddingTop", defaultAll) ?: defaultAll) * density,
+      (this?.optDpOr("paddingBottom", defaultAll) ?: defaultAll) * density,
+    )
   }
 
   private fun merge(base: TextStyleSpec?, over: TextStyleSpec?): TextStyleSpec? {

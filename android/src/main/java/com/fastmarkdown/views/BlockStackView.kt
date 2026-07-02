@@ -42,6 +42,7 @@ class BlockStackView(context: Context) : ViewGroup(context) {
         bind(measuredBlock, block, gapPx) { url, w, h -> onImageIntrinsicSize?.invoke(url, w, h) }
       }
       is Block.Divider -> DividerView(context).apply { color = block.color }
+      is Block.Table -> TableBlockView(context).apply { bind(measuredBlock, block) }
       is Block.Image -> MarkdownImageView(context).apply {
         onIntrinsicSize = { url, w, h -> onImageIntrinsicSize?.invoke(url, w, h) }
         bind(block)

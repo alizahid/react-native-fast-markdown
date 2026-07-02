@@ -1,5 +1,7 @@
 #import "FMDRenderedContent.h"
 
+#include <vector>
+
 @implementation FMDWidthLayout
 @end
 
@@ -138,6 +140,73 @@
     case FMDBlockKindDivider:
       measured.height = block.dividerThickness;
       break;
+    case FMDBlockKindTable: {
+      // Intelligent column widths: natural (unwrapped) width per column,
+      // clamped to [min, max]; surplus distributed proportionally when the
+      // table fits, horizontal scroll when it does not.
+      NSUInteger columnCount = 0;
+      for (FMDTableRow *row in block.tableRows) {
+        columnCount = MAX(columnCount, row.cells.count);
+      }
+      if (columnCount == 0) {
+        measured.height = 0;
+        break;
+      }
+
+      const CGFloat cellPadH = block.cellPadding.left + block.cellPadding.right;
+      std::vector<CGFloat> natural(columnCount, 0);
+      for (FMDTableRow *row in block.tableRows) {
+        for (NSUInteger column = 0; column < row.cells.count; column++) {
+          const CGFloat desired =
+              [self textSize:row.cells[column] width:CGFLOAT_MAX].width + cellPadH;
+          natural[column] = MAX(natural[column], desired);
+        }
+      }
+
+      std::vector<CGFloat> columnWidths(columnCount, 0);
+      CGFloat total = 0;
+      CGFloat naturalTotal = 0;
+      for (NSUInteger i = 0; i < columnCount; i++) {
+        columnWidths[i] = MIN(MAX(natural[i], block.minColumnWidth), block.maxColumnWidth);
+        total += columnWidths[i];
+        naturalTotal += natural[i];
+      }
+      const CGFloat availableWidth = width - block.layoutStyle.horizontalInset;
+      if (total < availableWidth && naturalTotal > 0) {
+        const CGFloat surplus = availableWidth - total;
+        for (NSUInteger i = 0; i < columnCount; i++) {
+          columnWidths[i] += surplus * (natural[i] / naturalTotal);
+        }
+      }
+
+      const CGFloat cellPadV = block.cellPadding.top + block.cellPadding.bottom;
+      const CGFloat rowExtra = block.rowStyle.borderTopWidth + block.rowStyle.borderBottomWidth;
+      NSMutableArray<NSNumber *> *rowHeights = [NSMutableArray new];
+      CGFloat contentHeight = 0;
+      for (FMDTableRow *row in block.tableRows) {
+        CGFloat rowHeight = 0;
+        for (NSUInteger column = 0; column < row.cells.count; column++) {
+          const CGFloat cellWidth = MAX(columnWidths[column] - cellPadH, 1);
+          rowHeight = MAX(rowHeight, [self textSize:row.cells[column] width:cellWidth].height);
+        }
+        rowHeight += cellPadV + rowExtra;
+        [rowHeights addObject:@(rowHeight)];
+        contentHeight += rowHeight;
+      }
+
+      NSMutableArray<NSNumber *> *widths = [NSMutableArray new];
+      CGFloat contentWidth = 0;
+      for (NSUInteger i = 0; i < columnCount; i++) {
+        [widths addObject:@(columnWidths[i])];
+        contentWidth += columnWidths[i];
+      }
+
+      measured.columnWidths = widths;
+      measured.rowHeights = rowHeights;
+      measured.contentWidth = contentWidth;
+      measured.height = contentHeight + block.layoutStyle.verticalInset;
+      break;
+    }
     case FMDBlockKindImage: {
       NSArray<NSNumber *> *known = block.imageUrl != nil ? imageSizes[block.imageUrl] : nil;
       CGFloat displayH;

@@ -3,6 +3,9 @@
 @implementation FMDListRow
 @end
 
+@implementation FMDTableRow
+@end
+
 @implementation FMDBlock
 @end
 
@@ -13,6 +16,8 @@
     _children = @[];
     _markerHeights = @[];
     _rowContents = @[];
+    _columnWidths = @[];
+    _rowHeights = @[];
   }
   return self;
 }

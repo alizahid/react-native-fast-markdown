@@ -320,6 +320,10 @@ class BlockBuilder {
         [out addObject:listBlock(node, inherited)];
         break;
 
+      case NodeType::Table:
+        [out addObject:tableBlock(node, inherited)];
+        break;
+
       case NodeType::ThematicBreak: {
         FMDBlock *block = [FMDBlock new];
         block.kind = FMDBlockKindDivider;
@@ -444,6 +448,77 @@ class BlockBuilder {
       index++;
     }
     block.rows = rows;
+    return block;
+  }
+
+  FMDBlock *tableBlock(const Node *node, NSArray<FMDTextStyle *> *inherited) {
+    NSDictionary *tableSection = [styles_ rawSectionFor:@"table"];
+    NSDictionary *cellSection = [styles_ rawSectionFor:@"tableCell"];
+    auto number = [](NSDictionary *dict, NSString *key, CGFloat fallback) -> CGFloat {
+      NSNumber *value = [dict[key] isKindOfClass:[NSNumber class]] ? dict[key] : nil;
+      return value != nil ? value.doubleValue : fallback;
+    };
+
+    FMDLayoutStyle *rowDefaults = [FMDLayoutStyle
+        defaultsWithBackground:nil
+                       padding:UIEdgeInsetsZero
+                  borderRadius:0
+               borderLeftColor:nil
+               borderLeftWidth:0];
+    // Default row separator via bottom border.
+    FMDLayoutStyle *rowStyle = [FMDLayoutStyle
+        fromJson:[styles_ rawSectionFor:@"tableRow"]
+        defaults:[FMDLayoutStyle fromJson:@{
+          @"borderBottomColor" : @((uint32_t)0x1F000000),
+          @"borderBottomWidth" : @1,
+        } defaults:rowDefaults]];
+
+    ResolvedAttrs cellAttrs;
+    cellAttrs.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
+    cellAttrs.color = UIColor.blackColor;
+    applyStyle(cellAttrs, [styles_ textStyleFor:@"paragraph"], fontScale_);
+    for (FMDTextStyle *style in inherited) {
+      applyStyle(cellAttrs, style, fontScale_);
+    }
+    applyStyle(cellAttrs, [styles_ textStyleFor:@"tableCell"], fontScale_);
+
+    NSMutableArray<FMDTableRow *> *rows = [NSMutableArray new];
+    for (const Node *rowNode : node->children) {
+      if (rowNode->type != NodeType::TableRow) {
+        continue;
+      }
+      FMDTableRow *row = [FMDTableRow new];
+      row.isHeader = rowNode->level == 1;
+      NSMutableArray<NSAttributedString *> *cells = [NSMutableArray new];
+      for (const Node *cellNode : rowNode->children) {
+        if (cellNode->type != NodeType::TableCell) {
+          continue;
+        }
+        ResolvedAttrs attrs = cellAttrs;
+        if (row.isHeader) {
+          attrs.weight = 700;
+          applyStyle(attrs, [styles_ textStyleFor:@"tableCell"], fontScale_);
+        }
+        NSMutableAttributedString *cell = [NSMutableAttributedString new];
+        walk(cell, cellNode, attrs);
+        [cells addObject:cell];
+      }
+      row.cells = cells;
+      [rows addObject:row];
+    }
+
+    FMDBlock *block = [FMDBlock new];
+    block.kind = FMDBlockKindTable;
+    block.tableRows = rows;
+    block.layoutStyle = [FMDLayoutStyle fromJson:tableSection defaults:nil];
+    block.rowStyle = rowStyle;
+    block.cellPadding = UIEdgeInsetsMake(
+        number(cellSection, @"paddingTop", 8),
+        number(cellSection, @"paddingLeft", 8),
+        number(cellSection, @"paddingBottom", 8),
+        number(cellSection, @"paddingRight", 8));
+    block.minColumnWidth = number(tableSection, @"minColumnWidth", 44);
+    block.maxColumnWidth = number(tableSection, @"maxColumnWidth", 320);
     return block;
   }
 
