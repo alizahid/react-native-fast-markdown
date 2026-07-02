@@ -27,6 +27,9 @@
   switch (measured.block.kind) {
     case FMDBlockKindText: {
       FMDBlockTextView *view = [[FMDBlockTextView alloc] initWithFrame:CGRectZero];
+      view.host = self.host;
+      view.spoilerColor = measured.block.spoilerColor;
+      view.spoilerRadius = measured.block.spoilerRadius;
       view.attributedText = measured.block.attributedText;
       return view;
     }
@@ -37,12 +40,12 @@
     }
     case FMDBlockKindQuote: {
       FMDQuoteView *view = [[FMDQuoteView alloc] initWithFrame:CGRectZero];
-      [view bind:measured gap:_gap onImageIntrinsicSize:self.onImageIntrinsicSize];
+      [view bind:measured gap:_gap host:self.host];
       return view;
     }
     case FMDBlockKindList: {
       FMDListBlockView *view = [[FMDListBlockView alloc] initWithFrame:CGRectZero];
-      [view bind:measured gap:_gap onImageIntrinsicSize:self.onImageIntrinsicSize];
+      [view bind:measured gap:_gap host:self.host];
       return view;
     }
     case FMDBlockKindDivider: {
@@ -52,13 +55,13 @@
     }
     case FMDBlockKindImage: {
       FMDImageView *view = [[FMDImageView alloc] initWithFrame:CGRectZero];
-      view.onIntrinsicSize = self.onImageIntrinsicSize;
+      view.host = self.host;
       [view bind:measured.block];
       return view;
     }
     case FMDBlockKindTable: {
       FMDTableView *view = [[FMDTableView alloc] initWithFrame:CGRectZero];
-      [view bind:measured];
+      [view bind:measured host:self.host];
       return view;
     }
   }

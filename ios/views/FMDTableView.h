@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 
 #import "../render/FMDBlock.h"
+#import "FMDMarkdownHost.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -8,7 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// so wide tables keep readable column widths.
 @interface FMDTableView : UIView
 
-- (void)bind:(FMDMeasuredBlock *)measured;
+- (void)bind:(FMDMeasuredBlock *)measured host:(nullable id<FMDMarkdownHost>)host;
 
 @end
 

@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 
 #import "../render/FMDBlock.h"
+#import "FMDMarkdownHost.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -8,9 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// loading. Requests are URL-owned; this view only listens.
 @interface FMDImageView : UIView
 
-/// Fires once with the intrinsic point size when the image arrives.
-@property (nonatomic, copy, nullable) void (^onIntrinsicSize)
-    (NSString *url, CGFloat width, CGFloat height);
+@property (nonatomic, weak, nullable) id<FMDMarkdownHost> host;
 
 - (void)bind:(FMDBlock *)block;
 

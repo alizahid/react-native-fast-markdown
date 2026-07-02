@@ -16,8 +16,7 @@ class BlockStackView(context: Context) : ViewGroup(context) {
   private var measured: List<MeasuredBlock> = emptyList()
   private var gapPx = 0f
 
-  /** Bubbles image intrinsic sizes (url, dp w, dp h) up to the host view. */
-  var onImageIntrinsicSize: ((String, Float, Float) -> Unit)? = null
+  var host: MarkdownHost? = null
 
   fun setBlocks(blocks: List<MeasuredBlock>, gap: Float) {
     measured = blocks
@@ -32,19 +31,23 @@ class BlockStackView(context: Context) : ViewGroup(context) {
   private fun createView(measuredBlock: MeasuredBlock): View {
     return when (val block = measuredBlock.block) {
       is Block.Text -> BlockTextView(context).apply {
+        this.host = this@BlockStackView.host
+        setBlock(block)
         measuredBlock.textLayout?.let(::setTextLayout)
       }
       is Block.Code -> CodeBlockView(context).apply { bind(measuredBlock, block) }
       is Block.Quote -> QuoteView(context).apply {
-        bind(measuredBlock, block, gapPx) { url, w, h -> onImageIntrinsicSize?.invoke(url, w, h) }
+        bind(measuredBlock, block, gapPx, this@BlockStackView.host)
       }
       is Block.ListBlock -> ListBlockView(context).apply {
-        bind(measuredBlock, block, gapPx) { url, w, h -> onImageIntrinsicSize?.invoke(url, w, h) }
+        bind(measuredBlock, block, gapPx, this@BlockStackView.host)
       }
       is Block.Divider -> DividerView(context).apply { color = block.color }
-      is Block.Table -> TableBlockView(context).apply { bind(measuredBlock, block) }
+      is Block.Table -> TableBlockView(context).apply {
+        bind(measuredBlock, block, this@BlockStackView.host)
+      }
       is Block.Image -> MarkdownImageView(context).apply {
-        onIntrinsicSize = { url, w, h -> onImageIntrinsicSize?.invoke(url, w, h) }
+        this.host = this@BlockStackView.host
         bind(block)
       }
     }
@@ -107,11 +110,11 @@ class QuoteView(context: Context) : ViewGroup(context) {
     measuredBlock: MeasuredBlock,
     quote: Block.Quote,
     gap: Float,
-    onImageIntrinsicSize: ((String, Float, Float) -> Unit)? = null,
+    host: MarkdownHost? = null,
   ) {
     measured = measuredBlock
     block = quote
-    stack.onImageIntrinsicSize = onImageIntrinsicSize
+    stack.host = host
     stack.setBlocks(measuredBlock.children, gap)
     invalidate()
   }
@@ -211,7 +214,7 @@ class ListBlockView(context: Context) : ViewGroup(context) {
     measuredBlock: MeasuredBlock,
     list: Block.ListBlock,
     gap: Float,
-    onImageIntrinsicSize: ((String, Float, Float) -> Unit)? = null,
+    host: MarkdownHost? = null,
   ) {
     measured = measuredBlock
     block = list
@@ -220,7 +223,7 @@ class ListBlockView(context: Context) : ViewGroup(context) {
     measuredBlock.markerLayouts.forEachIndexed { index, marker ->
       addView(BlockTextView(context).apply { setTextLayout(marker) })
       addView(BlockStackView(context).apply {
-        this.onImageIntrinsicSize = onImageIntrinsicSize
+        this.host = host
         setBlocks(measuredBlock.rowContents[index], gap)
       })
     }

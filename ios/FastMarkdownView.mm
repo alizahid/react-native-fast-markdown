@@ -20,10 +20,14 @@ using FMDComponentDescriptor = ConcreteComponentDescriptor<FastMarkdownShadowNod
 #import "render/FMDContentCache.h"
 #import "style/FMDStyleConfig.h"
 #import "views/FMDBlockStackView.h"
+#import "views/FMDMarkdownHost.h"
 
 #import "react/FastMarkdownMeasurer.h"
 
 using namespace facebook::react;
+
+@interface FastMarkdownView () <FMDMarkdownHost>
+@end
 
 @implementation FastMarkdownView {
   NSString *_markdown;
@@ -34,6 +38,7 @@ using namespace facebook::react;
   // url -> @[w, h] points: from the images prop (wins) and loaded bitmaps.
   NSMutableDictionary<NSString *, NSArray<NSNumber *> *> *_propImageSizes;
   NSMutableDictionary<NSString *, NSArray<NSNumber *> *> *_loadedImageSizes;
+  NSMutableSet<NSNumber *> *_revealedSpoilers;
   FastMarkdownShadowNode::ConcreteState::Shared _state;
 }
 
@@ -77,13 +82,62 @@ using namespace facebook::react;
     _stack = [[FMDBlockStackView alloc] initWithFrame:CGRectZero];
     _propImageSizes = [NSMutableDictionary new];
     _loadedImageSizes = [NSMutableDictionary new];
-    __weak FastMarkdownView *weakSelf = self;
-    _stack.onImageIntrinsicSize = ^(NSString *url, CGFloat width, CGFloat height) {
-      [weakSelf noteIntrinsicSize:CGSizeMake(width, height) forUrl:url];
-    };
+    _revealedSpoilers = [NSMutableSet new];
+    _stack.host = self;
     [self addSubview:_stack];
   }
   return self;
+}
+
+#pragma mark - FMDMarkdownHost
+
+- (void)imageIntrinsicSize:(CGSize)size forUrl:(NSString *)url {
+  [self noteIntrinsicSize:size forUrl:url];
+}
+
+- (BOOL)isSpoilerRevealed:(NSInteger)spoilerId {
+  return [_revealedSpoilers containsObject:@(spoilerId)];
+}
+
+- (void)toggleSpoiler:(NSInteger)spoilerId {
+  if ([_revealedSpoilers containsObject:@(spoilerId)]) {
+    [_revealedSpoilers removeObject:@(spoilerId)];
+  } else {
+    [_revealedSpoilers addObject:@(spoilerId)];
+  }
+  FMDSetNeedsDisplayDeep(self);
+}
+
+- (const FastMarkdownViewEventEmitter *)markdownEventEmitter {
+  if (!_eventEmitter) {
+    return nullptr;
+  }
+  return static_cast<const FastMarkdownViewEventEmitter *>(_eventEmitter.get());
+}
+
+- (void)linkPressed:(NSString *)url {
+  if (const auto *emitter = [self markdownEventEmitter]) {
+    emitter->onLinkPress({.url = std::string(url.UTF8String ?: "")});
+  }
+}
+
+- (void)linkLongPressed:(NSString *)url {
+  if (const auto *emitter = [self markdownEventEmitter]) {
+    emitter->onLinkLongPress({.url = std::string(url.UTF8String ?: "")});
+  }
+}
+
+- (void)imagePressed:(NSString *)url {
+  if (const auto *emitter = [self markdownEventEmitter]) {
+    emitter->onImagePress({.url = std::string(url.UTF8String ?: "")});
+  }
+}
+
+static void FMDSetNeedsDisplayDeep(UIView *view) {
+  [view setNeedsDisplay];
+  for (UIView *subview in view.subviews) {
+    FMDSetNeedsDisplayDeep(subview);
+  }
 }
 
 - (void)noteIntrinsicSize:(CGSize)size forUrl:(NSString *)url {
@@ -162,6 +216,7 @@ using namespace facebook::react;
   _state = nullptr;
   [_propImageSizes removeAllObjects];
   [_loadedImageSizes removeAllObjects];
+  [_revealedSpoilers removeAllObjects];
   [_stack setBlocks:@[] gap:0];
 }
 

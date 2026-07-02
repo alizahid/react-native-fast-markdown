@@ -7,7 +7,12 @@ import com.fastmarkdown.style.LayoutStyleSpec
 
 /** One renderable block; blocks nest (quote children, list row content). */
 sealed class Block {
-  class Text(val text: CharSequence, val paint: TextPaint) : Block()
+  class Text(
+    val text: CharSequence,
+    val paint: TextPaint,
+    val spoilerColor: Int = 0xFF3F3F46.toInt(),
+    val spoilerRadiusPx: Float = 0f,
+  ) : Block()
 
   /** Code renders unwrapped inside a horizontal scroller. */
   class Code(val text: CharSequence, val paint: TextPaint, val style: LayoutStyleSpec) : Block()

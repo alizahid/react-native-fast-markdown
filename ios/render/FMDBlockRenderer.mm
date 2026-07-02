@@ -7,6 +7,9 @@
 using fastmarkdown::Node;
 using fastmarkdown::NodeType;
 
+NSAttributedStringKey const FMDLinkURLAttributeName = @"FMDLinkURL";
+NSAttributedStringKey const FMDSpoilerIDAttributeName = @"FMDSpoilerID";
+
 namespace {
 
 NSString *toNSString(const std::string &value) {
@@ -50,6 +53,8 @@ struct ResolvedAttrs {
   NSString *__strong decorationStyle = nil;
   CGFloat baselineOffset = 0;
   UIColor *__strong backgroundColor = nil;
+  NSString *__strong linkUrl = nil;
+  NSInteger spoilerId = -1;
 };
 
 void applyStyle(ResolvedAttrs &attrs, FMDTextStyle *style, CGFloat fontScale) {
@@ -207,6 +212,12 @@ NSDictionary *attributesDictionary(const ResolvedAttrs &attrs) {
   }
   if (attrs.backgroundColor != nil) {
     attributes[NSBackgroundColorAttributeName] = attrs.backgroundColor;
+  }
+  if (attrs.linkUrl != nil) {
+    attributes[FMDLinkURLAttributeName] = attrs.linkUrl;
+  }
+  if (attrs.spoilerId >= 0) {
+    attributes[FMDSpoilerIDAttributeName] = @(attrs.spoilerId);
   }
   return attributes;
 }
@@ -547,9 +558,18 @@ class BlockBuilder {
 
     walk(output, node, base);
 
+    NSDictionary *spoilerSection = [styles_ rawSectionFor:@"spoiler"];
+    NSNumber *spoilerRadius =
+        [spoilerSection[@"borderRadius"] isKindOfClass:[NSNumber class]]
+            ? spoilerSection[@"borderRadius"]
+            : @4;
+
     FMDBlock *block = [FMDBlock new];
     block.kind = FMDBlockKindText;
     block.attributedText = output;
+    block.spoilerColor = [FMDTextStyle colorFromJson:spoilerSection[@"backgroundColor"]]
+        ?: [UIColor colorWithRed:0.25 green:0.25 blue:0.27 alpha:1];
+    block.spoilerRadius = spoilerRadius.doubleValue;
     return block;
   }
 
@@ -608,6 +628,7 @@ class BlockBuilder {
           ResolvedAttrs next = attrs;
           next.color = [UIColor colorWithRed:0 green:0.478 blue:1 alpha:1];
           NSString *url = toNSString(node->url);
+          next.linkUrl = url;
           FMDTextStyle *variantStyle = nil;
           bool isMention = false;
           for (FMDMentionVariant *variant in styles_.mentionVariants) {
@@ -652,10 +673,12 @@ class BlockBuilder {
           walk(output, node, next);
           break;
         }
-        case NodeType::Spoiler:
-          // Overlay + concealment land in M6; content renders styled now.
-          walk(output, node, attrs);
+        case NodeType::Spoiler: {
+          ResolvedAttrs next = attrs;
+          next.spoilerId = spoilerCounter_++;
+          walk(output, node, next);
           break;
+        }
         case NodeType::Image:
           append(output, toNSString(node->text), attrs);
           break;
@@ -668,6 +691,7 @@ class BlockBuilder {
 
   FMDStyleConfig *styles_;
   CGFloat fontScale_;
+  NSInteger spoilerCounter_ = 0;
 };
 
 } // namespace

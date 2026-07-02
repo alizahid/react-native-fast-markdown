@@ -5,17 +5,21 @@ import android.graphics.Color
 import android.view.ViewGroup
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReadableArray
+import com.facebook.react.bridge.WritableMap
 import com.facebook.react.uimanager.StateWrapper
+import com.facebook.react.uimanager.UIManagerHelper
+import com.facebook.react.uimanager.events.Event
 import com.fastmarkdown.render.ContentCache
 import com.fastmarkdown.style.StyleConfig
 import com.fastmarkdown.views.BlockStackView
+import com.fastmarkdown.views.MarkdownHost
 
 /**
  * Host view: one nested block stack. Fabric supplies the final frame (the
  * C++ shadow node measured the same cached content), so onLayout only
  * distributes frames.
  */
-class FastMarkdownView(context: Context) : ViewGroup(context) {
+class FastMarkdownView(context: Context) : ViewGroup(context), MarkdownHost {
   private var markdown: String = ""
   private var stylesJson: String = ""
   private var boundKey: Triple<String, String, Int>? = null
@@ -27,13 +31,53 @@ class FastMarkdownView(context: Context) : ViewGroup(context) {
   private val loadedImageSizes = HashMap<String, FloatArray>()
   var stateWrapper: StateWrapper? = null
 
+  private val revealedSpoilers = HashSet<Int>()
+
   init {
     addView(stack)
-    stack.onImageIntrinsicSize = { url, w, h ->
-      if (!propImageSizes.containsKey(url) && !loadedImageSizes.containsKey(url)) {
-        loadedImageSizes[url] = floatArrayOf(w, h)
-        publishImageSizes()
-        requestLayout()
+    stack.host = this
+  }
+
+  override fun onImageIntrinsicSize(url: String, widthDp: Float, heightDp: Float) {
+    if (!propImageSizes.containsKey(url) && !loadedImageSizes.containsKey(url)) {
+      loadedImageSizes[url] = floatArrayOf(widthDp, heightDp)
+      publishImageSizes()
+      requestLayout()
+    }
+  }
+
+  override fun isSpoilerRevealed(id: Int): Boolean = revealedSpoilers.contains(id)
+
+  override fun toggleSpoiler(id: Int) {
+    if (!revealedSpoilers.add(id)) {
+      revealedSpoilers.remove(id)
+    }
+    invalidateDeep(this)
+  }
+
+  override fun onLinkPress(url: String) = emitUrlEvent("topLinkPress", url)
+
+  override fun onLinkLongPress(url: String) = emitUrlEvent("topLinkLongPress", url)
+
+  override fun onImagePress(url: String) = emitUrlEvent("topImagePress", url)
+
+  private fun emitUrlEvent(name: String, url: String) {
+    val reactContext = context as? com.facebook.react.bridge.ReactContext ?: return
+    val dispatcher = UIManagerHelper.getEventDispatcherForReactTag(reactContext, id) ?: return
+    val surfaceId = UIManagerHelper.getSurfaceId(reactContext)
+    dispatcher.dispatchEvent(object : Event<Nothing>(surfaceId, id) {
+      override fun getEventName(): String = name
+
+      override fun getEventData(): WritableMap =
+        Arguments.createMap().apply { putString("url", url) }
+    })
+  }
+
+  private fun invalidateDeep(view: android.view.View) {
+    view.invalidate()
+    if (view is ViewGroup) {
+      for (i in 0 until view.childCount) {
+        invalidateDeep(view.getChildAt(i))
       }
     }
   }

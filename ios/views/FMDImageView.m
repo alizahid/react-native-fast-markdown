@@ -12,6 +12,9 @@
     _imageView = [[UIImageView alloc] initWithFrame:CGRectZero];
     _imageView.contentMode = UIViewContentModeScaleAspectFit;
     [self addSubview:_imageView];
+    [self addGestureRecognizer:[[UITapGestureRecognizer alloc]
+                                   initWithTarget:self
+                                           action:@selector(handleTap)]];
   }
   return self;
 }
@@ -35,10 +38,14 @@
                      return;
                    }
                    strongSelf->_imageView.image = image;
-                   if (strongSelf.onIntrinsicSize != nil) {
-                     strongSelf.onIntrinsicSize(url, image.size.width, image.size.height);
-                   }
+                   [strongSelf.host imageIntrinsicSize:image.size forUrl:url];
                  }];
+  }
+}
+
+- (void)handleTap {
+  if (_block.imageUrl != nil) {
+    [self.host imagePressed:_block.imageUrl];
   }
 }
 

@@ -16,6 +16,10 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
 
 @class FMDBlock;
 
+/// Custom attributed-string keys carrying interaction data.
+FOUNDATION_EXPORT NSAttributedStringKey const FMDLinkURLAttributeName;
+FOUNDATION_EXPORT NSAttributedStringKey const FMDSpoilerIDAttributeName;
+
 @interface FMDListRow : NSObject
 @property (nonatomic, strong) NSAttributedString *marker;
 @property (nonatomic, strong) NSArray<FMDBlock *> *content;
@@ -30,6 +34,9 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
 @interface FMDBlock : NSObject
 @property (nonatomic, assign) FMDBlockKind kind;
 @property (nonatomic, strong, nullable) NSAttributedString *attributedText;
+// Text blocks: spoiler cover styling.
+@property (nonatomic, strong, nullable) UIColor *spoilerColor;
+@property (nonatomic, assign) CGFloat spoilerRadius;
 @property (nonatomic, strong, nullable) FMDLayoutStyle *layoutStyle;
 @property (nonatomic, strong, nullable) NSArray<FMDBlock *> *children;
 @property (nonatomic, strong, nullable) NSArray<FMDListRow *> *rows;

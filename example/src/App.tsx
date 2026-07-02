@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { Alert, ScrollView, StyleSheet } from 'react-native';
 import {
   FastMarkdownView,
   type MarkdownStyles,
@@ -117,6 +117,9 @@ export default function App() {
         styles={styles}
         images={images}
         style={sheet.markdown}
+        onLinkPress={({ url }) => Alert.alert('onLinkPress', url)}
+        onLinkLongPress={({ url }) => Alert.alert('onLinkLongPress', url)}
+        onImagePress={({ url }) => Alert.alert('onImagePress', url)}
       />
     </ScrollView>
   );

@@ -26,10 +26,10 @@ class TableBlockView(context: Context) : ViewGroup(context) {
     addView(scroller)
   }
 
-  fun bind(measuredBlock: MeasuredBlock, table: Block.Table) {
+  fun bind(measuredBlock: MeasuredBlock, table: Block.Table, host: MarkdownHost? = null) {
     measured = measuredBlock
     block = table
-    grid.bind(measuredBlock, table)
+    grid.bind(measuredBlock, table, host)
     invalidate()
     requestLayout()
   }
@@ -72,13 +72,16 @@ class TableGridView(context: Context) : ViewGroup(context) {
     setWillNotDraw(false)
   }
 
-  fun bind(measuredBlock: MeasuredBlock, table: Block.Table) {
+  fun bind(measuredBlock: MeasuredBlock, table: Block.Table, host: MarkdownHost? = null) {
     measured = measuredBlock
     block = table
     removeAllViews()
     for (row in measuredBlock.cellLayouts) {
       for (cell in row) {
-        addView(BlockTextView(context).apply { setTextLayout(cell) })
+        addView(BlockTextView(context).apply {
+          this.host = host
+          setTextLayout(cell)
+        })
       }
     }
     invalidate()

@@ -22,8 +22,13 @@ class MarkdownImageView(context: Context) : View(context) {
   private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
   private val clipPath = Path()
 
-  /** Fires once with the intrinsic dp size when the bitmap arrives. */
-  var onIntrinsicSize: ((String, Float, Float) -> Unit)? = null
+  var host: MarkdownHost? = null
+
+  init {
+    setOnClickListener {
+      block?.let { image -> host?.onImagePress(image.url) }
+    }
+  }
 
   fun bind(image: Block.Image) {
     block = image
@@ -52,7 +57,7 @@ class MarkdownImageView(context: Context) : View(context) {
   private fun reportIntrinsic(url: String, loaded: android.graphics.Bitmap) {
     // Image pixels map 1:1 to dp (web semantics): a 600px image is 600dp
     // wide before clamping to the container.
-    onIntrinsicSize?.invoke(url, loaded.width.toFloat(), loaded.height.toFloat())
+    host?.onImageIntrinsicSize(url, loaded.width.toFloat(), loaded.height.toFloat())
   }
 
   override fun onDraw(canvas: Canvas) {

@@ -8,7 +8,9 @@ import android.text.Spanned
 import android.text.TextPaint
 import com.fastmarkdown.parser.MdNode
 import com.fastmarkdown.parser.MdNodeType
+import com.fastmarkdown.render.spans.LinkSpan
 import com.fastmarkdown.render.spans.RunSpan
+import com.fastmarkdown.render.spans.SpoilerSpan
 import com.fastmarkdown.style.LayoutStyleSpec
 import com.fastmarkdown.style.StyleConfig
 import com.fastmarkdown.style.TextStyleSpec
@@ -24,6 +26,7 @@ object SpannableRenderer {
   private const val DEFAULT_QUOTE_BORDER = 0x33000000
   private const val DEFAULT_DIVIDER_COLOR = 0x22000000
   private const val DEFAULT_MARKER_WIDTH_DP = 24f
+  private const val DEFAULT_SPOILER_COLOR = 0xFF3F3F46.toInt()
 
   /** Fully-resolved text attributes at one point of the inline walk. */
   private data class ResolvedAttrs(
@@ -37,6 +40,8 @@ object SpannableRenderer {
     val strikethrough: Boolean = false,
     val baselineShiftPx: Int = 0,
     val backgroundColor: Int? = null,
+    val linkUrl: String? = null,
+    val spoilerId: Int? = null,
   )
 
   private class Context(
@@ -44,6 +49,10 @@ object SpannableRenderer {
     val density: Float,
     val fontScale: Float,
   ) {
+    private var spoilerCounter = 0
+
+    fun nextSpoilerId(): Int = spoilerCounter++
+
     fun apply(attrs: ResolvedAttrs, spec: TextStyleSpec?): ResolvedAttrs {
       if (spec == null) {
         return attrs
@@ -360,7 +369,14 @@ object SpannableRenderer {
     val builder = SpannableStringBuilder()
     val attrs = baseAttrs(node, context, inherited)
     walk(builder, node, attrs, context)
-    return Block.Text(builder, basePaint(attrs))
+    val spoilerSection = context.styles.rawSection("spoiler")
+    return Block.Text(
+      builder,
+      basePaint(attrs),
+      spoilerColor = spoilerSection?.let { com.fastmarkdown.style.TextStyleSpec.from(it)?.backgroundColor }
+        ?: DEFAULT_SPOILER_COLOR,
+      spoilerRadiusPx = (spoilerSection?.optDpOr("borderRadius", 4f) ?: 4f) * context.density,
+    )
   }
 
   private fun basePaint(attrs: ResolvedAttrs): TextPaint = TextPaint().apply {
@@ -407,7 +423,7 @@ object SpannableRenderer {
             context,
           )
         MdNodeType.LINK -> {
-          var next = attrs.copy(color = DEFAULT_LINK_COLOR)
+          var next = attrs.copy(color = DEFAULT_LINK_COLOR, linkUrl = node.url)
           val variant = context.styles.mentionVariants.firstOrNull {
             it.pattern.matcher(node.url).find()
           }
@@ -440,8 +456,7 @@ object SpannableRenderer {
           walk(builder, node, next, context)
         }
         MdNodeType.SPOILER ->
-          // Overlay + concealment land in M6; content renders styled now.
-          walk(builder, node, attrs, context)
+          walk(builder, node, attrs.copy(spoilerId = context.nextSpoilerId()), context)
         MdNodeType.IMAGE -> appendRun(builder, node.text, attrs)
         else -> walk(builder, node, attrs, context)
       }
@@ -469,6 +484,12 @@ object SpannableRenderer {
       builder.length,
       Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
     )
+    if (attrs.linkUrl != null) {
+      builder.setSpan(LinkSpan(attrs.linkUrl), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
+    if (attrs.spoilerId != null) {
+      builder.setSpan(SpoilerSpan(attrs.spoilerId), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    }
   }
 
   private fun buildTypeface(attrs: ResolvedAttrs): Typeface {

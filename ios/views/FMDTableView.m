@@ -4,7 +4,7 @@
 
 /// The unclipped grid inside the scroller: row boxes + cell text.
 @interface FMDTableGridView : UIView
-- (void)bind:(FMDMeasuredBlock *)measured;
+- (void)bind:(FMDMeasuredBlock *)measured host:(nullable id<FMDMarkdownHost>)host;
 @end
 
 @implementation FMDTableGridView {
@@ -19,7 +19,7 @@
   return self;
 }
 
-- (void)bind:(FMDMeasuredBlock *)measured {
+- (void)bind:(FMDMeasuredBlock *)measured host:(nullable id<FMDMarkdownHost>)host {
   _measured = measured;
   for (UIView *subview in [self.subviews copy]) {
     [subview removeFromSuperview];
@@ -28,6 +28,7 @@
   for (FMDTableRow *row in block.tableRows) {
     for (NSAttributedString *cell in row.cells) {
       FMDBlockTextView *view = [[FMDBlockTextView alloc] initWithFrame:CGRectZero];
+      view.host = host;
       view.attributedText = cell;
       [self addSubview:view];
     }
@@ -104,7 +105,7 @@
   FMDTableGridView *_grid;
 }
 
-- (void)bind:(FMDMeasuredBlock *)measured {
+- (void)bind:(FMDMeasuredBlock *)measured host:(nullable id<FMDMarkdownHost>)host {
   _measured = measured;
   if (_scroller == nil) {
     _scroller = [[UIScrollView alloc] initWithFrame:CGRectZero];
@@ -125,7 +126,7 @@
       style.continuousCorners ? kCACornerCurveContinuous : kCACornerCurveCircular;
   self.layer.masksToBounds = style.borderRadius > 0;
 
-  [_grid bind:measured];
+  [_grid bind:measured host:host];
   [self setNeedsLayout];
 }
 
