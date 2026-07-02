@@ -21,7 +21,22 @@ class FastMarkdownShadowNode final : public ConcreteViewShadowNode<
                                          FastMarkdownViewEventEmitter,
                                          FastMarkdownState> {
  public:
-  using ConcreteViewShadowNode::ConcreteViewShadowNode;
+  FastMarkdownShadowNode(
+      const ShadowNodeFragment& fragment,
+      const ShadowNodeFamily::Shared& family,
+      ShadowNodeTraits traits)
+      : ConcreteViewShadowNode(fragment, family, traits) {}
+
+  FastMarkdownShadowNode(
+      const ShadowNode& sourceShadowNode,
+      const ShadowNodeFragment& fragment)
+      : ConcreteViewShadowNode(sourceShadowNode, fragment) {
+    // State carries image sizes, which affect measureContent; Yoga must
+    // re-measure when a new state arrives.
+    if (fragment.state != nullptr) {
+      dirtyLayout();
+    }
+  }
 
   static ShadowNodeTraits BaseTraits() {
     auto traits = ConcreteViewShadowNode::BaseTraits();

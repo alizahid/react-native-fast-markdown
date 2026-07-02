@@ -2,6 +2,7 @@
 
 #import "FMDBlockTextView.h"
 #import "FMDBoxViews.h"
+#import "FMDImageView.h"
 
 @implementation FMDBlockStackView {
   NSArray<FMDMeasuredBlock *> *_measured;
@@ -35,17 +36,23 @@
     }
     case FMDBlockKindQuote: {
       FMDQuoteView *view = [[FMDQuoteView alloc] initWithFrame:CGRectZero];
-      [view bind:measured gap:_gap];
+      [view bind:measured gap:_gap onImageIntrinsicSize:self.onImageIntrinsicSize];
       return view;
     }
     case FMDBlockKindList: {
       FMDListBlockView *view = [[FMDListBlockView alloc] initWithFrame:CGRectZero];
-      [view bind:measured gap:_gap];
+      [view bind:measured gap:_gap onImageIntrinsicSize:self.onImageIntrinsicSize];
       return view;
     }
     case FMDBlockKindDivider: {
       UIView *view = [[UIView alloc] initWithFrame:CGRectZero];
       view.backgroundColor = measured.block.dividerColor;
+      return view;
+    }
+    case FMDBlockKindImage: {
+      FMDImageView *view = [[FMDImageView alloc] initWithFrame:CGRectZero];
+      view.onIntrinsicSize = self.onImageIntrinsicSize;
+      [view bind:measured.block];
       return view;
     }
   }
@@ -58,7 +65,10 @@
   CGFloat y = 0;
   for (NSUInteger i = 0; i < _measured.count && i < self.subviews.count; i++) {
     FMDMeasuredBlock *measured = _measured[i];
-    self.subviews[i].frame = CGRectMake(0, y, width, measured.height);
+    const CGFloat childWidth = measured.block.kind == FMDBlockKindImage
+        ? MIN(measured.contentWidth, width)
+        : width;
+    self.subviews[i].frame = CGRectMake(0, y, childWidth, measured.height);
     y += measured.height;
     if (i + 1 < _measured.count) {
       y += _gap;

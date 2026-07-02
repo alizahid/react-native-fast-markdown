@@ -6,7 +6,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Block quote: paints its box style, hosts a nested stack inside padding.
 @interface FMDQuoteView : UIView
-- (void)bind:(FMDMeasuredBlock *)measured gap:(CGFloat)gap;
+- (void)bind:(FMDMeasuredBlock *)measured
+                     gap:(CGFloat)gap
+    onImageIntrinsicSize:
+        (nullable void (^)(NSString *url, CGFloat width, CGFloat height))onImageIntrinsicSize;
 @end
 
 /// Code block: paints its box, hosts unwrapped text in a horizontal scroller.
@@ -16,7 +19,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// List: rows of a fixed-width marker column and nested content stacks.
 @interface FMDListBlockView : UIView
-- (void)bind:(FMDMeasuredBlock *)measured gap:(CGFloat)gap;
+- (void)bind:(FMDMeasuredBlock *)measured
+                     gap:(CGFloat)gap
+    onImageIntrinsicSize:
+        (nullable void (^)(NSString *url, CGFloat width, CGFloat height))onImageIntrinsicSize;
 @end
 
 NS_ASSUME_NONNULL_END

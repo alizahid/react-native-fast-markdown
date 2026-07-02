@@ -10,6 +10,7 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
   FMDBlockKindQuote,
   FMDBlockKindList,
   FMDBlockKindDivider,
+  FMDBlockKindImage,
 };
 
 @class FMDBlock;
@@ -31,6 +32,14 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
 @property (nonatomic, assign) CGFloat markerMarginLeft;
 @property (nonatomic, strong, nullable) UIColor *dividerColor;
 @property (nonatomic, assign) CGFloat dividerThickness;
+
+// Image blocks.
+@property (nonatomic, copy, nullable) NSString *imageUrl;
+@property (nonatomic, strong, nullable) UIColor *imageBackground;
+@property (nonatomic, assign) CGFloat imageBorderRadius;
+@property (nonatomic, assign) CGFloat imageHeight;
+@property (nonatomic, assign) CGFloat imageMaxHeight;
+@property (nonatomic, assign) CGFloat imagePlaceholder;
 @end
 
 /// Layout results for one block at one width.

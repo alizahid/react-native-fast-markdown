@@ -79,12 +79,13 @@ Java_com_fastmarkdown_FastMarkdownNative_installMeasurer(
   g_measurer = env->NewGlobalRef(measurer);
 
   jclass measurerClass = env->GetObjectClass(measurer);
-  g_measureMethod = env->GetMethodID(measurerClass, "measure", "([B[BFF)F");
+  g_measureMethod = env->GetMethodID(measurerClass, "measure", "([B[B[BFF)F");
   env->DeleteLocalRef(measurerClass);
 
   fastmarkdown::FastMarkdownMeasurer::shared().install(
       [](const std::string& markdown,
          const std::string& stylesJson,
+         const std::string& imagesJson,
          float maxWidth,
          float fontScale) -> float {
         JNIEnv* jniEnv = currentEnv();
@@ -95,10 +96,13 @@ Java_com_fastmarkdown_FastMarkdownNative_installMeasurer(
             jniEnv, reinterpret_cast<const uint8_t*>(markdown.data()), markdown.size());
         jbyteArray jStyles = toByteArray(
             jniEnv, reinterpret_cast<const uint8_t*>(stylesJson.data()), stylesJson.size());
+        jbyteArray jImages = toByteArray(
+            jniEnv, reinterpret_cast<const uint8_t*>(imagesJson.data()), imagesJson.size());
         const jfloat height = jniEnv->CallFloatMethod(
-            g_measurer, g_measureMethod, jMarkdown, jStyles, maxWidth, fontScale);
+            g_measurer, g_measureMethod, jMarkdown, jStyles, jImages, maxWidth, fontScale);
         jniEnv->DeleteLocalRef(jMarkdown);
         jniEnv->DeleteLocalRef(jStyles);
+        jniEnv->DeleteLocalRef(jImages);
         if (jniEnv->ExceptionCheck()) {
           jniEnv->ExceptionClear();
           return 0.0f;

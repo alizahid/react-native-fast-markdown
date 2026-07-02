@@ -15,6 +15,7 @@ void FastMarkdownMeasurer::install(MeasureFunction fn) {
 float FastMarkdownMeasurer::measure(
     const std::string& markdown,
     const std::string& stylesJson,
+    const std::string& imagesJson,
     float maxWidth,
     float fontScale) const {
   MeasureFunction fn;
@@ -25,7 +26,7 @@ float FastMarkdownMeasurer::measure(
   if (!fn) {
     return 0.0f;
   }
-  return fn(markdown, stylesJson, maxWidth, fontScale);
+  return fn(markdown, stylesJson, imagesJson, maxWidth, fontScale);
 }
 
 } // namespace fastmarkdown

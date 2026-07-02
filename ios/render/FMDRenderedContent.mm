@@ -7,7 +7,7 @@
   NSArray<FMDBlock *> *_blocks;
   CGFloat _topPadding;
   CGFloat _bottomPadding;
-  NSMutableDictionary<NSNumber *, FMDWidthLayout *> *_layoutCache;
+  NSMutableDictionary<NSString *, FMDWidthLayout *> *_layoutCache;
 }
 
 - (instancetype)initWithBlocks:(NSArray<FMDBlock *> *)blocks
@@ -35,8 +35,11 @@
   return height;
 }
 
-- (FMDWidthLayout *)layoutForWidth:(CGFloat)width {
-  NSNumber *key = @(round(width * 2) / 2);
+- (FMDWidthLayout *)layoutForWidth:(CGFloat)width
+                        imageSizes:(nullable NSDictionary<NSString *, NSArray<NSNumber *> *> *)imageSizes {
+  NSString *key = [NSString stringWithFormat:@"%.1f|%lu",
+                                             width,
+                                             (unsigned long)imageSizes.hash];
   @synchronized(self) {
     FMDWidthLayout *cached = _layoutCache[key];
     if (cached != nil) {
@@ -46,7 +49,7 @@
 
   NSMutableArray<FMDMeasuredBlock *> *measured = [NSMutableArray arrayWithCapacity:_blocks.count];
   for (FMDBlock *block in _blocks) {
-    [measured addObject:[self measureBlock:block width:width]];
+    [measured addObject:[self measureBlock:block width:width imageSizes:imageSizes]];
   }
 
   FMDWidthLayout *layout = [FMDWidthLayout new];
@@ -71,7 +74,9 @@
   return CGSizeMake(ceil(rect.size.width), ceil(rect.size.height));
 }
 
-- (FMDMeasuredBlock *)measureBlock:(FMDBlock *)block width:(CGFloat)width {
+- (FMDMeasuredBlock *)measureBlock:(FMDBlock *)block
+                             width:(CGFloat)width
+                        imageSizes:(nullable NSDictionary<NSString *, NSArray<NSNumber *> *> *)imageSizes {
   FMDMeasuredBlock *measured = [FMDMeasuredBlock new];
   measured.block = block;
   measured.contentWidth = width;
@@ -96,7 +101,7 @@
       NSMutableArray<FMDMeasuredBlock *> *children =
           [NSMutableArray arrayWithCapacity:block.children.count];
       for (FMDBlock *child in block.children) {
-        [children addObject:[self measureBlock:child width:innerWidth]];
+        [children addObject:[self measureBlock:child width:innerWidth imageSizes:imageSizes]];
       }
       measured.children = children;
       measured.height = [FMDRenderedContent stackHeight:children gap:_gap] +
@@ -116,7 +121,7 @@
         const CGSize markerSize = [self textSize:row.marker width:block.markerWidth];
         NSMutableArray<FMDMeasuredBlock *> *content = [NSMutableArray new];
         for (FMDBlock *child in row.content) {
-          [content addObject:[self measureBlock:child width:contentWidth]];
+          [content addObject:[self measureBlock:child width:contentWidth imageSizes:imageSizes]];
         }
         [markerHeights addObject:@(markerSize.height)];
         [rowContents addObject:content];
@@ -133,6 +138,33 @@
     case FMDBlockKindDivider:
       measured.height = block.dividerThickness;
       break;
+    case FMDBlockKindImage: {
+      NSArray<NSNumber *> *known = block.imageUrl != nil ? imageSizes[block.imageUrl] : nil;
+      CGFloat displayH;
+      CGFloat displayW;
+      if (known.count == 2 && known[0].doubleValue > 0 && known[1].doubleValue > 0) {
+        const CGFloat intrinsicW = known[0].doubleValue;
+        const CGFloat intrinsicH = known[1].doubleValue;
+        const CGFloat scale = MIN(width / intrinsicW, 1.0);
+        displayH = intrinsicH * scale;
+        if (block.imageHeight > 0) {
+          displayH = block.imageHeight;
+        }
+        if (block.imageMaxHeight > 0) {
+          displayH = MIN(displayH, block.imageMaxHeight);
+        }
+        displayW = MIN(intrinsicW * displayH / intrinsicH, width);
+      } else {
+        displayH = block.imageHeight > 0 ? block.imageHeight : block.imagePlaceholder;
+        if (block.imageMaxHeight > 0) {
+          displayH = MIN(displayH, block.imageMaxHeight);
+        }
+        displayW = MIN(block.imagePlaceholder, width);
+      }
+      measured.height = displayH;
+      measured.contentWidth = displayW;
+      break;
+    }
   }
   return measured;
 }

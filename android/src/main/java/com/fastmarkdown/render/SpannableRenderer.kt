@@ -123,8 +123,14 @@ object SpannableRenderer {
     out: MutableList<Block>,
   ) {
     when (node.type) {
-      MdNodeType.PARAGRAPH, MdNodeType.HEADING ->
-        out.add(textBlock(node, context, inherited))
+      MdNodeType.PARAGRAPH, MdNodeType.HEADING -> {
+        val image = singleImageChild(node)
+        if (image != null) {
+          out.add(imageBlock(image, context))
+        } else {
+          out.add(textBlock(node, context, inherited))
+        }
+      }
 
       MdNodeType.BLOCK_QUOTE -> {
         val defaults = LayoutStyleSpec(
@@ -180,6 +186,43 @@ object SpannableRenderer {
         }
       }
     }
+  }
+
+  // A paragraph whose only meaningful child is one image renders as an
+  // image block (markdown images are inline; block display matches usage).
+  private fun singleImageChild(node: MdNode): MdNode? {
+    if (node.type != MdNodeType.PARAGRAPH) {
+      return null
+    }
+    var image: MdNode? = null
+    for (child in node.children) {
+      when (child.type) {
+        MdNodeType.IMAGE -> {
+          if (image != null) {
+            return null
+          }
+          image = child
+        }
+        MdNodeType.TEXT -> if (child.text.isNotBlank()) return null
+        MdNodeType.SOFT_BREAK, MdNodeType.HARD_BREAK -> Unit
+        else -> return null
+      }
+    }
+    return image
+  }
+
+  private fun imageBlock(node: MdNode, context: Context): Block.Image {
+    val section = context.styles.rawSection("image")
+    val density = context.density
+    return Block.Image(
+      url = node.url,
+      backgroundColor = section?.let { TextStyleSpec.from(it)?.backgroundColor }
+        ?: 0x14000000,
+      borderRadiusPx = (section?.optDpOr("borderRadius", 0f) ?: 0f) * density,
+      heightPx = (section?.optDpOr("height", 0f) ?: 0f) * density,
+      maxHeightPx = (section?.optDpOr("maxHeight", 0f) ?: 0f) * density,
+      placeholderPx = 100f * density,
+    )
   }
 
   private fun listBlock(node: MdNode, context: Context, inherited: TextStyleSpec?): Block.ListBlock {

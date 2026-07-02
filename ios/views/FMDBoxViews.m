@@ -73,7 +73,10 @@ static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
   FMDBorderView *_borders;
 }
 
-- (void)bind:(FMDMeasuredBlock *)measured gap:(CGFloat)gap {
+- (void)bind:(FMDMeasuredBlock *)measured
+                     gap:(CGFloat)gap
+    onImageIntrinsicSize:
+        (nullable void (^)(NSString *, CGFloat, CGFloat))onImageIntrinsicSize {
   _measured = measured;
   if (_stack == nil) {
     _stack = [[FMDBlockStackView alloc] initWithFrame:CGRectZero];
@@ -83,6 +86,7 @@ static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
   }
   FMDApplyBox(self, measured.block.layoutStyle);
   _borders.boxStyle = measured.block.layoutStyle;
+  _stack.onImageIntrinsicSize = onImageIntrinsicSize;
   [_stack setBlocks:measured.children gap:gap];
   [self setNeedsLayout];
 }
@@ -146,7 +150,10 @@ static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
   CGFloat _gap;
 }
 
-- (void)bind:(FMDMeasuredBlock *)measured gap:(CGFloat)gap {
+- (void)bind:(FMDMeasuredBlock *)measured
+                     gap:(CGFloat)gap
+    onImageIntrinsicSize:
+        (nullable void (^)(NSString *, CGFloat, CGFloat))onImageIntrinsicSize {
   _measured = measured;
   _gap = gap;
   for (UIView *subview in [self.subviews copy]) {
@@ -159,6 +166,7 @@ static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
     [self addSubview:marker];
 
     FMDBlockStackView *content = [[FMDBlockStackView alloc] initWithFrame:CGRectZero];
+    content.onImageIntrinsicSize = onImageIntrinsicSize;
     [content setBlocks:measured.rowContents[i] gap:gap];
     [self addSubview:content];
   }

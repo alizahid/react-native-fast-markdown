@@ -24,6 +24,15 @@ sealed class Block {
   ) : Block()
 
   class Divider(val color: Int, val thicknessPx: Float) : Block()
+
+  class Image(
+    val url: String,
+    val backgroundColor: Int?,
+    val borderRadiusPx: Float,
+    val heightPx: Float,
+    val maxHeightPx: Float,
+    val placeholderPx: Float,
+  ) : Block()
 }
 
 /** Layout results for one block at one width. */
@@ -49,16 +58,21 @@ class RenderedContent(
   private val gapPx: Float,
   private val topPaddingPx: Float,
   private val bottomPaddingPx: Float,
+  private val density: Float,
 ) {
   class WidthLayout(val measured: List<MeasuredBlock>, val totalHeightPx: Float)
 
-  private val layoutCache = HashMap<Int, WidthLayout>()
+  private data class LayoutKey(val widthPx: Int, val sizesHash: Int)
 
+  private val layoutCache = HashMap<LayoutKey, WidthLayout>()
+
+  /** imageSizes: url -> intrinsic dp size, merged prop + discovered. */
   @Synchronized
-  fun layoutFor(widthPx: Int): WidthLayout {
-    layoutCache[widthPx]?.let { return it }
+  fun layoutFor(widthPx: Int, imageSizes: Map<String, FloatArray> = emptyMap()): WidthLayout {
+    val key = LayoutKey(widthPx, imageSizesHash(imageSizes))
+    layoutCache[key]?.let { return it }
 
-    val measured = blocks.map { measure(it, widthPx.toFloat()) }
+    val measured = blocks.map { measure(it, widthPx.toFloat(), imageSizes) }
     var height = topPaddingPx + bottomPaddingPx
     measured.forEachIndexed { index, block ->
       height += block.heightPx
@@ -71,8 +85,18 @@ class RenderedContent(
     if (layoutCache.size > 4) {
       layoutCache.clear()
     }
-    layoutCache[widthPx] = result
+    layoutCache[key] = result
     return result
+  }
+
+  private fun imageSizesHash(sizes: Map<String, FloatArray>): Int {
+    var hash = sizes.size
+    for ((url, size) in sizes) {
+      hash = hash * 31 + url.hashCode()
+      hash = hash * 31 + size[0].toInt()
+      hash = hash * 31 + size[1].toInt()
+    }
+    return hash
   }
 
   fun stackHeight(children: List<MeasuredBlock>): Float {
@@ -88,7 +112,11 @@ class RenderedContent(
 
   val gap: Float get() = gapPx
 
-  private fun measure(block: Block, widthPx: Float): MeasuredBlock {
+  private fun measure(
+    block: Block,
+    widthPx: Float,
+    imageSizes: Map<String, FloatArray>,
+  ): MeasuredBlock {
     return when (block) {
       is Block.Text -> {
         val layout = staticLayout(block.text, block.paint, widthPx.toInt(), wrap = true)
@@ -105,7 +133,7 @@ class RenderedContent(
       is Block.Quote -> {
         val innerWidth = widthPx - block.style.paddingLeft - block.style.paddingRight -
           block.style.borderLeftWidth - block.style.borderRightWidth
-        val children = block.children.map { measure(it, innerWidth.coerceAtLeast(1f)) }
+        val children = block.children.map { measure(it, innerWidth.coerceAtLeast(1f), imageSizes) }
         val height = stackHeight(children) + block.style.paddingTop + block.style.paddingBottom +
           block.style.borderTopWidth + block.style.borderBottomWidth
         MeasuredBlock(block, height, null, widthPx, children, emptyList(), emptyList())
@@ -119,7 +147,7 @@ class RenderedContent(
         var height = 0f
         block.rows.forEachIndexed { index, row ->
           val marker = staticLayout(row.marker, row.markerPaint, block.markerWidthPx.toInt().coerceAtLeast(1), wrap = true)
-          val content = row.content.map { measure(it, contentWidth) }
+          val content = row.content.map { measure(it, contentWidth, imageSizes) }
           markerLayouts.add(marker)
           rowContents.add(content)
           height += maxOf(marker.height.toFloat(), stackHeight(content))
@@ -132,6 +160,32 @@ class RenderedContent(
 
       is Block.Divider ->
         MeasuredBlock(block, block.thicknessPx, null, widthPx, emptyList(), emptyList(), emptyList())
+
+      is Block.Image -> {
+        val known = imageSizes[block.url]
+        var displayH: Float
+        var displayW: Float
+        if (known != null && known[0] > 0 && known[1] > 0) {
+          val intrinsicW = known[0] * density
+          val intrinsicH = known[1] * density
+          val scale = (widthPx / intrinsicW).coerceAtMost(1f)
+          displayH = intrinsicH * scale
+          if (block.heightPx > 0) {
+            displayH = block.heightPx
+          }
+          if (block.maxHeightPx > 0) {
+            displayH = displayH.coerceAtMost(block.maxHeightPx)
+          }
+          displayW = (intrinsicW * displayH / intrinsicH).coerceAtMost(widthPx)
+        } else {
+          displayH = if (block.heightPx > 0) block.heightPx else block.placeholderPx
+          if (block.maxHeightPx > 0) {
+            displayH = displayH.coerceAtMost(block.maxHeightPx)
+          }
+          displayW = block.placeholderPx.coerceAtMost(widthPx)
+        }
+        MeasuredBlock(block, displayH, null, displayW, emptyList(), emptyList(), emptyList())
+      }
     }
   }
 

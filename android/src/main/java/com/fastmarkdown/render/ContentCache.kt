@@ -30,6 +30,7 @@ object ContentCache {
       gapPx = styles.gap * density,
       topPaddingPx = styles.paddingTop * density,
       bottomPaddingPx = styles.paddingBottom * density,
+      density = density,
     )
 
     synchronized(cache) {

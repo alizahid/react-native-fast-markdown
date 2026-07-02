@@ -21,7 +21,9 @@ NS_ASSUME_NONNULL_BEGIN
                     topPadding:(CGFloat)topPadding
                  bottomPadding:(CGFloat)bottomPadding;
 
-- (FMDWidthLayout *)layoutForWidth:(CGFloat)width;
+/// imageSizes: url -> @[@(width), @(height)] in points (dp).
+- (FMDWidthLayout *)layoutForWidth:(CGFloat)width
+                        imageSizes:(nullable NSDictionary<NSString *, NSArray<NSNumber *> *> *)imageSizes;
 
 + (CGFloat)stackHeight:(NSArray<FMDMeasuredBlock *> *)children gap:(CGFloat)gap;
 

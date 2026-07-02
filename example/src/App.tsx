@@ -42,7 +42,21 @@ Both ||discord style|| and >!reddit style!< parse already.
 function reallyLongFunctionName(parameter: string, another: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 1000));
 }
-\`\`\``;
+\`\`\`
+
+## Images
+
+Pre-sized (zero layout shift):
+
+![pre-sized](https://picsum.photos/id/1015/600/400)
+
+Unknown size (placeholder then resize):
+
+![unknown](https://picsum.photos/id/1025/500/300)
+
+Broken URL (placeholder stays):
+
+![broken](https://example.invalid/nope.png)`;
 
 const styles: MarkdownStyles = {
   headings: {
@@ -72,12 +86,22 @@ const styles: MarkdownStyles = {
   },
   superscript: { color: '#EA580C' },
   subscript: { color: '#0284C7' },
+  image: { borderRadius: 12, backgroundColor: '#E5E7EB', maxHeight: 260 },
 };
+
+const images = [
+  { url: 'https://picsum.photos/id/1015/600/400', width: 300, height: 200 },
+];
 
 export default function App() {
   return (
     <ScrollView style={sheet.container} contentInsetAdjustmentBehavior="automatic">
-      <FastMarkdownView markdown={MARKDOWN} styles={styles} style={sheet.markdown} />
+      <FastMarkdownView
+        markdown={MARKDOWN}
+        styles={styles}
+        images={images}
+        style={sheet.markdown}
+      />
     </ScrollView>
   );
 }

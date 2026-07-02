@@ -10,8 +10,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (CGFloat)measureMarkdown:(NSString *)markdown
                 stylesJson:(NSString *)stylesJson
+                imagesJson:(NSString *)imagesJson
                   maxWidth:(CGFloat)maxWidth
                  fontScale:(CGFloat)fontScale;
+
+/// {"url":[w,h],...} -> url -> @[w, h]; nil for empty input.
++ (nullable NSDictionary<NSString *, NSArray<NSNumber *> *> *)parseImageSizes:(NSString *)json;
 
 @end
 

@@ -254,9 +254,15 @@ class BlockBuilder {
       NSMutableArray<FMDBlock *> *out) {
     switch (node->type) {
       case NodeType::Paragraph:
-      case NodeType::Heading:
-        [out addObject:textBlock(node, inherited)];
+      case NodeType::Heading: {
+        const Node *image = singleImageChild(node);
+        if (image != nullptr) {
+          [out addObject:imageBlock(image)];
+        } else {
+          [out addObject:textBlock(node, inherited)];
+        }
         break;
+      }
 
       case NodeType::BlockQuote: {
         FMDLayoutStyle *defaults = [FMDLayoutStyle
@@ -338,6 +344,58 @@ class BlockBuilder {
         break;
       }
     }
+  }
+
+  // A paragraph whose only meaningful child is one image renders as an
+  // image block (markdown images are inline; block display matches usage).
+  static const Node *singleImageChild(const Node *node) {
+    if (node->type != NodeType::Paragraph) {
+      return nullptr;
+    }
+    const Node *image = nullptr;
+    for (const Node *child : node->children) {
+      switch (child->type) {
+        case NodeType::Image:
+          if (image != nullptr) {
+            return nullptr;
+          }
+          image = child;
+          break;
+        case NodeType::Text: {
+          for (char c : child->text) {
+            if (c != ' ' && c != '\t') {
+              return nullptr;
+            }
+          }
+          break;
+        }
+        case NodeType::SoftBreak:
+        case NodeType::HardBreak:
+          break;
+        default:
+          return nullptr;
+      }
+    }
+    return image;
+  }
+
+  FMDBlock *imageBlock(const Node *node) {
+    NSDictionary *section = [styles_ rawSectionFor:@"image"];
+    auto number = [](NSDictionary *dict, NSString *key, CGFloat fallback) -> CGFloat {
+      NSNumber *value = [dict[key] isKindOfClass:[NSNumber class]] ? dict[key] : nil;
+      return value != nil ? value.doubleValue : fallback;
+    };
+    FMDBlock *block = [FMDBlock new];
+    block.kind = FMDBlockKindImage;
+    block.imageUrl = toNSString(node->url);
+    block.imageBackground =
+        [FMDTextStyle colorFromJson:section[@"backgroundColor"]]
+            ?: [UIColor colorWithWhite:0 alpha:0.08];
+    block.imageBorderRadius = number(section, @"borderRadius", 0);
+    block.imageHeight = number(section, @"height", 0);
+    block.imageMaxHeight = number(section, @"maxHeight", 0);
+    block.imagePlaceholder = 100;
+    return block;
   }
 
   FMDBlock *listBlock(const Node *node, NSArray<FMDTextStyle *> *inherited) {

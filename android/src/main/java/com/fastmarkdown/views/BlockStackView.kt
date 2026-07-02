@@ -16,6 +16,9 @@ class BlockStackView(context: Context) : ViewGroup(context) {
   private var measured: List<MeasuredBlock> = emptyList()
   private var gapPx = 0f
 
+  /** Bubbles image intrinsic sizes (url, dp w, dp h) up to the host view. */
+  var onImageIntrinsicSize: ((String, Float, Float) -> Unit)? = null
+
   fun setBlocks(blocks: List<MeasuredBlock>, gap: Float) {
     measured = blocks
     gapPx = gap
@@ -32,9 +35,17 @@ class BlockStackView(context: Context) : ViewGroup(context) {
         measuredBlock.textLayout?.let(::setTextLayout)
       }
       is Block.Code -> CodeBlockView(context).apply { bind(measuredBlock, block) }
-      is Block.Quote -> QuoteView(context).apply { bind(measuredBlock, block, gapPx) }
-      is Block.ListBlock -> ListBlockView(context).apply { bind(measuredBlock, block, gapPx) }
+      is Block.Quote -> QuoteView(context).apply {
+        bind(measuredBlock, block, gapPx) { url, w, h -> onImageIntrinsicSize?.invoke(url, w, h) }
+      }
+      is Block.ListBlock -> ListBlockView(context).apply {
+        bind(measuredBlock, block, gapPx) { url, w, h -> onImageIntrinsicSize?.invoke(url, w, h) }
+      }
       is Block.Divider -> DividerView(context).apply { color = block.color }
+      is Block.Image -> MarkdownImageView(context).apply {
+        onIntrinsicSize = { url, w, h -> onImageIntrinsicSize?.invoke(url, w, h) }
+        bind(block)
+      }
     }
   }
 
@@ -51,11 +62,16 @@ class BlockStackView(context: Context) : ViewGroup(context) {
     measured.forEachIndexed { index, block ->
       val child = getChildAt(index) ?: return@forEachIndexed
       val height = block.heightPx.toInt()
+      val childWidth = if (block.block is Block.Image) {
+        block.contentWidthPx.toInt().coerceAtMost(width)
+      } else {
+        width
+      }
       child.measure(
-        MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
+        MeasureSpec.makeMeasureSpec(childWidth, MeasureSpec.EXACTLY),
         MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
       )
-      child.layout(0, y, width, y + height)
+      child.layout(0, y, childWidth, y + height)
       y += height
       if (index < measured.size - 1) {
         y += gapPx.toInt()
@@ -86,9 +102,15 @@ class QuoteView(context: Context) : ViewGroup(context) {
     addView(stack)
   }
 
-  fun bind(measuredBlock: MeasuredBlock, quote: Block.Quote, gap: Float) {
+  fun bind(
+    measuredBlock: MeasuredBlock,
+    quote: Block.Quote,
+    gap: Float,
+    onImageIntrinsicSize: ((String, Float, Float) -> Unit)? = null,
+  ) {
     measured = measuredBlock
     block = quote
+    stack.onImageIntrinsicSize = onImageIntrinsicSize
     stack.setBlocks(measuredBlock.children, gap)
     invalidate()
   }
@@ -184,7 +206,12 @@ class ListBlockView(context: Context) : ViewGroup(context) {
   private var block: Block.ListBlock? = null
   private var gapPx = 0f
 
-  fun bind(measuredBlock: MeasuredBlock, list: Block.ListBlock, gap: Float) {
+  fun bind(
+    measuredBlock: MeasuredBlock,
+    list: Block.ListBlock,
+    gap: Float,
+    onImageIntrinsicSize: ((String, Float, Float) -> Unit)? = null,
+  ) {
     measured = measuredBlock
     block = list
     gapPx = gap
@@ -192,6 +219,7 @@ class ListBlockView(context: Context) : ViewGroup(context) {
     measuredBlock.markerLayouts.forEachIndexed { index, marker ->
       addView(BlockTextView(context).apply { setTextLayout(marker) })
       addView(BlockStackView(context).apply {
+        this.onImageIntrinsicSize = onImageIntrinsicSize
         setBlocks(measuredBlock.rowContents[index], gap)
       })
     }

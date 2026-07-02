@@ -3,6 +3,9 @@ package com.fastmarkdown
 import android.content.Context
 import android.graphics.Color
 import android.view.ViewGroup
+import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.ReadableArray
+import com.facebook.react.uimanager.StateWrapper
 import com.fastmarkdown.render.ContentCache
 import com.fastmarkdown.style.StyleConfig
 import com.fastmarkdown.views.BlockStackView
@@ -15,12 +18,65 @@ import com.fastmarkdown.views.BlockStackView
 class FastMarkdownView(context: Context) : ViewGroup(context) {
   private var markdown: String = ""
   private var stylesJson: String = ""
-  private var boundKey: Pair<String, String>? = null
+  private var boundKey: Triple<String, String, Int>? = null
   private var boundWidth: Int = 0
   private val stack = BlockStackView(context)
 
+  /** url -> [w, h] dp: from the images prop (wins) and loaded bitmaps. */
+  private val propImageSizes = HashMap<String, FloatArray>()
+  private val loadedImageSizes = HashMap<String, FloatArray>()
+  var stateWrapper: StateWrapper? = null
+
   init {
     addView(stack)
+    stack.onImageIntrinsicSize = { url, w, h ->
+      if (!propImageSizes.containsKey(url) && !loadedImageSizes.containsKey(url)) {
+        loadedImageSizes[url] = floatArrayOf(w, h)
+        publishImageSizes()
+        requestLayout()
+      }
+    }
+  }
+
+  fun setImages(value: ReadableArray?) {
+    propImageSizes.clear()
+    if (value != null) {
+      for (i in 0 until value.size()) {
+        val entry = value.getMap(i) ?: continue
+        val url = entry.getString("url") ?: continue
+        propImageSizes[url] = floatArrayOf(
+          entry.getDouble("width").toFloat(),
+          entry.getDouble("height").toFloat(),
+        )
+      }
+    }
+    requestLayout()
+    invalidate()
+  }
+
+  // Pushes discovered sizes into the shadow-node state so measure() grows
+  // the component. The prop entries stay out (already known to C++).
+  private fun publishImageSizes() {
+    val wrapper = stateWrapper ?: return
+    val sizes = Arguments.createMap()
+    for ((url, size) in loadedImageSizes) {
+      val entry = Arguments.createMap()
+      entry.putDouble("width", size[0].toDouble())
+      entry.putDouble("height", size[1].toDouble())
+      sizes.putMap(url, entry)
+    }
+    val state = Arguments.createMap()
+    state.putMap("imageSizes", sizes)
+    wrapper.updateState(state)
+  }
+
+  private fun mergedImageSizes(): Map<String, FloatArray> {
+    if (loadedImageSizes.isEmpty() && propImageSizes.isEmpty()) {
+      return emptyMap()
+    }
+    val merged = HashMap<String, FloatArray>(loadedImageSizes)
+    merged.putAll(propImageSizes)
+    return merged
   }
 
   fun setMarkdown(value: String?) {
@@ -68,9 +124,10 @@ class FastMarkdownView(context: Context) : ViewGroup(context) {
     }
 
     val content = ContentCache.get(markdown, stylesJson, fontScale)
-    val layout = content.layoutFor(contentWidthPx)
+    val imageSizes = mergedImageSizes()
+    val layout = content.layoutFor(contentWidthPx, imageSizes)
 
-    val key = markdown to stylesJson
+    val key = Triple(markdown, stylesJson, imageSizes.hashCode())
     if (boundKey != key || boundWidth != contentWidthPx) {
       boundKey = key
       boundWidth = contentWidthPx

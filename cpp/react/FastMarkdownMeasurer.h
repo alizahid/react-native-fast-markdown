@@ -11,9 +11,12 @@ namespace fastmarkdown {
 // call into MarkdownMeasurer.kt. Runs on the Fabric layout thread.
 class FastMarkdownMeasurer {
  public:
+  // imagesJson: {"<url>":[width,height],...} merged from the images prop
+  // and the shadow-node state (sizes discovered after load).
   using MeasureFunction = std::function<float(
       const std::string& markdown,
       const std::string& stylesJson,
+      const std::string& imagesJson,
       float maxWidth,
       float fontScale)>;
 
@@ -26,6 +29,7 @@ class FastMarkdownMeasurer {
   float measure(
       const std::string& markdown,
       const std::string& stylesJson,
+      const std::string& imagesJson,
       float maxWidth,
       float fontScale) const;
 
