@@ -1,9 +1,12 @@
-import { View, type ColorValue, type ViewProps } from 'react-native';
+import { Text, View } from 'react-native';
 
-type Props = ViewProps & {
-  color?: ColorValue;
-};
+import type { FastMarkdownViewProps } from './types';
 
-export function FastMarkdownView({ color, style, ...rest }: Props) {
-  return <View {...rest} style={[style, { backgroundColor: color }]} />;
+// Non-native (web) fallback: renders the raw markdown as plain text.
+export function FastMarkdownView({ markdown, style }: FastMarkdownViewProps) {
+  return (
+    <View style={style}>
+      <Text>{markdown}</Text>
+    </View>
+  );
 }

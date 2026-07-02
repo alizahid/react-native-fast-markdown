@@ -1,38 +1,46 @@
 package com.fastmarkdown
 
-import android.graphics.Color
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.SimpleViewManager
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewManagerDelegate
 import com.facebook.react.uimanager.annotations.ReactProp
-import com.facebook.react.viewmanagers.FastMarkdownViewManagerInterface
 import com.facebook.react.viewmanagers.FastMarkdownViewManagerDelegate
+import com.facebook.react.viewmanagers.FastMarkdownViewManagerInterface
 
 @ReactModule(name = FastMarkdownViewManager.NAME)
 class FastMarkdownViewManager : SimpleViewManager<FastMarkdownView>(),
   FastMarkdownViewManagerInterface<FastMarkdownView> {
-  private val mDelegate: ViewManagerDelegate<FastMarkdownView>
+  private val delegate: ViewManagerDelegate<FastMarkdownView> =
+    FastMarkdownViewManagerDelegate(this)
 
   init {
-    mDelegate = FastMarkdownViewManagerDelegate(this)
+    FastMarkdownNative.ensureInstalled()
   }
 
-  override fun getDelegate(): ViewManagerDelegate<FastMarkdownView>? {
-    return mDelegate
-  }
+  override fun getDelegate(): ViewManagerDelegate<FastMarkdownView> = delegate
 
-  override fun getName(): String {
-    return NAME
-  }
+  override fun getName(): String = NAME
 
   public override fun createViewInstance(context: ThemedReactContext): FastMarkdownView {
+    FastMarkdownNative.ensureInstalled()
     return FastMarkdownView(context)
   }
 
-  @ReactProp(name = "color")
-  override fun setColor(view: FastMarkdownView?, color: Int?) {
-    view?.setBackgroundColor(color ?: Color.TRANSPARENT)
+  @ReactProp(name = "markdown")
+  override fun setMarkdown(view: FastMarkdownView?, value: String?) {
+    view?.setMarkdown(value)
+  }
+
+  @ReactProp(name = "stylesJson")
+  override fun setStylesJson(view: FastMarkdownView?, value: String?) {
+    view?.setStylesJson(value)
+  }
+
+  @ReactProp(name = "images")
+  override fun setImages(view: FastMarkdownView?, value: ReadableArray?) {
+    // Image pre-sizing lands in M4.
   }
 
   companion object {

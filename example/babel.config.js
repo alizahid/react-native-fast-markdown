@@ -1,16 +1,10 @@
-const path = require('path');
-const { getConfig } = require('react-native-builder-bob/babel-config');
-const pkg = require('../package.json');
-
-const root = path.resolve(__dirname, '..');
-
+// Library source resolution is handled by the exports condition in
+// metro.config.js (react-native-fast-markdown-source), so no babel aliasing
+// is needed here.
 module.exports = function (api) {
   api.cache(true);
 
-  return getConfig(
-    {
-      presets: ['babel-preset-expo'],
-    },
-    { root, pkg }
-  );
+  return {
+    presets: ['babel-preset-expo'],
+  };
 };
