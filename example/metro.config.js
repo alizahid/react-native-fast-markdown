@@ -1,8 +1,8 @@
-const path = require('path');
-const { getDefaultConfig } = require('expo/metro-config');
-const { withMetroConfig } = require('react-native-monorepo-config');
+const path = require("node:path");
+const { getDefaultConfig } = require("expo/metro-config");
+const { withMetroConfig } = require("react-native-monorepo-config");
 
-const root = path.resolve(__dirname, '..');
+const root = path.resolve(import.meta.dirname, "..");
 
 /**
  * Metro configuration
@@ -10,10 +10,10 @@ const root = path.resolve(__dirname, '..');
  *
  * @type {import('metro-config').MetroConfig}
  */
-const config = withMetroConfig(getDefaultConfig(__dirname), {
+const config = withMetroConfig(getDefaultConfig(import.meta.dirname), {
   root,
-  dirname: __dirname,
-  conditions: ['react-native-fast-markdown-source'],
+  dirname: import.meta.dirname,
+  conditions: ["react-native-fast-markdown-source"],
 });
 
 module.exports = config;

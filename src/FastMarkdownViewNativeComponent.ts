@@ -1,26 +1,26 @@
 import {
-  codegenNativeComponent,
   type CodegenTypes,
+  codegenNativeComponent,
   type ViewProps,
-} from 'react-native';
+} from "react-native";
 
-type UrlEvent = {
+interface UrlEvent {
   url: string;
-};
-
-type ImageData = {
-  url: string;
-  width: CodegenTypes.Double;
-  height: CodegenTypes.Double;
-};
-
-interface NativeProps extends ViewProps {
-  markdown: string;
-  stylesJson?: string;
-  images?: ReadonlyArray<ImageData>;
-  onLinkPress?: CodegenTypes.DirectEventHandler<UrlEvent>;
-  onLinkLongPress?: CodegenTypes.DirectEventHandler<UrlEvent>;
-  onImagePress?: CodegenTypes.DirectEventHandler<UrlEvent>;
 }
 
-export default codegenNativeComponent<NativeProps>('FastMarkdownView');
+interface ImageData {
+  height: CodegenTypes.Double;
+  url: string;
+  width: CodegenTypes.Double;
+}
+
+interface NativeProps extends ViewProps {
+  images?: readonly ImageData[];
+  markdown: string;
+  onImagePress?: CodegenTypes.DirectEventHandler<UrlEvent>;
+  onLinkLongPress?: CodegenTypes.DirectEventHandler<UrlEvent>;
+  onLinkPress?: CodegenTypes.DirectEventHandler<UrlEvent>;
+  stylesJson?: string;
+}
+
+export default codegenNativeComponent<NativeProps>("FastMarkdownView");

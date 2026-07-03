@@ -1,27 +1,27 @@
-import { useMemo } from 'react';
-import { StyleSheet, type NativeSyntheticEvent } from 'react-native';
+import { useMemo } from "react";
+import { type NativeSyntheticEvent, StyleSheet } from "react-native";
 
-import NativeFastMarkdownView from './FastMarkdownViewNativeComponent';
-import { serializeStyles, type MainStyle } from './serializeStyles';
-import type { FastMarkdownViewProps, MarkdownUrlEvent } from './types';
+import NativeFastMarkdownView from "./FastMarkdownViewNativeComponent";
+import { type MainStyle, serializeStyles } from "./serializeStyles";
+import type { FastMarkdownViewProps, MarkdownUrlEvent } from "./types";
 
 const MAIN_STYLE_KEYS = [
-  'backgroundColor',
-  'padding',
-  'paddingLeft',
-  'paddingRight',
-  'paddingTop',
-  'paddingBottom',
-  'gap',
+  "backgroundColor",
+  "padding",
+  "paddingLeft",
+  "paddingRight",
+  "paddingTop",
+  "paddingBottom",
+  "gap",
   // Base text styles: cascade into every text element via stylesJson.
-  'fontSize',
-  'fontWeight',
-  'fontFamily',
-  'color',
-  'fontVariant',
-  'textDecorationColor',
-  'textDecorationLine',
-  'textDecorationStyle',
+  "fontSize",
+  "fontWeight",
+  "fontFamily",
+  "color",
+  "fontVariant",
+  "textDecorationColor",
+  "textDecorationLine",
+  "textDecorationStyle",
 ] as const;
 
 export function FastMarkdownView({
@@ -55,14 +55,12 @@ export function FastMarkdownView({
 
   return (
     <NativeFastMarkdownView
-      markdown={markdown}
-      stylesJson={stylesJson}
       images={images}
-      style={hostStyle}
-      onLinkPress={
-        onLinkPress
+      markdown={markdown}
+      onImagePress={
+        onImagePress
           ? (event: NativeSyntheticEvent<MarkdownUrlEvent>) =>
-              onLinkPress({ url: event.nativeEvent.url })
+              onImagePress({ url: event.nativeEvent.url })
           : undefined
       }
       onLinkLongPress={
@@ -71,12 +69,14 @@ export function FastMarkdownView({
               onLinkLongPress({ url: event.nativeEvent.url })
           : undefined
       }
-      onImagePress={
-        onImagePress
+      onLinkPress={
+        onLinkPress
           ? (event: NativeSyntheticEvent<MarkdownUrlEvent>) =>
-              onImagePress({ url: event.nativeEvent.url })
+              onLinkPress({ url: event.nativeEvent.url })
           : undefined
       }
+      style={hostStyle}
+      stylesJson={stylesJson}
     />
   );
 }

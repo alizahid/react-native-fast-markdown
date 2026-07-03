@@ -1,37 +1,45 @@
-import { useState } from 'react';
-import { Platform, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useState } from "react";
+import {
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-import { Feed } from './screens/Feed';
-import { KitchenSink } from './screens/KitchenSink';
-import { Playground } from './screens/Playground';
+import { Feed } from "./screens/Feed";
+import { KitchenSink } from "./screens/KitchenSink";
+import { Playground } from "./screens/Playground";
 
-const TABS = ['Kitchen Sink', 'Playground', 'Feed'] as const;
+const TABS = ["Kitchen Sink", "Playground", "Feed"] as const;
 
 type Tab = (typeof TABS)[number];
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>('Kitchen Sink');
+  const [tab, setTab] = useState<Tab>("Kitchen Sink");
 
   return (
     <GestureHandlerRootView style={sheet.root}>
       <SafeAreaView style={sheet.container}>
-      <View style={sheet.tabs}>
-        {TABS.map((name) => (
-          <Pressable
-            key={name}
-            style={[sheet.tab, tab === name && sheet.tabActive]}
-            onPress={() => setTab(name)}
-          >
-            <Text style={tab === name ? sheet.tabTextActive : sheet.tabText}>
-              {name}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-        {tab === 'Kitchen Sink' && <KitchenSink />}
-        {tab === 'Playground' && <Playground />}
-        {tab === 'Feed' && <Feed />}
+        <View style={sheet.tabs}>
+          {TABS.map((name) => (
+            <Pressable
+              key={name}
+              onPress={() => setTab(name)}
+              style={[sheet.tab, tab === name && sheet.tabActive]}
+            >
+              <Text style={tab === name ? sheet.tabTextActive : sheet.tabText}>
+                {name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {tab === "Kitchen Sink" && <KitchenSink />}
+        {tab === "Playground" && <Playground />}
+        {tab === "Feed" && <Feed />}
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -43,30 +51,30 @@ const sheet = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: 'white',
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight ?? 0) : 0,
+    backgroundColor: "white",
+    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0,
   },
   tabs: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   tab: {
     borderRadius: 8,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   tabActive: {
-    backgroundColor: '#111827',
+    backgroundColor: "#111827",
   },
   tabText: {
-    color: '#374151',
+    color: "#374151",
     fontSize: 13,
   },
   tabTextActive: {
-    color: 'white',
+    color: "white",
     fontSize: 13,
   },
 });

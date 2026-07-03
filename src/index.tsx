@@ -1,4 +1,6 @@
-export { FastMarkdownView } from './FastMarkdownView';
+/** biome-ignore-all lint/performance/noBarrelFile: go away */
+
+export { FastMarkdownView } from "./FastMarkdownView";
 export type {
   FastMarkdownViewProps,
   FontVariant,
@@ -17,4 +19,4 @@ export type {
   MarkdownTableStyle,
   MarkdownTextStyle,
   MarkdownUrlEvent,
-} from './types';
+} from "./types";

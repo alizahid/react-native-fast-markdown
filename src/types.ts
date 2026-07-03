@@ -1,44 +1,44 @@
-import type { ColorValue, StyleProp } from 'react-native';
+import type { ColorValue, StyleProp } from "react-native";
 
 export type FontVariant =
-  | 'small-caps'
-  | 'oldstyle-nums'
-  | 'lining-nums'
-  | 'tabular-nums'
-  | 'proportional-nums'
-  | 'stylistic-one'
-  | 'stylistic-two'
-  | 'stylistic-three'
-  | 'stylistic-four'
-  | 'stylistic-five'
-  | 'stylistic-six'
-  | 'stylistic-seven'
-  | 'stylistic-eight'
-  | 'stylistic-nine'
-  | 'stylistic-ten'
-  | 'stylistic-eleven'
-  | 'stylistic-twelve'
-  | 'stylistic-thirteen'
-  | 'stylistic-fourteen'
-  | 'stylistic-fifteen'
-  | 'stylistic-sixteen'
-  | 'stylistic-seventeen'
-  | 'stylistic-eighteen'
-  | 'stylistic-nineteen'
-  | 'stylistic-twenty';
+  | "small-caps"
+  | "oldstyle-nums"
+  | "lining-nums"
+  | "tabular-nums"
+  | "proportional-nums"
+  | "stylistic-one"
+  | "stylistic-two"
+  | "stylistic-three"
+  | "stylistic-four"
+  | "stylistic-five"
+  | "stylistic-six"
+  | "stylistic-seven"
+  | "stylistic-eight"
+  | "stylistic-nine"
+  | "stylistic-ten"
+  | "stylistic-eleven"
+  | "stylistic-twelve"
+  | "stylistic-thirteen"
+  | "stylistic-fourteen"
+  | "stylistic-fifteen"
+  | "stylistic-sixteen"
+  | "stylistic-seventeen"
+  | "stylistic-eighteen"
+  | "stylistic-nineteen"
+  | "stylistic-twenty";
 
 export type FontWeight =
-  | 'normal'
-  | 'bold'
-  | '100'
-  | '200'
-  | '300'
-  | '400'
-  | '500'
-  | '600'
-  | '700'
-  | '800'
-  | '900'
+  | "normal"
+  | "bold"
+  | "100"
+  | "200"
+  | "300"
+  | "400"
+  | "500"
+  | "600"
+  | "700"
+  | "800"
+  | "900"
   | 100
   | 200
   | 300
@@ -53,11 +53,11 @@ export type FontWeight =
  * Text styling shared by every text-bearing markdown element.
  */
 export interface MarkdownTextStyle {
-  fontSize?: number;
-  fontWeight?: FontWeight;
-  fontFamily?: string;
   color?: ColorValue;
+  fontFamily?: string;
+  fontSize?: number;
   fontVariant?: FontVariant[];
+  fontWeight?: FontWeight;
   textDecorationColor?: ColorValue;
   /**
    * Android renders `underline` and `line-through` natively; decoration
@@ -65,11 +65,11 @@ export interface MarkdownTextStyle {
    * elsewhere.
    */
   textDecorationLine?:
-    | 'none'
-    | 'underline'
-    | 'line-through'
-    | 'underline line-through';
-  textDecorationStyle?: 'solid' | 'double' | 'dotted' | 'dashed';
+    | "none"
+    | "underline"
+    | "line-through"
+    | "underline line-through";
+  textDecorationStyle?: "solid" | "double" | "dotted" | "dashed";
 }
 
 /**
@@ -77,46 +77,46 @@ export interface MarkdownTextStyle {
  */
 export interface MarkdownLayoutStyle {
   backgroundColor?: ColorValue;
-  padding?: number;
-  paddingLeft?: number;
-  paddingRight?: number;
-  paddingTop?: number;
-  paddingBottom?: number;
-  borderRadius?: number;
-  /** iOS only; Android always renders circular corners. */
-  borderCurve?: 'circular' | 'continuous';
+  borderBottomColor?: ColorValue;
+  borderBottomWidth?: number;
   borderColor?: ColorValue;
-  borderWidth?: number;
+  /** iOS only; Android always renders circular corners. */
+  borderCurve?: "circular" | "continuous";
   borderLeftColor?: ColorValue;
   borderLeftWidth?: number;
+  borderRadius?: number;
   borderRightColor?: ColorValue;
   borderRightWidth?: number;
   borderTopColor?: ColorValue;
   borderTopWidth?: number;
-  borderBottomColor?: ColorValue;
-  borderBottomWidth?: number;
+  borderWidth?: number;
+  padding?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  paddingRight?: number;
+  paddingTop?: number;
 }
 
 export interface MarkdownImageStyle {
-  borderRadius?: number;
   backgroundColor?: ColorValue;
+  borderRadius?: number;
   /** Fixed rendered height; wins over the image's intrinsic height. */
   height?: number;
   maxHeight?: number;
 }
 
 export interface MarkdownTableStyle extends MarkdownLayoutStyle {
-  /** Lower clamp for computed column widths. Default 44. */
-  minColumnWidth?: number;
   /** Upper clamp for computed column widths. Default 320. */
   maxColumnWidth?: number;
+  /** Lower clamp for computed column widths. Default 44. */
+  minColumnWidth?: number;
 }
 
 export interface MarkdownSpoilerStyle {
   backgroundColor?: ColorValue;
-  borderRadius?: number;
   /** iOS only; Android always renders circular corners. */
-  borderCurve?: 'circular' | 'continuous';
+  borderCurve?: "circular" | "continuous";
+  borderRadius?: number;
 }
 
 export interface MarkdownListStyle {
@@ -124,9 +124,9 @@ export interface MarkdownListStyle {
 }
 
 export interface MarkdownListMarkerStyle {
-  width?: number;
-  marginLeft?: number;
   color?: ColorValue;
+  marginLeft?: number;
+  width?: number;
 }
 
 /**
@@ -156,36 +156,40 @@ export interface MarkdownInlineCodeStyle extends MarkdownTextStyle {
   paddingRight?: number;
 }
 
-export type MarkdownHeadingLevel = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
+export type MarkdownHeadingLevel = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
 
 /**
  * Per-element styles for the markdown viewer.
  */
 export interface MarkdownStyles {
+  blockQuote?: MarkdownTextStyle & MarkdownLayoutStyle;
+  bold?: MarkdownTextStyle;
+  codeBlock?: MarkdownTextStyle & MarkdownLayoutStyle;
   headings?: Partial<Record<MarkdownHeadingLevel, MarkdownTextStyle>>;
-  paragraph?: MarkdownTextStyle;
   image?: MarkdownImageStyle;
+  inlineCode?: MarkdownInlineCodeStyle;
+  italic?: MarkdownTextStyle;
+  link?: MarkdownTextStyle;
+  list?: MarkdownListStyle;
+  listItem?: MarkdownTextStyle;
+  listMarker?: MarkdownListMarkerStyle;
+  mention?: MarkdownMentionStyle;
+  paragraph?: MarkdownTextStyle;
+  spoiler?: MarkdownSpoilerStyle;
+  strikethrough?: MarkdownTextStyle;
+  subscript?: MarkdownTextStyle;
+  superscript?: MarkdownTextStyle;
   table?: MarkdownTableStyle;
-  tableRow?: MarkdownLayoutStyle;
   tableCell?: MarkdownTextStyle &
     Pick<
       MarkdownLayoutStyle,
-      'padding' | 'paddingLeft' | 'paddingRight' | 'paddingTop' | 'paddingBottom'
+      | "padding"
+      | "paddingLeft"
+      | "paddingRight"
+      | "paddingTop"
+      | "paddingBottom"
     >;
-  spoiler?: MarkdownSpoilerStyle;
-  superscript?: MarkdownTextStyle;
-  subscript?: MarkdownTextStyle;
-  bold?: MarkdownTextStyle;
-  italic?: MarkdownTextStyle;
-  strikethrough?: MarkdownTextStyle;
-  list?: MarkdownListStyle;
-  listMarker?: MarkdownListMarkerStyle;
-  listItem?: MarkdownTextStyle;
-  link?: MarkdownTextStyle;
-  mention?: MarkdownMentionStyle;
-  inlineCode?: MarkdownInlineCodeStyle;
-  codeBlock?: MarkdownTextStyle & MarkdownLayoutStyle;
-  blockQuote?: MarkdownTextStyle & MarkdownLayoutStyle;
+  tableRow?: MarkdownLayoutStyle;
 }
 
 /**
@@ -194,9 +198,9 @@ export interface MarkdownStyles {
  * unknown images show a placeholder and resize once loaded.
  */
 export interface MarkdownImageData {
+  height: number;
   url: string;
   width: number;
-  height: number;
 }
 
 export interface MarkdownUrlEvent {
@@ -215,18 +219,22 @@ export interface MarkdownUrlEvent {
  */
 export interface MarkdownContainerStyle extends MarkdownTextStyle {
   backgroundColor?: ColorValue;
+  /** Vertical spacing between blocks. Default 12. */
+  gap?: number;
   padding?: number;
+  paddingBottom?: number;
   paddingLeft?: number;
   paddingRight?: number;
   paddingTop?: number;
-  paddingBottom?: number;
-  /** Vertical spacing between blocks. Default 12. */
-  gap?: number;
 }
 
 export interface FastMarkdownViewProps {
+  images?: MarkdownImageData[];
   /** The markdown source to render. */
   markdown: string;
+  onImagePress?: (event: MarkdownUrlEvent) => void;
+  onLinkLongPress?: (event: MarkdownUrlEvent) => void;
+  onLinkPress?: (event: MarkdownUrlEvent) => void;
   /**
    * Main container style: `backgroundColor`, `padding*`, `gap`, and base
    * text styles that cascade into every text element unless overridden via
@@ -235,8 +243,4 @@ export interface FastMarkdownViewProps {
   style?: StyleProp<MarkdownContainerStyle>;
   /** Per-element markdown styles. Hoist to module scope or memoize. */
   styles?: MarkdownStyles;
-  images?: MarkdownImageData[];
-  onLinkPress?: (event: MarkdownUrlEvent) => void;
-  onLinkLongPress?: (event: MarkdownUrlEvent) => void;
-  onImagePress?: (event: MarkdownUrlEvent) => void;
 }

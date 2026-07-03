@@ -1,4 +1,4 @@
-import { processColor, type ColorValue } from "react-native";
+import { type ColorValue, processColor } from "react-native";
 
 import type {
   MarkdownLayoutStyle,
@@ -15,12 +15,12 @@ type Serialized = Record<string, unknown>;
  */
 export interface MainStyle extends MarkdownTextStyle {
   backgroundColor?: ColorValue;
+  gap?: number;
   padding?: number;
+  paddingBottom?: number;
   paddingLeft?: number;
   paddingRight?: number;
   paddingTop?: number;
-  paddingBottom?: number;
-  gap?: number;
 }
 
 function put(out: Serialized, key: string, value: unknown): void {
@@ -32,7 +32,7 @@ function put(out: Serialized, key: string, value: unknown): void {
 function putColor(
   out: Serialized,
   key: string,
-  value: ColorValue | undefined,
+  value: ColorValue | undefined
 ): void {
   if (value === undefined || value === null) {
     return;
@@ -53,7 +53,7 @@ function putPadding(
     paddingTop?: number;
     paddingBottom?: number;
   },
-  sides: ReadonlyArray<"Left" | "Right" | "Top" | "Bottom">,
+  sides: ReadonlyArray<"Left" | "Right" | "Top" | "Bottom">
 ): void {
   for (const side of sides) {
     put(out, `padding${side}`, style[`padding${side}`] ?? style.padding);
@@ -61,10 +61,10 @@ function putPadding(
 }
 
 function serializeText(
-  style: MarkdownTextStyle | undefined,
+  style: MarkdownTextStyle | undefined
 ): Serialized | undefined {
   if (style == null) {
-    return undefined;
+    return;
   }
   const out: Serialized = {};
   put(out, "fontSize", style.fontSize);
@@ -81,10 +81,10 @@ function serializeText(
 }
 
 function serializeLayout(
-  style: MarkdownLayoutStyle | undefined,
+  style: MarkdownLayoutStyle | undefined
 ): Serialized | undefined {
   if (style == null) {
-    return undefined;
+    return;
   }
   const out: Serialized = {};
   putColor(out, "backgroundColor", style.backgroundColor);
@@ -95,12 +95,12 @@ function serializeLayout(
     putColor(
       out,
       `border${side}Color`,
-      style[`border${side}Color`] ?? style.borderColor,
+      style[`border${side}Color`] ?? style.borderColor
     );
     put(
       out,
       `border${side}Width`,
-      style[`border${side}Width`] ?? style.borderWidth,
+      style[`border${side}Width`] ?? style.borderWidth
     );
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -110,10 +110,10 @@ function merge(
   ...parts: Array<Serialized | undefined>
 ): Serialized | undefined {
   const defined = parts.filter(
-    (part): part is Serialized => part !== undefined,
+    (part): part is Serialized => part !== undefined
   );
   if (defined.length === 0) {
-    return undefined;
+    return;
   }
   return Object.assign({}, ...defined);
 }
@@ -123,9 +123,10 @@ function merge(
  * Colors become processed ARGB ints, padding shorthands are expanded, and
  * mention variants become a longest-pattern-first ordered array.
  */
+// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: go away
 export function serializeStyles(
   styles: MarkdownStyles | undefined,
-  main: MainStyle | undefined,
+  main: MainStyle | undefined
 ): string {
   const out: Serialized = {};
 
@@ -240,15 +241,15 @@ export function serializeStyles(
     put(
       out,
       "codeBlock",
-      merge(serializeText(styles.codeBlock), serializeLayout(styles.codeBlock)),
+      merge(serializeText(styles.codeBlock), serializeLayout(styles.codeBlock))
     );
     put(
       out,
       "blockQuote",
       merge(
         serializeText(styles.blockQuote),
-        serializeLayout(styles.blockQuote),
-      ),
+        serializeLayout(styles.blockQuote)
+      )
     );
   }
 

@@ -75,8 +75,8 @@ export function Playground() {
         {Object.keys(THEMES).map((name) => (
           <Pressable
             key={name}
-            style={[sheet.chip, theme === name && sheet.chipActive]}
             onPress={() => setTheme(name as keyof typeof THEMES)}
+            style={[sheet.chip, theme === name && sheet.chipActive]}
           >
             <Text
               style={theme === name ? sheet.chipTextActive : sheet.chipText}
@@ -86,8 +86,8 @@ export function Playground() {
           </Pressable>
         ))}
         <Pressable
-          style={sheet.chip}
           onPress={() => setGapIndex((gapIndex + 1) % GAPS.length)}
+          style={sheet.chip}
         >
           <Text style={sheet.chipText}>gap {GAPS[gapIndex]}</Text>
         </Pressable>
@@ -95,11 +95,11 @@ export function Playground() {
       <ScrollView>
         <FastMarkdownView
           markdown={MARKDOWN}
-          styles={THEMES[theme]?.styles}
           style={[
             { padding: 16, gap: GAPS[gapIndex] },
             THEMES[theme]?.container,
           ]}
+          styles={THEMES[theme]?.styles}
         />
       </ScrollView>
     </View>

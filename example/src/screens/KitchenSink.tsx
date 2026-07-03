@@ -113,17 +113,17 @@ const images = [
 export function KitchenSink() {
   return (
     <ScrollView
-      style={sheet.container}
       contentInsetAdjustmentBehavior="automatic"
+      style={sheet.container}
     >
       <FastMarkdownView
-        markdown={MARKDOWN}
-        styles={styles}
         images={images}
-        style={markdownStyle}
-        onLinkPress={({ url }) => Alert.alert("onLinkPress", url)}
-        onLinkLongPress={({ url }) => Alert.alert("onLinkLongPress", url)}
+        markdown={MARKDOWN}
         onImagePress={({ url }) => Alert.alert("onImagePress", url)}
+        onLinkLongPress={({ url }) => Alert.alert("onLinkLongPress", url)}
+        onLinkPress={({ url }) => Alert.alert("onLinkPress", url)}
+        style={markdownStyle}
+        styles={styles}
       />
     </ScrollView>
   );
