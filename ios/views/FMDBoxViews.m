@@ -4,13 +4,51 @@
 #import "FMDBlockStackView.h"
 #import "FMDBlockTextView.h"
 
-@implementation FMDNestedScrollView
+@implementation FMDNestedScrollView {
+  __weak UIControl *_trackingControl;
+}
 
 - (instancetype)initWithFrame:(CGRect)frame {
   if (self = [super initWithFrame:frame]) {
     self.delegate = self;
   }
   return self;
+}
+
+// As the hit view this scroller consumes the raw touch stream, which starves
+// UIControl-based wrappers: react-native-gesture-handler's button fires
+// presses from UIControl events, and a control refuses to track touches
+// hit-tested to another view. Synthesize the control events instead — press
+// down on touch start, press on a clean touch up, cancel when the pan takes
+// the touches — so a tap on a code block or table still presses the
+// wrapping card while drags scroll without pressing.
+- (nullable UIControl *)fmdAncestorControl {
+  UIView *view = self.superview;
+  while (view != nil) {
+    if ([view isKindOfClass:[UIControl class]]) {
+      return (UIControl *)view;
+    }
+    view = view.superview;
+  }
+  return nil;
+}
+
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  [super touchesBegan:touches withEvent:event];
+  _trackingControl = [self fmdAncestorControl];
+  [_trackingControl sendActionsForControlEvents:UIControlEventTouchDown];
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  [super touchesEnded:touches withEvent:event];
+  [_trackingControl sendActionsForControlEvents:UIControlEventTouchUpInside];
+  _trackingControl = nil;
+}
+
+- (void)touchesCancelled:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  [super touchesCancelled:touches withEvent:event];
+  [_trackingControl sendActionsForControlEvents:UIControlEventTouchCancel];
+  _trackingControl = nil;
 }
 
 // This scroller is not a React view, so nothing cancels the JS responder
