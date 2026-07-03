@@ -152,7 +152,7 @@ object SpannableRenderer {
 
       MdNodeType.BLOCK_QUOTE -> {
         val layout = context.layoutStyle("blockQuote", PLAIN_LAYOUT)
-        val quoteText = merge(inherited, context.styles.textStyleFor("blockQuote"))
+        val quoteText = merge(inherited, textStyleWithoutBackground(context.styles, "blockQuote"))
         out.add(Block.Quote(renderBlocks(node.children, context, quoteText), layout))
       }
 
@@ -165,7 +165,7 @@ object SpannableRenderer {
           "base",
         ).copy(family = "monospace")
         attrs = context.apply(attrs, inherited)
-        attrs = context.apply(attrs, "codeBlock")
+        attrs = context.apply(attrs, textStyleWithoutBackground(context.styles, "codeBlock"))
         val text = SpannableStringBuilder()
         appendRun(text, node.text.trimEnd('\n'), attrs)
         out.add(Block.Code(text, basePaint(attrs), layout))
@@ -379,6 +379,19 @@ object SpannableRenderer {
         ?: Color.BLACK,
       spoilerRadiusPx = (spoilerSection?.optDpOr("borderRadius", 0f) ?: 0f) * context.density,
     )
+  }
+
+  // codeBlock/blockQuote merge text + layout keys in one section; their
+  // backgroundColor is the box fill, not an inline-run background, so it
+  // must not reach the text-attribute path.
+  private fun textStyleWithoutBackground(styles: StyleConfig, key: String): TextStyleSpec? {
+    val section = styles.rawSection(key) ?: return null
+    if (!section.has("backgroundColor")) {
+      return TextStyleSpec.from(section)
+    }
+    val copy = JSONObject(section.toString())
+    copy.remove("backgroundColor")
+    return TextStyleSpec.from(copy)
   }
 
   private fun basePaint(attrs: ResolvedAttrs): TextPaint = TextPaint().apply {

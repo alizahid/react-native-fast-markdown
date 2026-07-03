@@ -39,6 +39,22 @@ bool isInlineType(NodeType type) {
   }
 }
 
+// codeBlock/blockQuote merge text + layout keys in one section; their
+// backgroundColor is the box fill, not an inline-run background, so it must
+// not reach the text-attribute path.
+FMDTextStyle *FMDTextStyleWithoutBackground(FMDStyleConfig *styles, NSString *key) {
+  NSDictionary *section = [styles rawSectionFor:key];
+  if (section == nil) {
+    return nil;
+  }
+  if (section[@"backgroundColor"] == nil) {
+    return [FMDTextStyle fromJson:section];
+  }
+  NSMutableDictionary *copy = [section mutableCopy];
+  [copy removeObjectForKey:@"backgroundColor"];
+  return [FMDTextStyle fromJson:copy];
+}
+
 // Fully-resolved text attributes at one point of the inline tree walk.
 struct ResolvedAttrs {
   CGFloat fontSize = 16;
@@ -285,7 +301,7 @@ class BlockBuilder {
         FMDLayoutStyle *layout =
             [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"blockQuote"] defaults:defaults];
         NSArray<FMDTextStyle *> *quoteInherited =
-            appendStyle(inherited, [styles_ textStyleFor:@"blockQuote"]);
+            appendStyle(inherited, FMDTextStyleWithoutBackground(styles_, @"blockQuote"));
         FMDBlock *block = [FMDBlock new];
         block.kind = FMDBlockKindQuote;
         block.layoutStyle = layout;
@@ -316,7 +332,7 @@ class BlockBuilder {
         for (FMDTextStyle *style in inherited) {
           applyStyle(attrs, style, fontScale_);
         }
-        applyStyle(attrs, [styles_ textStyleFor:@"codeBlock"], fontScale_);
+        applyStyle(attrs, FMDTextStyleWithoutBackground(styles_, @"codeBlock"), fontScale_);
 
         std::string text = node->text;
         while (!text.empty() && text.back() == '\n') {
