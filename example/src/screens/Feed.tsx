@@ -57,7 +57,7 @@ const SNIPPETS = [
   "Benchmarks so far:\n\n| Library | Parse | Layout |\n|---------|-------|--------|\n| fast-markdown | 0.4ms | 1.1ms |\n| webview-based | 12ms | 40ms |",
   "Long paragraph that wraps across multiple lines to give the recycler some variety in cell heights when scrolling quickly through the feed. It keeps going for a while so the measurement cache earns its keep.",
   "1. first\n2. second\n3. third\n\nOrdered lists inside a recycled cell.",
-  "Mixed **bold**, _italic_, ~~strike~~, and a spoiler >!hidden in a card!< for testing.",
+  "Mixed **bold**, _italic_, ~~strike~~, and a spoiler >!hidden spoiler spoiler in a card!< for testing.",
   "### Wide table\n\n| ID | Package | Version | Downloads | License | Maintainer |\n|----|---------|---------|-----------|---------|------------|\n| 1 | react-native-fast-markdown | 0.1.0 | 120,394 | MIT | @ali |\n| 2 | react-native-enriched | 1.0.0 | 88,120 | MIT | swmansion |",
   "> Block quote with a nested list:\n>\n> - quoted alpha\n> - quoted beta\n\nAnd a trailing paragraph.",
 ];

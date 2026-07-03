@@ -126,9 +126,25 @@ class BlockTextView(context: Context) : View(context) {
 
   // Union outline of vertically stacked per-line rects with every outline
   // corner (convex and concave) rounded, so a wrapped spoiler reads as one
-  // contiguous shape instead of stacked pills.
+  // contiguous shape instead of stacked pills. Consecutive lines merge only
+  // when they horizontally overlap; a wrapped run whose first segment ends
+  // right of where the next begins renders as separate shapes — one polygon
+  // would self-intersect.
   private fun buildRoundedOutline(lines: List<RectF>, radius: Float, path: Path) {
     path.reset()
+    var start = 0
+    for (i in 1..lines.size) {
+      val split = i == lines.size ||
+        minOf(lines[i - 1].right, lines[i].right) -
+        maxOf(lines[i - 1].left, lines[i].left) <= 0.5f
+      if (split) {
+        appendRoundedOutline(lines.subList(start, i), radius, path)
+        start = i
+      }
+    }
+  }
+
+  private fun appendRoundedOutline(lines: List<RectF>, radius: Float, path: Path) {
     if (lines.isEmpty()) {
       return
     }
@@ -181,7 +197,9 @@ class BlockTextView(context: Context) : View(context) {
       }
       path.quadTo(v.x, v.y, exitX, exitY)
     }
-    path.close()
+    if (started) {
+      path.close()
+    }
   }
 
   override fun onTouchEvent(event: MotionEvent): Boolean {

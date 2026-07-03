@@ -108,7 +108,15 @@
 }
 
 // Union outline of vertically stacked per-line rects, rounded at every
-// outline corner (convex and concave).
+// outline corner (convex and concave). Consecutive lines are merged into
+// one shape only when they horizontally overlap; a wrapped run whose first
+// segment ends right of where the next begins (no shared x range) renders
+// as separate shapes — one polygon would self-intersect.
+static void FMDAppendRoundedOutline(UIBezierPath *path,
+                                    const CGRect *rects,
+                                    NSUInteger count,
+                                    CGFloat radius);
+
 static UIBezierPath *FMDRoundedOutlinePath(NSArray<NSValue *> *lines, CGFloat radius) {
   UIBezierPath *path = [UIBezierPath bezierPath];
   if (lines.count == 0) {
@@ -128,6 +136,29 @@ static UIBezierPath *FMDRoundedOutlinePath(NSArray<NSValue *> *lines, CGFloat ra
     rects[i + 1].origin.y = boundary;
   }
 
+  NSUInteger start = 0;
+  for (NSUInteger i = 1; i <= count; i++) {
+    BOOL split = i == count;
+    if (!split) {
+      const CGFloat overlap = MIN(CGRectGetMaxX(rects[i - 1]), CGRectGetMaxX(rects[i])) -
+          MAX(CGRectGetMinX(rects[i - 1]), CGRectGetMinX(rects[i]));
+      split = overlap <= 0.5;
+    }
+    if (split) {
+      FMDAppendRoundedOutline(path, rects + start, i - start, radius);
+      start = i;
+    }
+  }
+  return path;
+}
+
+static void FMDAppendRoundedOutline(UIBezierPath *path,
+                                    const CGRect *rects,
+                                    NSUInteger count,
+                                    CGFloat radius) {
+  if (count == 0) {
+    return;
+  }
   // Clockwise: top edge, down the right side with a jog at each width
   // change, bottom edge, back up the left side.
   NSUInteger capacity = count * 4;
@@ -173,8 +204,9 @@ static UIBezierPath *FMDRoundedOutlinePath(NSArray<NSValue *> *lines, CGFloat ra
     }
     [path addQuadCurveToPoint:exit controlPoint:v];
   }
-  [path closePath];
-  return path;
+  if (started) {
+    [path closePath];
+  }
 }
 
 - (nullable NSDictionary *)attributesAtPoint:(CGPoint)point {
