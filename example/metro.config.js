@@ -1,8 +1,9 @@
+/** biome-ignore-all lint/correctness/noGlobalDirnameFilename: CommonJS config — import.meta syntax flips Node module detection and breaks require() */
 const path = require("node:path");
 const { getDefaultConfig } = require("expo/metro-config");
 const { withMetroConfig } = require("react-native-monorepo-config");
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(__dirname, "..");
 
 /**
  * Metro configuration
@@ -10,9 +11,9 @@ const root = path.resolve(import.meta.dirname, "..");
  *
  * @type {import('metro-config').MetroConfig}
  */
-const config = withMetroConfig(getDefaultConfig(import.meta.dirname), {
+const config = withMetroConfig(getDefaultConfig(__dirname), {
   root,
-  dirname: import.meta.dirname,
+  dirname: __dirname,
   conditions: ["react-native-fast-markdown-source"],
 });
 
