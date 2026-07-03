@@ -43,9 +43,16 @@ export const defaultStyles: MarkdownStyles = {
   link: {
     color: "#007AFF",
   },
+  listMarker: {
+    width: 24,
+  },
   spoiler: {
     backgroundColor: "#3F3F46",
     borderRadius: 4,
+  },
+  table: {
+    maxColumnWidth: 320,
+    minColumnWidth: 44,
   },
   tableCell: {
     padding: 8,

@@ -347,10 +347,10 @@ class BlockBuilder {
             : @1;
         FMDBlock *block = [FMDBlock new];
         block.kind = FMDBlockKindDivider;
-        // Hairline fallback: a divider is content, so it stays visible even
-        // fully unstyled.
+        // Neutral functional floor — a divider is content, so it stays
+        // visible even unstyled; defaultStyles provides the subtle hairline.
         block.dividerColor = [FMDTextStyle colorFromJson:section[@"color"]]
-            ?: [UIColor colorWithWhite:0 alpha:0.13];
+            ?: UIColor.blackColor;
         block.dividerThickness = height.doubleValue;
         [out addObject:block];
         break;
@@ -419,7 +419,7 @@ class BlockBuilder {
     block.imageBorderRadius = number(section, @"borderRadius", 0);
     block.imageHeight = number(section, @"height", 0);
     block.imageMaxHeight = number(section, @"maxHeight", 0);
-    block.imagePlaceholder = 100;
+    block.imagePlaceholder = 200;
     return block;
   }
 
@@ -435,7 +435,6 @@ class BlockBuilder {
     FMDBlock *block = [FMDBlock new];
     block.kind = FMDBlockKindList;
     block.listMarginLeft = number(listSection, @"marginLeft", 0);
-    block.markerWidth = number(markerSection, @"width", 24);
     block.markerMarginLeft = number(markerSection, @"marginLeft", 0);
 
     NSArray<FMDTextStyle *> *itemInherited =
@@ -456,6 +455,7 @@ class BlockBuilder {
 
     NSMutableArray<FMDListRow *> *rows = [NSMutableArray new];
     int index = node->startIndex;
+    CGFloat naturalMarkerWidth = 0;
     for (const Node *item : node->children) {
       if (item->type != NodeType::ListItem) {
         continue;
@@ -465,10 +465,15 @@ class BlockBuilder {
       FMDListRow *row = [FMDListRow new];
       row.marker = [[NSAttributedString alloc] initWithString:markerText
                                                     attributes:attributesDictionary(markerAttrs)];
+      naturalMarkerWidth = MAX(naturalMarkerWidth, ceil(row.marker.size.width));
       row.content = renderBlocks(item->children, itemInherited);
       [rows addObject:row];
       index++;
     }
+    // Unstyled marker column is content-driven (widest marker); defaultStyles
+    // provides the classic fixed width.
+    const CGFloat styledWidth = number(markerSection, @"width", -1);
+    block.markerWidth = styledWidth >= 0 ? styledWidth : naturalMarkerWidth;
     block.rows = rows;
     return block;
   }
@@ -535,8 +540,10 @@ class BlockBuilder {
         number(cellSection, @"paddingLeft", 0),
         number(cellSection, @"paddingBottom", 0),
         number(cellSection, @"paddingRight", 0));
-    block.minColumnWidth = number(tableSection, @"minColumnWidth", 44);
-    block.maxColumnWidth = number(tableSection, @"maxColumnWidth", 320);
+    // Unstyled columns take their natural widths; defaultStyles provides the
+    // classic [44, 320] clamps.
+    block.minColumnWidth = number(tableSection, @"minColumnWidth", 0);
+    block.maxColumnWidth = number(tableSection, @"maxColumnWidth", 0);
     return block;
   }
 
@@ -571,13 +578,15 @@ class BlockBuilder {
     NSNumber *spoilerRadius =
         [spoilerSection[@"borderRadius"] isKindOfClass:[NSNumber class]]
             ? spoilerSection[@"borderRadius"]
-            : @4;
+            : @0;
 
     FMDBlock *block = [FMDBlock new];
     block.kind = FMDBlockKindText;
     block.attributedText = output;
+    // Neutral functional floor — the cover must hide text even unstyled;
+    // defaultStyles provides the styled cover.
     block.spoilerColor = [FMDTextStyle colorFromJson:spoilerSection[@"backgroundColor"]]
-        ?: [UIColor colorWithRed:0.25 green:0.25 blue:0.27 alpha:1];
+        ?: UIColor.blackColor;
     block.spoilerRadius = spoilerRadius.doubleValue;
     return block;
   }

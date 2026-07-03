@@ -206,11 +206,12 @@ class RenderedContent(
           }
           displayW = (intrinsicW * displayH / intrinsicH).coerceAtMost(widthPx)
         } else {
+          // Full-width placeholder until the intrinsic size is known.
           displayH = if (block.heightPx > 0) block.heightPx else block.placeholderPx
           if (block.maxHeightPx > 0) {
             displayH = displayH.coerceAtMost(block.maxHeightPx)
           }
-          displayW = block.placeholderPx.coerceAtMost(widthPx)
+          displayW = widthPx
         }
         MeasuredBlock(block, displayH, null, displayW, emptyList(), emptyList(), emptyList())
       }
@@ -242,7 +243,10 @@ class RenderedContent(
     }
 
     val columnWidths = FloatArray(columnCount) {
-      natural[it].coerceIn(block.minColumnWidthPx, block.maxColumnWidthPx)
+      natural[it].coerceIn(
+        block.minColumnWidthPx,
+        if (block.maxColumnWidthPx > 0) block.maxColumnWidthPx else Float.MAX_VALUE,
+      )
     }
 
     val availableWidth = widthPx - block.style.paddingLeft - block.style.paddingRight -

@@ -106,9 +106,9 @@ export interface MarkdownImageStyle {
 }
 
 export interface MarkdownTableStyle extends MarkdownLayoutStyle {
-  /** Upper clamp for computed column widths. Default 320. */
+  /** Upper clamp for computed column widths. Unset = natural width. */
   maxColumnWidth?: number;
-  /** Lower clamp for computed column widths. Default 44. */
+  /** Lower clamp for computed column widths. Unset = natural width. */
   minColumnWidth?: number;
 }
 
@@ -201,7 +201,8 @@ export interface MarkdownStyles {
 /**
  * Pre-sizing data for images referenced in the markdown. Images whose URL is
  * listed here lay out at their final size immediately (zero layout shift);
- * unknown images show a placeholder and resize once loaded.
+ * unknown images show a full-width, 200pt-tall placeholder and resize once
+ * loaded.
  */
 export interface MarkdownImageData {
   height: number;

@@ -60,7 +60,7 @@ const styles: MarkdownStyles = mergeStyles({
 | `markdown` | `string` | The markdown source. |
 | `style` | `MarkdownContainerStyle` | Main container style: `backgroundColor`, `padding`/`padding{Left,Right,Top,Bottom}`, `gap` (spacing between blocks), plus base text styles (`fontSize`, `fontWeight`, `fontFamily`, `color`, `fontVariant`, `textDecoration*`) that cascade into every text element unless overridden per-element via `styles`. Element builtins survive the cascade: heading sizes/weight stay unless `headings.hN` overrides, and code blocks keep their monospace font unless `codeBlock` overrides. For outer layout (margin, width, flex), wrap the viewer in a `View`. |
 | `styles` | `MarkdownStyles` | Per-element styles (below). Omitted = fully plain output (no colors, boxes, heading sizes — only bold/italic runs, monospace code, list markers, and the spoiler cover). Pass the exported `defaultStyles` for the classic look, or `mergeStyles(overrides)` for defaults + your changes. Hoist to module scope or memoize. |
-| `images` | `{ url, width, height }[]` | Pre-sizing data. Listed images lay out at their final size immediately — zero layout shift. Unlisted images render a styled 100×100 placeholder, then grow when loaded. Loading runs on SDWebImage (iOS) and Glide (Android) — the same cores expo-image uses — with memory + disk caches, request dedupe, and animated GIF playback (plus APNG on iOS). |
+| `images` | `{ url, width, height }[]` | Pre-sizing data. Listed images lay out at their final size immediately — zero layout shift. Unlisted images render a styled full-width, 200pt-tall placeholder, then snap to their real aspect once loaded. Loading runs on SDWebImage (iOS) and Glide (Android) — the same cores expo-image uses — with memory + disk caches, request dedupe, and animated GIF playback (plus APNG on iOS). |
 | `onLinkPress` | `({ url }) => void` | Link or mention tapped. Mentions arrive with their scheme (e.g. `users://ali`). |
 | `onLinkLongPress` | `({ url }) => void` | Link long-pressed. |
 | `onImagePress` | `({ url }) => void` | Image tapped. |
@@ -87,17 +87,17 @@ Two shared shapes compose every element style:
 | `mention` | text + `variants` | `variants` maps a regex (tested against the link URL, longest pattern first) to a style. A link matching any variant is a mention. |
 | `inlineCode` | text + `backgroundColor`, `borderRadius`, `padding(Left/Right)` | Always monospace. `defaultStyles`: 8% black background. |
 | `superscript`, `subscript` | text | Default: 0.7x size with baseline shift. |
-| `spoiler` | `backgroundColor`, `borderRadius`, `borderCurve` | The tap-to-reveal cover — one contiguous polygon even across line wraps. |
+| `spoiler` | `backgroundColor`, `borderRadius`, `borderCurve` | The tap-to-reveal cover — one contiguous polygon even across line wraps. Unstyled: plain black. |
 | `codeBlock` | text + layout | Always monospace; long lines scroll horizontally. `defaultStyles`: 14pt, 8% black, radius 6, padding 12. |
 | `blockQuote` | text + layout | Text styles cascade into quoted content. `defaultStyles`: 3pt left border, 12pt left padding. |
 | `list` | `marginLeft` | |
-| `listMarker` | `width`, `marginLeft`, `color` | Fixed-width marker column (default 24). |
+| `listMarker` | `width`, `marginLeft`, `color` | Fixed-width marker column. Unstyled: sized to the widest marker. `defaultStyles`: 24. |
 | `listItem` | text | Cascades into item content. |
 | `image` | `borderRadius`, `backgroundColor`, `height`, `maxHeight` | `backgroundColor` shows while loading. |
-| `table` | layout + `minColumnWidth`, `maxColumnWidth` | Column widths clamp to `[44, 320]` by default. |
+| `table` | layout + `minColumnWidth`, `maxColumnWidth` | Unstyled: natural column widths. `defaultStyles`: clamps to `[44, 320]`. |
 | `tableRow` | layout | `defaultStyles`: 1pt bottom-border separator. |
 | `tableCell` | text + `padding*` | Header cells are always bold. `defaultStyles`: padding 8. |
-| `divider` | `color`, `height` | Thematic break (`---`). Renders a subtle hairline even unstyled. |
+| `divider` | `color`, `height` | Thematic break (`---`). Unstyled: 1pt black. `defaultStyles`: subtle hairline. |
 
 ### Tables
 

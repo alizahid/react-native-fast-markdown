@@ -3,6 +3,7 @@ package com.fastmarkdown.render
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Build
+import android.text.Layout
 import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.TextPaint
@@ -14,6 +15,7 @@ import com.fastmarkdown.render.spans.SpoilerSpan
 import com.fastmarkdown.style.LayoutStyleSpec
 import com.fastmarkdown.style.StyleConfig
 import com.fastmarkdown.style.TextStyleSpec
+import kotlin.math.ceil
 import org.json.JSONObject
 
 /**
@@ -21,9 +23,6 @@ import org.json.JSONObject
  * fully-resolved attributes (mirrors the iOS attribute-stack renderer).
  */
 object SpannableRenderer {
-  private const val DEFAULT_DIVIDER_COLOR = 0x22000000
-  private const val DEFAULT_MARKER_WIDTH_DP = 24f
-  private const val DEFAULT_SPOILER_COLOR = 0xFF3F3F46.toInt()
 
   // Unstyled output is fully plain: no backgrounds, borders, or paddings
   // unless the styles prop (e.g. defaultStyles on the JS side) provides
@@ -178,9 +177,9 @@ object SpannableRenderer {
 
       MdNodeType.THEMATIC_BREAK -> {
         val section = context.styles.rawSection("divider")
-        // Hairline fallback: a divider is content, so it stays visible even
-        // fully unstyled.
-        val color = section?.let { TextStyleSpec.from(it)?.color } ?: DEFAULT_DIVIDER_COLOR
+        // Neutral functional floor — a divider is content, so it stays
+        // visible even unstyled; defaultStyles provides the subtle hairline.
+        val color = section?.let { TextStyleSpec.from(it)?.color } ?: Color.BLACK
         val height = section?.optDpOr("height", 1f) ?: 1f
         out.add(Block.Divider(color, height * context.density))
       }
@@ -231,7 +230,7 @@ object SpannableRenderer {
       borderRadiusPx = (section?.optDpOr("borderRadius", 0f) ?: 0f) * density,
       heightPx = (section?.optDpOr("height", 0f) ?: 0f) * density,
       maxHeightPx = (section?.optDpOr("maxHeight", 0f) ?: 0f) * density,
-      placeholderPx = 100f * density,
+      placeholderPx = 200f * density,
     )
   }
 
@@ -241,8 +240,6 @@ object SpannableRenderer {
     val markerSection = styles.rawSection("listMarker")
 
     val marginLeft = (listSection?.optDpOr("marginLeft", 0f) ?: 0f) * context.density
-    val markerWidth =
-      (markerSection?.optDpOr("width", DEFAULT_MARKER_WIDTH_DP) ?: DEFAULT_MARKER_WIDTH_DP) * context.density
     val markerMarginLeft = (markerSection?.optDpOr("marginLeft", 0f) ?: 0f) * context.density
     val markerColor = markerSection?.let { TextStyleSpec.from(it)?.color }
 
@@ -258,6 +255,7 @@ object SpannableRenderer {
 
     val rows = ArrayList<Block.ListRow>()
     var index = node.startIndex
+    var naturalMarkerWidth = 0f
     for (item in node.children) {
       if (item.type != MdNodeType.LIST_ITEM) {
         continue
@@ -265,15 +263,22 @@ object SpannableRenderer {
       val markerText = if (node.ordered) "$index." else "•"
       val marker = SpannableStringBuilder()
       appendRun(marker, markerText, markerAttrs)
+      val markerPaint = basePaint(markerAttrs)
+      naturalMarkerWidth =
+        maxOf(naturalMarkerWidth, ceil(Layout.getDesiredWidth(marker, markerPaint)))
       rows.add(
         Block.ListRow(
           marker = marker,
-          markerPaint = basePaint(markerAttrs),
+          markerPaint = markerPaint,
           content = renderBlocks(item.children, context, itemText),
         )
       )
       index++
     }
+    // Unstyled marker column is content-driven (widest marker); defaultStyles
+    // provides the classic fixed width.
+    val styledWidth = markerSection?.optDpOr("width", -1f) ?: -1f
+    val markerWidth = if (styledWidth >= 0f) styledWidth * context.density else naturalMarkerWidth
     return Block.ListBlock(rows, marginLeft, markerWidth, markerMarginLeft)
   }
 
@@ -323,8 +328,10 @@ object SpannableRenderer {
       cellPaddingRightPx = cellPadding[1],
       cellPaddingTopPx = cellPadding[2],
       cellPaddingBottomPx = cellPadding[3],
-      minColumnWidthPx = (tableSection?.optDpOr("minColumnWidth", 44f) ?: 44f) * density,
-      maxColumnWidthPx = (tableSection?.optDpOr("maxColumnWidth", 320f) ?: 320f) * density,
+      // Unstyled columns take their natural widths; defaultStyles provides
+      // the classic [44, 320] clamps.
+      minColumnWidthPx = (tableSection?.optDpOr("minColumnWidth", 0f) ?: 0f) * density,
+      maxColumnWidthPx = (tableSection?.optDpOr("maxColumnWidth", 0f) ?: 0f) * density,
     )
   }
 
@@ -366,9 +373,11 @@ object SpannableRenderer {
     return Block.Text(
       builder,
       basePaint(attrs),
+      // Neutral functional floor — the cover must hide text even unstyled;
+      // defaultStyles provides the styled cover.
       spoilerColor = spoilerSection?.let { com.fastmarkdown.style.TextStyleSpec.from(it)?.backgroundColor }
-        ?: DEFAULT_SPOILER_COLOR,
-      spoilerRadiusPx = (spoilerSection?.optDpOr("borderRadius", 4f) ?: 4f) * context.density,
+        ?: Color.BLACK,
+      spoilerRadiusPx = (spoilerSection?.optDpOr("borderRadius", 0f) ?: 0f) * context.density,
     )
   }
 

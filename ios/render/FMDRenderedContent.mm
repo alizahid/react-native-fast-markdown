@@ -166,8 +166,10 @@
       std::vector<CGFloat> columnWidths(columnCount, 0);
       CGFloat total = 0;
       CGFloat naturalTotal = 0;
+      const CGFloat maxColumnWidth =
+          block.maxColumnWidth > 0 ? block.maxColumnWidth : CGFLOAT_MAX;
       for (NSUInteger i = 0; i < columnCount; i++) {
-        columnWidths[i] = MIN(MAX(natural[i], block.minColumnWidth), block.maxColumnWidth);
+        columnWidths[i] = MIN(MAX(natural[i], block.minColumnWidth), maxColumnWidth);
         total += columnWidths[i];
         naturalTotal += natural[i];
       }
@@ -224,11 +226,12 @@
         }
         displayW = MIN(intrinsicW * displayH / intrinsicH, width);
       } else {
+        // Full-width placeholder until the intrinsic size is known.
         displayH = block.imageHeight > 0 ? block.imageHeight : block.imagePlaceholder;
         if (block.imageMaxHeight > 0) {
           displayH = MIN(displayH, block.imageMaxHeight);
         }
-        displayW = MIN(block.imagePlaceholder, width);
+        displayW = width;
       }
       measured.height = displayH;
       measured.contentWidth = displayW;
