@@ -1,19 +1,17 @@
-const path = require('node:path')
-const pkg = require('../package.json')
+/** biome-ignore-all lint/correctness/noGlobalDirnameFilename: CommonJS config — import.meta syntax flips Node module detection and breaks require() */
+const path = require("node:path");
+const pkg = require("../package.json");
 
 module.exports = {
-  project: {
-    ios: {
-      automaticPodsInstallation: true,
-    },
-  },
   dependencies: {
     [pkg.name]: {
-      // biome-ignore lint/correctness/noGlobalDirnameFilename: go away
-      root: path.join(__dirname, '..'),
+      root: path.join(__dirname, ".."),
       platforms: {
+        // Codegen script incorrectly fails without this
+        // So we explicitly specify the platforms with empty object
         ios: {},
+        android: {},
       },
     },
   },
-}
+};

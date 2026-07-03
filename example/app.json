@@ -1,16 +1,31 @@
 {
   "expo": {
-    "name": "Markdown Example",
-    "slug": "markdown-example",
+    "name": "FastMarkdown Example",
+    "slug": "react-native-fast-markdown-example",
     "version": "1.0.0",
-    "scheme": "markdown-example",
-    "newArchEnabled": true,
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
     "ios": {
-      "bundleIdentifier": "com.alizahid.markdown.example",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "fastmarkdown.example"
     },
     "android": {
-      "package": "com.alizahid.markdown.example"
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "fastmarkdown.example"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     }
   }
 }

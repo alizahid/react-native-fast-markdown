@@ -1,41 +1,24 @@
-export type { MarkdownProps } from './Markdown'
-export { Markdown } from './Markdown'
-export type { MarkdownEditorProps } from './MarkdownEditor'
-export { MarkdownEditor } from './MarkdownEditor'
+/** biome-ignore-all lint/performance/noBarrelFile: go away */
+
+export { defaultStyles, mergeStyles } from "./defaultStyles";
+export { FastMarkdownView } from "./FastMarkdownView";
 export type {
-  EditorStyleState,
-  ImagePressEvent,
-  LinkPressEvent,
-  MarkdownBaseStyle,
-  MarkdownBlockquoteStyle,
-  MarkdownBlockViewStyle,
-  MarkdownCodeBlockStyle,
-  MarkdownCodeStyle,
-  MarkdownEditorHandle,
-  MarkdownEmphasisStyle,
-  MarkdownHeadingStyle,
+  FastMarkdownViewProps,
+  FontVariant,
+  FontWeight,
+  MarkdownContainerStyle,
+  MarkdownDividerStyle,
+  MarkdownHeadingLevel,
   MarkdownImageData,
   MarkdownImageStyle,
-  MarkdownInlineTextStyle,
-  MarkdownLinkStyle,
-  MarkdownListBulletStyle,
-  MarkdownListItemStyle,
+  MarkdownInlineCodeStyle,
+  MarkdownLayoutStyle,
+  MarkdownListMarkerStyle,
   MarkdownListStyle,
   MarkdownMentionStyle,
-  MarkdownParagraphStyle,
   MarkdownSpoilerStyle,
-  MarkdownStrikethroughStyle,
-  MarkdownStrongStyle,
-  MarkdownStyle,
-  MarkdownSuperscriptStyle,
-  MarkdownTableCellStyle,
-  MarkdownTableRowStyle,
+  MarkdownStyles,
   MarkdownTableStyle,
-  MarkdownThematicBreakStyle,
-  MentionPressEvent,
-  MentionTrigger,
-  MentionType,
-  OnPasteEvent,
-  PastedImage,
-} from './types'
-export { useMarkdownEditor } from './useMarkdownEditor'
+  MarkdownTextStyle,
+  MarkdownUrlEvent,
+} from "./types";

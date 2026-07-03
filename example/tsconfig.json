@@ -1,10 +1,6 @@
 {
-  "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true,
-    "jsx": "preserve",
-    "paths": {
-      "react-native-fast-markdown": ["../src/index"]
-    }
-  }
+    "strictNullChecks": true
+  },
+  "extends": "../tsconfig"
 }

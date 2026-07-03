@@ -1,18 +1,32 @@
 {
   "compilerOptions": {
-    "paths": {
-      "react-native-fast-markdown": ["./src/index"]
-    },
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "customConditions": [
+      "react-native-fast-markdown-source",
+      "react-native-strict-api"
+    ],
     "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
     "lib": ["ESNext"],
     "module": "ESNext",
-    "moduleResolution": "Bundler",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "paths": {
+      "react-native-fast-markdown": ["./src/index"]
+    },
     "resolveJsonModule": true,
+    "rootDir": ".",
     "skipLibCheck": true,
     "strict": true,
-    "target": "ESNext"
-  },
-  "include": ["src"],
-  "exclude": ["node_modules", "lib", "example"]
+    "target": "ESNext",
+    "types": ["bun"],
+    "verbatimModuleSyntax": true
+  }
 }

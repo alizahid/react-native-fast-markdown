@@ -1,25 +1,32 @@
 {
-  "name": "example",
-  "version": "0.0.1",
-  "private": true,
+  "name": "react-native-fast-markdown-example",
+  "version": "1.0.0",
+  "main": "index.js",
   "scripts": {
-    "postinstall": "rm -rf node_modules/react-native-fast-markdown && ln -s ../.. node_modules/react-native-fast-markdown",
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
     "ios": "expo run:ios",
-    "prebuild": "expo prebuild",
-    "start": "expo start"
+    "web": "expo start --web",
+    "build:ios": "xcodebuild ONLY_ACTIVE_ARCH=YES -workspace ios/FastMarkdownExample.xcworkspace -UseNewBuildSystem=YES -scheme FastMarkdownExample -configuration Debug -sdk iphonesimulator -derivedDataPath ios/build -quiet",
+    "build:android": "cd android && ./gradlew assembleDebug -DtestBuildType=debug -Dorg.gradle.jvmargs=-Xmx4g",
+    "build:web": "expo export --platform web"
   },
   "dependencies": {
-    "@react-navigation/native": "^7.2.2",
-    "@react-navigation/native-stack": "^7.14.11",
-    "expo": "~55.0.15",
-    "react": "19.2.0",
-    "react-native": "0.83.4",
-    "react-native-safe-area-context": "~5.6.2",
-    "react-native-screens": "~4.23.0"
+    "@expo/metro-runtime": "~57.0.2",
+    "@shopify/flash-list": "2.0.2",
+    "expo": "~57.0.1",
+    "expo-status-bar": "~57.0.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.0",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-web": "~0.21.2"
   },
+  "private": true,
   "devDependencies": {
-    "@babel/core": "^7.29.0",
-    "@types/react": "~19.2.14",
-    "typescript": "5"
+    "babel-preset-expo": "^57.0.1",
+    "expo-dev-client": "~57.0.4",
+    "react-native-builder-bob": "^0.43.0",
+    "react-native-monorepo-config": "^0.4.0"
   }
 }

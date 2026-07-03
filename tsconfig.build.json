@@ -1,10 +1,7 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "./tsconfig",
+  "exclude": ["example", "lib", "src/__tests__"],
   "compilerOptions": {
-    "declaration": true,
-    "declarationMap": true,
-    "outDir": "lib/typescript",
-    "sourceMap": true
-  },
-  "include": ["src"]
+    "strictNullChecks": true
+  }
 }

@@ -1,28 +1,20 @@
-const { getDefaultConfig } = require('expo/metro-config')
-const path = require('node:path')
+/** biome-ignore-all lint/correctness/noGlobalDirnameFilename: CommonJS config — import.meta syntax flips Node module detection and breaks require() */
+const path = require("node:path");
+const { getDefaultConfig } = require("expo/metro-config");
+const { withMetroConfig } = require("react-native-monorepo-config");
 
-// biome-ignore lint/correctness/noGlobalDirnameFilename: CJS file
-const projectRoot = __dirname
-const libraryRoot = path.resolve(projectRoot, '..')
+const root = path.resolve(__dirname, "..");
 
-const config = getDefaultConfig(projectRoot)
+/**
+ * Metro configuration
+ * https://facebook.github.io/metro/docs/configuration
+ *
+ * @type {import('metro-config').MetroConfig}
+ */
+const config = withMetroConfig(getDefaultConfig(__dirname), {
+  root,
+  dirname: __dirname,
+  conditions: ["react-native-fast-markdown-source"],
+});
 
-// Watch the library source alongside the example
-config.watchFolders = [libraryRoot]
-
-// Resolve all modules from the example's node_modules first
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, 'node_modules'),
-  path.resolve(libraryRoot, 'node_modules'),
-]
-
-// Block the library root's react/react-native to prevent duplicates
-config.resolver.blockList = [
-  new RegExp(
-    `${path
-      .resolve(libraryRoot, 'node_modules', '(react|react-native)')
-      .replace(/[/\\]/g, '[/\\\\]')}[/\\\\].*`,
-  ),
-]
-
-module.exports = config
+module.exports = config;

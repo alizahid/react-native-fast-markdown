@@ -1,72 +1,80 @@
-import { NavigationContainer } from '@react-navigation/native'
-import { createNativeStackNavigator } from '@react-navigation/native-stack'
-import { BasicRendererScreen } from './examples/BasicRenderer'
-import { CustomComponentsScreen } from './examples/CustomComponents'
-import { EditorScreen } from './examples/Editor'
-import { GFMFeaturesScreen } from './examples/GfmFeatures'
-import { PerformanceScreen } from './examples/Performance'
-import { StylingScreen } from './examples/Styling'
-import { HomeScreen } from './HomeScreen'
+import { useState } from "react";
+import {
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
-// biome-ignore lint/style/useConsistentTypeDefinitions: go away
-export type RootStackParamList = {
-  BasicRenderer: undefined
-  CustomComponents: undefined
-  Editor: undefined
-  GFMFeatures: undefined
-  Home: undefined
-  Performance: undefined
-  Styling: undefined
-}
+import { Feed } from "./screens/Feed";
+import { KitchenSink } from "./screens/KitchenSink";
+import { Playground } from "./screens/Playground";
 
-const Stack = createNativeStackNavigator<RootStackParamList>()
+const TABS = ["Kitchen Sink", "Playground", "Feed"] as const;
 
-export function App() {
+type Tab = (typeof TABS)[number];
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>("Kitchen Sink");
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerBackTitle: 'Back',
-          headerTintColor: '#111',
-          headerTitleStyle: { fontWeight: '600' },
-        }}
-      >
-        <Stack.Screen
-          component={HomeScreen}
-          name="Home"
-          options={{ title: 'Markdown Examples' }}
-        />
-        <Stack.Screen
-          component={BasicRendererScreen}
-          name="BasicRenderer"
-          options={{ title: 'Basic Rendering' }}
-        />
-        <Stack.Screen
-          component={GFMFeaturesScreen}
-          name="GFMFeatures"
-          options={{ title: 'GFM Features' }}
-        />
-        <Stack.Screen
-          component={CustomComponentsScreen}
-          name="CustomComponents"
-          options={{ title: 'Custom Components' }}
-        />
-        <Stack.Screen
-          component={StylingScreen}
-          name="Styling"
-          options={{ title: 'Custom Styling' }}
-        />
-        <Stack.Screen
-          component={EditorScreen}
-          name="Editor"
-          options={{ title: 'Markdown Editor' }}
-        />
-        <Stack.Screen
-          component={PerformanceScreen}
-          name="Performance"
-          options={{ title: 'Performance' }}
-        />
-      </Stack.Navigator>
-    </NavigationContainer>
-  )
+    <GestureHandlerRootView style={sheet.root}>
+      <SafeAreaView style={sheet.container}>
+        <View style={sheet.tabs}>
+          {TABS.map((name) => (
+            <Pressable
+              key={name}
+              onPress={() => setTab(name)}
+              style={[sheet.tab, tab === name && sheet.tabActive]}
+            >
+              <Text style={tab === name ? sheet.tabTextActive : sheet.tabText}>
+                {name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {tab === "Kitchen Sink" && <KitchenSink />}
+        {tab === "Playground" && <Playground />}
+        {tab === "Feed" && <Feed />}
+      </SafeAreaView>
+    </GestureHandlerRootView>
+  );
 }
+
+const sheet = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: "white",
+    paddingTop: Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0,
+  },
+  tabs: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  tab: {
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  tabActive: {
+    backgroundColor: "#111827",
+  },
+  tabText: {
+    color: "#374151",
+    fontSize: 13,
+  },
+  tabTextActive: {
+    color: "white",
+    fontSize: 13,
+  },
+});
