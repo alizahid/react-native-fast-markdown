@@ -7,11 +7,15 @@
 
 #include <react/renderer/core/ConcreteComponentDescriptor.h>
 
+#include "../../../../../FastMarkdownEditorShadowNode.h"
 #include "../../../../../FastMarkdownShadowNode.h"
 
 namespace facebook::react {
 
 using FastMarkdownViewComponentDescriptor =
     ConcreteComponentDescriptor<FastMarkdownShadowNode>;
+
+using FastMarkdownEditorComponentDescriptor =
+    ConcreteComponentDescriptor<FastMarkdownEditorShadowNode>;
 
 } // namespace facebook::react

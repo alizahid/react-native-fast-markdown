@@ -1,12 +1,59 @@
-import { type ColorValue, processColor } from "react-native";
+import {
+  type ColorValue,
+  processColor,
+  type StyleProp,
+  StyleSheet,
+} from "react-native";
 
 import type {
+  MarkdownContainerStyle,
   MarkdownLayoutStyle,
   MarkdownStyles,
   MarkdownTextStyle,
 } from "./types";
 
 type Serialized = Record<string, unknown>;
+
+const MAIN_STYLE_KEYS = [
+  "backgroundColor",
+  "padding",
+  "paddingLeft",
+  "paddingRight",
+  "paddingTop",
+  "paddingBottom",
+  "gap",
+  // Base text styles: cascade into every text element via stylesJson.
+  "fontSize",
+  "fontWeight",
+  "fontFamily",
+  "color",
+  "fontVariant",
+  "textDecorationColor",
+  "textDecorationLine",
+  "textDecorationStyle",
+] as const;
+
+/**
+ * Splits the container `style` prop: content-affecting keys are measured
+ * natively so they travel in stylesJson (`main`); anything else passes
+ * through to the host view.
+ */
+export function splitContainerStyle(style: StyleProp<MarkdownContainerStyle>): {
+  hostStyle: Record<string, unknown>;
+  main: MainStyle;
+} {
+  const flattened = StyleSheet.flatten(style) ?? {};
+  const main: MainStyle = {};
+  const hostStyle: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(flattened)) {
+    if ((MAIN_STYLE_KEYS as readonly string[]).includes(key)) {
+      main[key as keyof MainStyle] = value as never;
+    } else {
+      hostStyle[key] = value;
+    }
+  }
+  return { hostStyle, main };
+}
 
 /**
  * Main container style extracted from the `style` prop; these keys affect

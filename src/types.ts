@@ -237,6 +237,91 @@ export interface MarkdownContainerStyle extends MarkdownTextStyle {
   paddingTop?: number;
 }
 
+/** Formatting active at the cursor / selection. */
+export interface MarkdownEditorState {
+  /** 0 = no heading. */
+  headingLevel: number;
+  isBlockQuote: boolean;
+  isBold: boolean;
+  isCodeBlock: boolean;
+  isInlineCode: boolean;
+  isItalic: boolean;
+  isOrderedList: boolean;
+  isSpoiler: boolean;
+  isStrikethrough: boolean;
+  isSubscript: boolean;
+  isSuperscript: boolean;
+  isUnorderedList: boolean;
+}
+
+export interface MarkdownSelection {
+  end: number;
+  start: number;
+}
+
+export interface MarkdownMentionEvent {
+  trigger: string;
+}
+
+export interface MarkdownMentionQueryEvent {
+  query: string;
+  trigger: string;
+}
+
+/**
+ * Paste payload. `text` is present when the clipboard has text (parsed as
+ * markdown and inserted by default); `images` when it has images (reported
+ * only, never auto-inserted). `preventDefault()` suppresses the default
+ * text insertion.
+ */
+export interface MarkdownPasteEvent {
+  images?: MarkdownImageData[];
+  preventDefault(): void;
+  text?: string;
+}
+
+export interface FastMarkdownEditorRef {
+  blur(): void;
+  focus(): void;
+  /** Resolves the markdown as of the latest edit. */
+  getMarkdown(): Promise<string>;
+  setSelection(start: number, end: number): void;
+  /** Replaces the content; the value is parsed as markdown. */
+  setValue(markdown: string): void;
+}
+
+export interface FastMarkdownEditorProps {
+  autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  autoCorrect?: boolean;
+  autoFocus?: boolean;
+  cursorColor?: ColorValue;
+  /** Initial markdown content, applied once. */
+  defaultValue?: string;
+  editable?: boolean;
+  /** Trigger characters (e.g. '@', '#') that begin a mention. */
+  mentionTriggers?: string[];
+  multiline?: boolean;
+  onBlur?: () => void;
+  onChangeMarkdown?: (markdown: string) => void;
+  onChangeSelection?: (selection: MarkdownSelection) => void;
+  onChangeState?: (state: MarkdownEditorState) => void;
+  onChangeText?: (text: string) => void;
+  onFocus?: () => void;
+  onLinkDetected?: (event: MarkdownUrlEvent) => void;
+  onMentionChange?: (event: MarkdownMentionQueryEvent) => void;
+  onMentionEnd?: (event: MarkdownMentionEvent) => void;
+  onMentionStart?: (event: MarkdownMentionEvent) => void;
+  onPaste?: (event: MarkdownPasteEvent) => void;
+  placeholder?: string;
+  placeholderTextColor?: ColorValue;
+  scrollEnabled?: boolean;
+  selectionColor?: ColorValue;
+  /** Same container style contract as the viewer. */
+  style?: StyleProp<MarkdownContainerStyle>;
+  /** Per-element markdown styles; shared shape with the viewer. */
+  styles?: MarkdownStyles;
+}
+
 export interface FastMarkdownViewProps {
   images?: MarkdownImageData[];
   /** The markdown source to render. */

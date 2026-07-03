@@ -111,6 +111,9 @@
     },
     "ios": {
       "components": {
+        "FastMarkdownEditor": {
+          "className": "FastMarkdownEditor"
+        },
         "FastMarkdownView": {
           "className": "FastMarkdownView"
         }

@@ -3,6 +3,14 @@ import { describe, expect, mock, test } from "bun:test";
 // serializeStyles only uses processColor from react-native; the real module
 // is Flow-typed native source that bun cannot parse.
 mock.module("react-native", () => ({
+  StyleSheet: {
+    flatten: (style: unknown) => {
+      if (Array.isArray(style)) {
+        return Object.assign({}, ...style.filter(Boolean));
+      }
+      return style ?? {};
+    },
+  },
   processColor: (value: unknown): number | null => {
     if (typeof value === "number") {
       return value;
