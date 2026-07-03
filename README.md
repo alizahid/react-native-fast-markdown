@@ -53,7 +53,7 @@ const styles: MarkdownStyles = {
 | `markdown` | `string` | The markdown source. |
 | `style` | `MarkdownContainerStyle` | Main container style: `backgroundColor`, `padding`/`padding{Left,Right,Top,Bottom}`, `gap` (spacing between blocks), plus base text styles (`fontSize`, `fontWeight`, `fontFamily`, `color`, `fontVariant`, `textDecoration*`) that cascade into every text element unless overridden per-element via `styles`. Element builtins survive the cascade: heading sizes/weight stay unless `headings.hN` overrides, and code blocks keep their monospace font unless `codeBlock` overrides. For outer layout (margin, width, flex), wrap the viewer in a `View`. |
 | `styles` | `MarkdownStyles` | Per-element styles (below). Hoist to module scope or memoize. |
-| `images` | `{ url, width, height }[]` | Pre-sizing data. Listed images lay out at their final size immediately — zero layout shift. Unlisted images render a styled 100×100 placeholder, then grow when loaded. |
+| `images` | `{ url, width, height }[]` | Pre-sizing data. Listed images lay out at their final size immediately — zero layout shift. Unlisted images render a styled 100×100 placeholder, then grow when loaded. Loading runs on SDWebImage (iOS) and Glide (Android) — the same cores expo-image uses — with memory + disk caches, request dedupe, and animated GIF playback (plus APNG on iOS). |
 | `onLinkPress` | `({ url }) => void` | Link or mention tapped. Mentions arrive with their scheme (e.g. `users://ali`). |
 | `onLinkLongPress` | `({ url }) => void` | Link long-pressed. |
 | `onImagePress` | `({ url }) => void` | Image tapped. |
@@ -100,7 +100,7 @@ Rendering hundreds of viewers in FlatList / FlashList / LegendList is a first-cl
 
 - Hoist `styles` (and `images` when static) to module scope — every item then shares one parsed native style config.
 - Parse + layout are cached natively and computed on the Fabric layout thread, so scrolling never parses markdown on the main thread.
-- Views reset correctly when recycled, and in-flight image requests are owned by URL, not by views.
+- Views reset correctly when recycled; rebinding a view cancels its previous image request, and caches make re-scroll loads instant.
 - Wrapping items in `Pressable` works: taps on links, mentions, and spoilers are claimed by the markdown view; taps on plain text reach your `Pressable`.
 
 ```tsx

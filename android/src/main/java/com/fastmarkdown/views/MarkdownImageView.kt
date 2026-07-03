@@ -1,30 +1,34 @@
 package com.fastmarkdown.views
 
+import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.Rect
 import android.graphics.RectF
-import android.view.View
-import com.fastmarkdown.image.ImageLoader
+import android.graphics.drawable.Drawable
+import android.widget.ImageView
+import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.Target
 import com.fastmarkdown.render.Block
 
 /**
- * One markdown image: rounded-corner aspect-fit bitmap, background while
- * loading. Requests are URL-owned; this view only listens.
+ * One markdown image, loaded through Glide: animated GIF playback,
+ * downsampling, memory + disk caches, in-flight request sharing, and
+ * cancellation when the view is rebound. Background shows while loading
+ * (and stays for broken URLs); rounded corners clip both.
  */
-class MarkdownImageView(context: Context) : View(context) {
+@SuppressLint("AppCompatCustomView")
+class MarkdownImageView(context: Context) : ImageView(context) {
   private var block: Block.Image? = null
-  private var bitmap: Bitmap? = null
-  private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
   private val clipPath = Path()
 
   var host: MarkdownHost? = null
 
   init {
+    scaleType = ScaleType.FIT_CENTER
     setOnClickListener {
       block?.let { image -> host?.onImagePress(image.url) }
     }
@@ -32,66 +36,55 @@ class MarkdownImageView(context: Context) : View(context) {
 
   fun bind(image: Block.Image) {
     block = image
-    val cached = ImageLoader.cached(image.url)
-    bitmap = cached
-    if (cached != null) {
-      // Report even for cache hits so a fresh view (JS reload, recycling)
-      // still resizes un-presized images.
-      reportIntrinsic(image.url, cached)
-    } else {
-      val boundUrl = image.url
-      ImageLoader.load(context, boundUrl) { loaded ->
-        if (block?.url != boundUrl) {
-          return@load
-        }
-        bitmap = loaded
-        invalidate()
-        if (loaded != null) {
-          reportIntrinsic(boundUrl, loaded)
-        }
-      }
-    }
-    invalidate()
-  }
+    // Application context: requests outlive transient view detaches during
+    // list recycling and are replaced (cancelling the old one) on rebind.
+    Glide.with(context.applicationContext)
+      .load(image.url.ifEmpty { null })
+      .listener(object : RequestListener<Drawable> {
+        override fun onLoadFailed(
+          e: GlideException?,
+          model: Any?,
+          target: Target<Drawable>,
+          isFirstResource: Boolean,
+        ): Boolean = false
 
-  private fun reportIntrinsic(url: String, loaded: android.graphics.Bitmap) {
-    // Image pixels map 1:1 to dp (web semantics): a 600px image is 600dp
-    // wide before clamping to the container.
-    host?.onImageIntrinsicSize(url, loaded.width.toFloat(), loaded.height.toFloat())
+        override fun onResourceReady(
+          resource: Drawable,
+          model: Any,
+          target: Target<Drawable>?,
+          dataSource: DataSource,
+          isFirstResource: Boolean,
+        ): Boolean {
+          if (block?.url == image.url) {
+            // Image pixels map 1:1 to dp (web semantics); reported for
+            // cache hits too so a fresh view still resizes un-presized
+            // images.
+            host?.onImageIntrinsicSize(
+              image.url,
+              resource.intrinsicWidth.toFloat(),
+              resource.intrinsicHeight.toFloat(),
+            )
+          }
+          return false
+        }
+      })
+      .into(this)
+    invalidate()
   }
 
   override fun onDraw(canvas: Canvas) {
     val image = block ?: return
-    val width = width.toFloat()
-    val height = height.toFloat()
-
     if (image.borderRadiusPx > 0) {
       clipPath.reset()
       clipPath.addRoundRect(
-        RectF(0f, 0f, width, height),
+        RectF(0f, 0f, width.toFloat(), height.toFloat()),
         image.borderRadiusPx,
         image.borderRadiusPx,
         Path.Direction.CW,
       )
       canvas.clipPath(clipPath)
     }
-
-    paint.style = Paint.Style.FILL
-    paint.color = image.backgroundColor ?: Color.TRANSPARENT
-    canvas.drawRect(0f, 0f, width, height, paint)
-
-    val loaded = bitmap ?: return
-    // Aspect-fit inside the block frame.
-    val scale = minOf(width / loaded.width, height / loaded.height)
-    val drawW = loaded.width * scale
-    val drawH = loaded.height * scale
-    val left = (width - drawW) / 2f
-    val top = (height - drawH) / 2f
-    canvas.drawBitmap(
-      loaded,
-      Rect(0, 0, loaded.width, loaded.height),
-      RectF(left, top, left + drawW, top + drawH),
-      paint,
-    )
+    image.backgroundColor?.let { canvas.drawColor(it) }
+    super.onDraw(canvas)
   }
 }

@@ -26,5 +26,9 @@ Pod::Spec.new do |s|
     "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
   }
 
+  # Image pipeline (same core expo-image uses): animated GIF/APNG with lazy
+  # frame decoding, memory + disk caches, request dedupe and cancellation.
+  s.dependency "SDWebImage", "~> 5.21"
+
   install_modules_dependencies(s)
 end

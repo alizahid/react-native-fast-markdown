@@ -48,4 +48,8 @@ android {
 
 dependencies {
   implementation "com.facebook.react:react-android"
+  // Image pipeline (same core expo-image uses, same major version to avoid
+  // classpath conflicts): animated GIF, downsampling, memory + disk caches,
+  // request cancellation.
+  implementation "com.github.bumptech.glide:glide:5.0.5"
 }

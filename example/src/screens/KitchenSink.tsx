@@ -59,6 +59,10 @@ Broken URL (placeholder stays):
 
 ![broken](https://example.invalid/nope.png)
 
+Giphy
+
+![](https://media.giphy.com/media/c26ZBTyZaHhhgKyEyD/giphy.gif)
+
 ## Tables
 
 Narrow (stretches to fill):
