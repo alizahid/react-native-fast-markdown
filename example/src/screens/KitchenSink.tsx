@@ -14,6 +14,8 @@ Paragraph with **bold**, _italic_, ~~strikethrough~~, and **bold _italic_ nested
 
 Visit [the docs](https://example.com/docs) or ping [@ali](users://ali) in [#general](channels://general).
 
+Reviewers: [@sam](users://sam) and [@kim](users://kim) — updates land in [#releases](channels://releases), chatter in [#random](channels://random).
+
 ### Code & science
 
 Inline \`const x = 42\` code. Water is H~2~O, area is x^2^ and reddit^style sup with ^(multi word groups) too.

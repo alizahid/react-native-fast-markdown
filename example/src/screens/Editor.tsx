@@ -44,7 +44,7 @@ export function Editor() {
           {mention ? ` · ${mention}` : ""}
         </Text>
         <FastMarkdownEditor
-          mentionTriggers={["@"]}
+          mentionTriggers={["@", "#"]}
           onBlur={() => setStatus("blurred")}
           onChangeMarkdown={(markdown) => setLastMarkdown(markdown)}
           onChangeSelection={(range) =>
@@ -154,6 +154,12 @@ export function Editor() {
         <ToolbarButton
           label="@ali"
           onPress={() => editor.insertMention("@", "ali", "users://ali")}
+        />
+        <ToolbarButton
+          label="#general"
+          onPress={() =>
+            editor.insertMention("#", "general", "channels://general")
+          }
         />
       </ScrollView>
       <ScrollView
