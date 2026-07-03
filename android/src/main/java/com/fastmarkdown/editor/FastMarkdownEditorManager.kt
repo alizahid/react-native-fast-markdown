@@ -60,6 +60,11 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     view?.isEnabled = value
   }
 
+  @ReactProp(name = "maxHeight")
+  override fun setMaxHeight(view: FastMarkdownEditorView?, value: Double) {
+    view?.setMaxContentHeight(value)
+  }
+
   @ReactProp(name = "mentionTriggers")
   override fun setMentionTriggers(view: FastMarkdownEditorView?, value: ReadableArray?) {
     val triggers = ArrayList<String>()

@@ -184,6 +184,9 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   BOOL _defaultValueApplied;
   BOOL _autoFocusHandled;
   BOOL _multiline;
+  BOOL _propScrollEnabled;
+  // Autogrow cap; 0 = unbounded. Past it the text view scrolls internally.
+  CGFloat _maxHeight;
   CGFloat _lastPublishedHeight;
   UIFont *_baseFont;
   UIColor *_baseColor;
@@ -843,8 +846,10 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   }
 
   _textView.editable = newProps.editable;
-  _textView.scrollEnabled = newProps.scrollEnabled;
+  _propScrollEnabled = newProps.scrollEnabled;
+  _maxHeight = newProps.maxHeight;
   _multiline = newProps.multiline;
+  [self publishHeight];
 
   _propAutoCorrect = newProps.autoCorrect;
   switch (newProps.autoCapitalize) {
@@ -949,11 +954,23 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     return;
   }
   const CGSize size = [_textView sizeThatFits:CGSizeMake(width, CGFLOAT_MAX)];
-  if (fabs(size.height - _lastPublishedHeight) < 0.5) {
+  CGFloat height = size.height;
+  BOOL exceedsMax = NO;
+  if (_maxHeight > 0 && height > _maxHeight) {
+    height = _maxHeight;
+    exceedsMax = YES;
+  }
+  // Grow-then-scroll: once content passes maxHeight the text view scrolls
+  // internally like a textarea.
+  const BOOL wantScroll = exceedsMax || _propScrollEnabled;
+  if (_textView.scrollEnabled != wantScroll) {
+    _textView.scrollEnabled = wantScroll;
+  }
+  if (fabs(height - _lastPublishedHeight) < 0.5) {
     return;
   }
-  _lastPublishedHeight = size.height;
-  _state->updateState(FastMarkdownEditorState(size.height));
+  _lastPublishedHeight = height;
+  _state->updateState(FastMarkdownEditorState(height));
 }
 
 #pragma mark - Events

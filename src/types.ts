@@ -232,6 +232,11 @@ export interface MarkdownContainerStyle extends MarkdownTextStyle {
   backgroundColor?: ColorValue;
   /** Vertical spacing between blocks; overrides `styles.gap`. */
   gap?: number;
+  /**
+   * Editor: caps autogrow — past this height the editor scrolls
+   * internally like a textarea. Viewer: plain layout clamp.
+   */
+  maxHeight?: number;
   padding?: number;
   paddingBottom?: number;
   paddingLeft?: number;

@@ -43,6 +43,11 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   private var pendingAutoFocus = false
   private var lastPublishedHeight = 0f
 
+  // Autogrow cap (px); 0 = unbounded. Past it the editor scrolls
+  // internally like a textarea.
+  private var maxHeightPx = 0
+  private var contentExceedsMax = false
+
   // Marks armed for text typed at the collapsed cursor; re-derived from the
   // character before the caret whenever the selection moves outside an edit.
   private var pendingMarks = 0
@@ -1295,6 +1300,8 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     defaultValueApplied = false
     pendingAutoFocus = false
     lastPublishedHeight = 0f
+    maxHeightPx = 0
+    contentExceedsMax = false
     pendingMarks = 0
     pendingArmedAt = -1
     lastStateKey = -1L
@@ -1353,6 +1360,23 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     publishHeight()
   }
 
+  fun setMaxContentHeight(dp: Double) {
+    val px = (dp * density).toInt()
+    if (px != maxHeightPx) {
+      maxHeightPx = px
+      publishHeight()
+    }
+  }
+
+  override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+    // While capped, drags scroll the editor's own content — the parent
+    // scroll view must not steal them.
+    if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN && contentExceedsMax) {
+      parent?.requestDisallowInterceptTouchEvent(true)
+    }
+    return super.onTouchEvent(event)
+  }
+
   private fun publishHeight() {
     val wrapper = stateWrapper ?: return
     val currentWidth = width
@@ -1363,7 +1387,13 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       MeasureSpec.makeMeasureSpec(currentWidth, MeasureSpec.EXACTLY),
       MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED),
     )
-    val heightDp = measuredHeight / density
+    var heightPx = measuredHeight
+    contentExceedsMax = maxHeightPx in 1 until heightPx
+    if (contentExceedsMax) {
+      heightPx = maxHeightPx
+    }
+    isVerticalScrollBarEnabled = contentExceedsMax
+    val heightDp = heightPx / density
     if (kotlin.math.abs(heightDp - lastPublishedHeight) < 0.5f) {
       return
     }

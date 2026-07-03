@@ -20,8 +20,9 @@ const styles = mergeStyles();
 const editorStyle: MarkdownContainerStyle = {
   backgroundColor: "#F9FAFB",
   fontSize: 16,
-  padding: 12,
   lineHeight: 24,
+  maxHeight: 160,
+  padding: 12,
 };
 
 export function Editor() {

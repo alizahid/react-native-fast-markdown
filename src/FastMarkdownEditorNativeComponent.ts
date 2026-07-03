@@ -69,6 +69,8 @@ interface NativeProps extends ViewProps {
   cursorColor?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
   defaultValue?: string;
   editable?: CodegenTypes.WithDefault<boolean, true>;
+  /** Autogrow cap in points; 0 = unbounded. Past it the editor scrolls. */
+  maxHeight?: CodegenTypes.WithDefault<CodegenTypes.Double, 0>;
   mentionTriggers?: readonly string[];
   multiline?: CodegenTypes.WithDefault<boolean, true>;
   onEditorBlur?: CodegenTypes.DirectEventHandler<null>;
