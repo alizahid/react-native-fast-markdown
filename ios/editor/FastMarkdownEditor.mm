@@ -656,6 +656,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   NSString *placeholder = FMDStringFromCpp(newProps.placeholder);
   if (![placeholder isEqualToString:_placeholderLabel.text]) {
     _placeholderLabel.text = placeholder;
+    _textView.accessibilityLabel = placeholder;
     [self setNeedsLayout];
   }
   if (newProps.placeholderTextColor != 0) {

@@ -1030,6 +1030,9 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   fun setPlaceholderText(value: String?) {
     if (placeholderText != value) {
       placeholderText = value
+      // Fabric never renders TextView's own hint (drawn manually in
+      // onDraw), but TalkBack still announces it.
+      hint = value
       invalidate()
     }
   }

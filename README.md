@@ -138,6 +138,53 @@ const renderItem = ({ item }) => (
 );
 ```
 
+## Editor
+
+`FastMarkdownEditor` is a WYSIWYG editor with markdown as the interchange format: no visible syntax while editing, `onChangeMarkdown` fires with serialized markdown on every edit, and `setValue`/`defaultValue`/paste parse markdown into styled content.
+
+```tsx
+import { FastMarkdownEditor, useFastMarkdownEditor } from "react-native-fast-markdown";
+
+function Compose() {
+  const editor = useFastMarkdownEditor();
+
+  return (
+    <>
+      <FastMarkdownEditor
+        mentionTriggers={["@"]}
+        onChangeMarkdown={(markdown) => save(markdown)}
+        onMentionChange={({ query }) => search(query)}
+        placeholder="Write something..."
+        ref={editor.ref}
+      />
+      <Button onPress={editor.toggleBold} title="B" />
+    </>
+  );
+}
+```
+
+### Formatting
+
+Inline marks — bold, italic, strikethrough, inline code, spoiler, superscript, subscript — toggle over the selection, or arm for the text typed next at a collapsed cursor (`toggleBold()`, `toggleItalic()`, `toggleStrikethrough()`, `toggleCode()`, `toggleSpoiler()`, `toggleSuperscript()`, `toggleSubscript()`).
+
+Blocks apply per line: `toggleHeading(1-6)`, `toggleBlockQuote()`, `toggleCodeBlock()`, `toggleUnorderedList()`, `toggleOrderedList()`. Enter continues a list, Enter on an empty item exits it, Enter after a heading returns to paragraph, and backspace at the start of a formatted line clears its block first.
+
+`onChangeState` reports the formatting at the cursor or selection (`isBold`, `headingLevel`, `isUnorderedList`, ...) for toolbar highlighting.
+
+### Links & mentions
+
+`insertLink(url, label?)` links the selection (or inserts a linked label), `removeLink()` strips it. Typing a bare `http(s)://` URL followed by a space emits `onLinkDetected` — call `insertLink` if you want it linkified.
+
+Mentions start when a `mentionTriggers` character is typed at a word start: `onMentionStart` → `onMentionChange` (with the growing query) → `onMentionEnd`. Call `insertMention(trigger, label, url)` — e.g. `("@", "ali", "users://ali")` — to replace the query with an atomic token that deletes as one unit.
+
+### Paste
+
+Paste never inserts directly. `onPaste` receives `{ text?, images?, preventDefault() }` — images are reported (never auto-inserted) with `url`, `width`, `height`. Unless you call `preventDefault()` synchronously, the pasted text is parsed as markdown and inserted styled.
+
+### Everything else
+
+`getMarkdown()` resolves the current markdown; `focus()`, `blur()`, `setSelection(start, end)`, `setValue(markdown)`, and `insertMarkdown(markdown)` do what they say. Hardware keyboards get Cmd+B / Cmd+I (iOS) and Ctrl+B / Ctrl+I (Android). The editor shares the viewer's `style` / `styles` contract — the `base`/`paragraph` cascade drives the root text, `link.color` drives links.
+
 ## Platform notes & limitations
 
 - New Architecture (Fabric) only; React Native 0.86+.
