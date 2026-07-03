@@ -50,7 +50,10 @@
     _textStyles = [NSMutableDictionary new];
 
     NSDictionary *main = [_root[@"main"] isKindOfClass:[NSDictionary class]] ? _root[@"main"] : @{};
-    _gap = [self floatFrom:main key:@"gap" fallback:12];
+    // Container style-prop gap wins; the styles prop (defaultStyles.gap)
+    // supplies the themed value; unstyled floor is 0.
+    _gap = [self floatFrom:main key:@"gap"
+                  fallback:[self floatFrom:_root key:@"gap" fallback:0]];
     _paddingLeft = [self floatFrom:main key:@"paddingLeft" fallback:0];
     _paddingRight = [self floatFrom:main key:@"paddingRight" fallback:0];
     _paddingTop = [self floatFrom:main key:@"paddingTop" fallback:0];

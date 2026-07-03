@@ -13,7 +13,9 @@ class StyleConfig private constructor(private val root: JSONObject) {
   private val main: JSONObject? = root.optJSONObject("main")
   private val textStyles = HashMap<String, TextStyleSpec?>()
 
-  val gap: Float = main.optFloatOr("gap", 12f)
+  // Container style-prop gap wins; the styles prop (defaultStyles.gap)
+  // supplies the themed value; unstyled floor is 0.
+  val gap: Float = main.optFloatOr("gap", root.optFloatOr("gap", 0f))
   val paddingLeft: Float = main.optFloatOr("paddingLeft", 0f)
   val paddingRight: Float = main.optFloatOr("paddingRight", 0f)
   val paddingTop: Float = main.optFloatOr("paddingTop", 0f)

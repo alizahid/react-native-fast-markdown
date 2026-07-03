@@ -133,6 +133,12 @@ describe("serializeStyles", () => {
     });
   });
 
+  test("styles gap serializes top-level, main gap stays in main", () => {
+    const out = parse(serializeStyles({ gap: 12 }, { gap: 8 }));
+    expect(out.gap).toBe(12);
+    expect(out.main.gap).toBe(8);
+  });
+
   test("output is stable for identical input", () => {
     const styles = { paragraph: { fontSize: 15 }, bold: { color: "red" } };
     expect(serializeStyles(styles, { gap: 4 })).toBe(

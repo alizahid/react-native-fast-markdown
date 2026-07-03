@@ -26,6 +26,7 @@ export const defaultStyles: MarkdownStyles = {
     color: "rgba(0, 0, 0, 0.13)",
     height: 1,
   },
+  gap: 12,
   headings: {
     h1: { fontSize: 32, fontWeight: "700" },
     h2: { fontSize: 26, fontWeight: "700" },

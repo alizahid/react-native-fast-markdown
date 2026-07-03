@@ -67,11 +67,13 @@ const THEMES: Record<string, Theme> = {
   },
 };
 
-const GAPS = [6, 12, 20];
+// undefined = no container gap: the styles prop (e.g. defaultStyles.gap)
+// drives spacing, or 0 when unstyled.
+const GAPS = [undefined, 6, 12, 20];
 
 export function Playground() {
   const [theme, setTheme] = useState<keyof typeof THEMES>("Default");
-  const [gapIndex, setGapIndex] = useState(1);
+  const [gapIndex, setGapIndex] = useState(0);
 
   return (
     <View style={sheet.container}>
@@ -93,7 +95,7 @@ export function Playground() {
           onPress={() => setGapIndex((gapIndex + 1) % GAPS.length)}
           style={sheet.chip}
         >
-          <Text style={sheet.chipText}>gap {GAPS[gapIndex]}</Text>
+          <Text style={sheet.chipText}>gap {GAPS[gapIndex] ?? "auto"}</Text>
         </Pressable>
       </View>
       <ScrollView>

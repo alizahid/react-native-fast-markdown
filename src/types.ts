@@ -171,6 +171,8 @@ export interface MarkdownStyles {
   bold?: MarkdownTextStyle;
   codeBlock?: MarkdownTextStyle & MarkdownLayoutStyle;
   divider?: MarkdownDividerStyle;
+  /** Vertical spacing between blocks. The `style` prop's `gap` wins. */
+  gap?: number;
   headings?: Partial<Record<MarkdownHeadingLevel, MarkdownTextStyle>>;
   image?: MarkdownImageStyle;
   inlineCode?: MarkdownInlineCodeStyle;
@@ -226,7 +228,7 @@ export interface MarkdownUrlEvent {
  */
 export interface MarkdownContainerStyle extends MarkdownTextStyle {
   backgroundColor?: ColorValue;
-  /** Vertical spacing between blocks. Default 12. */
+  /** Vertical spacing between blocks; overrides `styles.gap`. */
   gap?: number;
   padding?: number;
   paddingBottom?: number;

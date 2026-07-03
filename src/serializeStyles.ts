@@ -186,6 +186,8 @@ export function serializeStyles(
       }
     }
 
+    put(out, "gap", styles.gap);
+
     if (styles.divider != null) {
       const divider: Serialized = {};
       putColor(divider, "color", styles.divider.color);

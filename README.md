@@ -98,6 +98,7 @@ Two shared shapes compose every element style:
 | `tableRow` | layout | `defaultStyles`: 1pt bottom-border separator. |
 | `tableCell` | text + `padding*` | Header cells are always bold. `defaultStyles`: padding 8. |
 | `divider` | `color`, `height` | Thematic break (`---`). Unstyled: 1pt black. `defaultStyles`: subtle hairline. |
+| `gap` | number | Vertical spacing between blocks. The `style` prop's `gap` wins when both are set. Unstyled: 0. `defaultStyles`: 12. |
 
 ### Tables
 
