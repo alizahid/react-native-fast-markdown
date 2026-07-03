@@ -25,6 +25,13 @@ export function useFastMarkdownEditor() {
       setSelection: (start: number, end: number) =>
         ref.current?.setSelection(start, end),
       setValue: (markdown: string) => ref.current?.setValue(markdown),
+      toggleBold: () => ref.current?.toggleBold(),
+      toggleCode: () => ref.current?.toggleCode(),
+      toggleItalic: () => ref.current?.toggleItalic(),
+      toggleSpoiler: () => ref.current?.toggleSpoiler(),
+      toggleStrikethrough: () => ref.current?.toggleStrikethrough(),
+      toggleSubscript: () => ref.current?.toggleSubscript(),
+      toggleSuperscript: () => ref.current?.toggleSuperscript(),
     }),
     []
   );

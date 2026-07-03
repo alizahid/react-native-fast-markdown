@@ -288,6 +288,17 @@ export interface FastMarkdownEditorRef {
   setSelection(start: number, end: number): void;
   /** Replaces the content; the value is parsed as markdown. */
   setValue(markdown: string): void;
+  /**
+   * Each toggle applies to the selection, or arms/disarms the mark for
+   * text typed at the collapsed cursor.
+   */
+  toggleBold(): void;
+  toggleCode(): void;
+  toggleItalic(): void;
+  toggleSpoiler(): void;
+  toggleStrikethrough(): void;
+  toggleSubscript(): void;
+  toggleSuperscript(): void;
 }
 
 export interface FastMarkdownEditorProps {

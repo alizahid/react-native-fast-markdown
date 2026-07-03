@@ -100,6 +100,41 @@ export function FastMarkdownEditor({
           Commands.setValue(nativeRef.current, markdown);
         }
       },
+      toggleBold: () => {
+        if (nativeRef.current) {
+          Commands.toggleBold(nativeRef.current);
+        }
+      },
+      toggleCode: () => {
+        if (nativeRef.current) {
+          Commands.toggleCode(nativeRef.current);
+        }
+      },
+      toggleItalic: () => {
+        if (nativeRef.current) {
+          Commands.toggleItalic(nativeRef.current);
+        }
+      },
+      toggleSpoiler: () => {
+        if (nativeRef.current) {
+          Commands.toggleSpoiler(nativeRef.current);
+        }
+      },
+      toggleStrikethrough: () => {
+        if (nativeRef.current) {
+          Commands.toggleStrikethrough(nativeRef.current);
+        }
+      },
+      toggleSubscript: () => {
+        if (nativeRef.current) {
+          Commands.toggleSubscript(nativeRef.current);
+        }
+      },
+      toggleSuperscript: () => {
+        if (nativeRef.current) {
+          Commands.toggleSuperscript(nativeRef.current);
+        }
+      },
     }),
     []
   );

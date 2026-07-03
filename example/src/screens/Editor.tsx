@@ -10,6 +10,7 @@ import {
 import {
   FastMarkdownEditor,
   type MarkdownContainerStyle,
+  type MarkdownEditorState,
   mergeStyles,
   useFastMarkdownEditor,
 } from "react-native-fast-markdown";
@@ -27,6 +28,7 @@ export function Editor() {
   const [status, setStatus] = useState("idle");
   const [selection, setSelection] = useState("0:0");
   const [lastMarkdown, setLastMarkdown] = useState("");
+  const [state, setState] = useState<MarkdownEditorState | null>(null);
 
   return (
     <KeyboardAvoidingView
@@ -43,6 +45,7 @@ export function Editor() {
           onChangeSelection={(range) =>
             setSelection(`${range.start}:${range.end}`)
           }
+          onChangeState={setState}
           onFocus={() => setStatus("focused")}
           placeholder="Write something..."
           placeholderTextColor="#9CA3AF"
@@ -53,6 +56,48 @@ export function Editor() {
         <Text style={sheet.output} testID="markdown-output">
           {lastMarkdown || "(empty)"}
         </Text>
+      </ScrollView>
+      <ScrollView
+        contentContainerStyle={sheet.toolbarContent}
+        horizontal
+        keyboardShouldPersistTaps="always"
+        style={sheet.toolbar}
+      >
+        <ToolbarButton
+          active={state?.isBold}
+          label="B"
+          onPress={editor.toggleBold}
+        />
+        <ToolbarButton
+          active={state?.isItalic}
+          label="I"
+          onPress={editor.toggleItalic}
+        />
+        <ToolbarButton
+          active={state?.isStrikethrough}
+          label="S"
+          onPress={editor.toggleStrikethrough}
+        />
+        <ToolbarButton
+          active={state?.isInlineCode}
+          label="Code"
+          onPress={editor.toggleCode}
+        />
+        <ToolbarButton
+          active={state?.isSpoiler}
+          label="Spoiler"
+          onPress={editor.toggleSpoiler}
+        />
+        <ToolbarButton
+          active={state?.isSuperscript}
+          label="Sup"
+          onPress={editor.toggleSuperscript}
+        />
+        <ToolbarButton
+          active={state?.isSubscript}
+          label="Sub"
+          onPress={editor.toggleSubscript}
+        />
       </ScrollView>
       <ScrollView
         contentContainerStyle={sheet.toolbarContent}
@@ -83,15 +128,24 @@ export function Editor() {
 }
 
 function ToolbarButton({
+  active,
   label,
   onPress,
 }: {
+  active?: boolean;
   label: string;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} style={sheet.button}>
-      <Text style={sheet.buttonText}>{label}</Text>
+    <Pressable
+      onPress={onPress}
+      style={[sheet.button, active === true && sheet.buttonActive]}
+    >
+      <Text
+        style={[sheet.buttonText, active === true && sheet.buttonTextActive]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -130,8 +184,14 @@ const sheet = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
+  buttonActive: {
+    backgroundColor: "#111827",
+  },
   buttonText: {
     color: "#111827",
     fontSize: 13,
+  },
+  buttonTextActive: {
+    color: "#F9FAFB",
   },
 });

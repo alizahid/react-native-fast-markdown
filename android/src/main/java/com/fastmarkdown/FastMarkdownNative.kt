@@ -40,11 +40,44 @@ object FastMarkdownNative {
       .toString(Charsets.UTF_8)
   }
 
+  /**
+   * Editor: markdown from text plus inline-mark runs. Runs are flat
+   * `[start, end, flags]` triples in UTF-16 offsets (Spannable indices).
+   */
+  fun markdownFromStyled(text: String, runs: IntArray): String {
+    return markdownFromStyledText(text.toByteArray(Charsets.UTF_8), runs)
+      .toString(Charsets.UTF_8)
+  }
+
+  /**
+   * Editor: markdown parsed into text + inline-mark runs. The native payload
+   * is `[int32 runCount][runCount x (start, end, flags) int32][utf8 text]`,
+   * little-endian.
+   */
+  fun styledFromMarkdown(markdown: String): Pair<String, IntArray> {
+    val bytes = styledTextFromMarkdown(markdown.toByteArray(Charsets.UTF_8))
+    val buffer = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+    val runs = IntArray(buffer.int * 3)
+    for (i in runs.indices) {
+      runs[i] = buffer.int
+    }
+    val text = ByteArray(buffer.remaining())
+    buffer.get(text)
+    return Pair(text.toString(Charsets.UTF_8), runs)
+  }
+
   @JvmStatic private external fun parse(markdown: ByteArray): ByteArray
 
   @JvmStatic private external fun markdownFromPlainText(text: ByteArray): ByteArray
 
   @JvmStatic private external fun plainTextFromMarkdown(markdown: ByteArray): ByteArray
+
+  @JvmStatic private external fun markdownFromStyledText(
+    text: ByteArray,
+    runs: IntArray,
+  ): ByteArray
+
+  @JvmStatic private external fun styledTextFromMarkdown(markdown: ByteArray): ByteArray
 
   @JvmStatic private external fun installMeasurer(measurer: MarkdownMeasurer)
 }

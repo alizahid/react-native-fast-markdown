@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.os.Build
 import android.text.Editable
 import android.text.InputType
+import android.text.Spanned
 import android.text.TextPaint
 import android.text.TextWatcher
 import android.util.TypedValue
@@ -41,6 +42,15 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   private var capitalizeMode = "sentences"
   private var pendingAutoFocus = false
   private var lastPublishedHeight = 0f
+
+  // Marks armed for text typed at the collapsed cursor; re-derived from the
+  // character before the caret whenever the selection moves outside an edit.
+  private var pendingMarks = 0
+  private var lastStateFlags = -1
+  private var editInProgress = false
+  private var suppressWatcher = false
+  private var changeStart = 0
+  private var changeInserted = 0
 
   // Drawn manually: Fabric never drives onMeasure, and TextView's native
   // hint rendering depends on measure-time layout construction.
@@ -76,17 +86,31 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     applyInputType()
 
     addTextChangedListener(object : TextWatcher {
-      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+      override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
+        editInProgress = true
+      }
 
-      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+      override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+        changeStart = start
+        changeInserted = count
+      }
 
       override fun afterTextChanged(s: Editable?) {
-        publishHeight()
-        val content = s?.toString() ?: ""
-        emitEvent("topEditorChangeText") { putString("text", content) }
-        emitEvent("topEditorChangeMarkdown") {
-          putString("markdown", FastMarkdownNative.markdownFromText(content))
+        editInProgress = false
+        if (suppressWatcher) {
+          return
         }
+        if (s != null && changeInserted > 0 && pendingMarks != 0) {
+          for (mark in EditorMarks.ALL) {
+            if (pendingMarks and mark != 0) {
+              applyMark(s, mark, changeStart, changeStart + changeInserted)
+            }
+          }
+        }
+        if (s != null) {
+          refreshDisplaySpans(s)
+        }
+        emitContentChanged()
       }
     })
 
@@ -166,10 +190,225 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     }
   }
 
-  /** Parsed as markdown, flattened to the editor's plain-text model. */
+  /** Parsed as markdown into text + inline-mark spans. */
   fun setMarkdownValue(markdown: String) {
-    setText(FastMarkdownNative.textFromMarkdown(markdown))
+    val (content, runs) = FastMarkdownNative.styledFromMarkdown(markdown)
+    suppressWatcher = true
+    setText(content)
+    suppressWatcher = false
+    val editable = text
+    applyRuns(editable, runs)
+    refreshDisplaySpans(editable)
     setSelection(text.length)
+    emitContentChanged()
+  }
+
+  private fun applyRuns(editable: Editable, runs: IntArray) {
+    var index = 0
+    while (index + 3 <= runs.size) {
+      val start = runs[index].coerceIn(0, editable.length)
+      val end = runs[index + 1].coerceIn(start, editable.length)
+      val flags = runs[index + 2]
+      if (end > start) {
+        for (mark in EditorMarks.ALL) {
+          if (flags and mark != 0) {
+            editable.setSpan(
+              EditorMarkSpan(mark),
+              start,
+              end,
+              Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+          }
+        }
+      }
+      index += 3
+    }
+  }
+
+  /** Toggles a mark over the selection, or arms it for typed text. */
+  fun toggleMark(mark: Int) {
+    val start = selectionStart.coerceAtLeast(0)
+    val end = selectionEnd.coerceAtLeast(start)
+    if (start == end) {
+      pendingMarks = pendingMarks xor mark
+      emitState()
+      return
+    }
+    val editable = text
+    if (commonMarksInRange(editable, start, end) and mark != 0) {
+      removeMark(editable, mark, start, end)
+    } else {
+      applyMark(editable, mark, start, end)
+    }
+    refreshDisplaySpans(editable)
+    setSelection(start, end)
+    emitContentChanged()
+    emitState()
+  }
+
+  /** Adds a mark over [start, end), merging with touching same-mark spans. */
+  private fun applyMark(editable: Editable, mark: Int, start: Int, end: Int) {
+    var newStart = start
+    var newEnd = end
+    for (span in editable.getSpans(start, end, EditorMarkSpan::class.java)) {
+      if (span.mark != mark) {
+        continue
+      }
+      newStart = minOf(newStart, editable.getSpanStart(span))
+      newEnd = maxOf(newEnd, editable.getSpanEnd(span))
+      editable.removeSpan(span)
+    }
+    editable.setSpan(
+      EditorMarkSpan(mark),
+      newStart,
+      newEnd,
+      Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+    )
+  }
+
+  private fun removeMark(editable: Editable, mark: Int, start: Int, end: Int) {
+    for (span in editable.getSpans(start, end, EditorMarkSpan::class.java)) {
+      if (span.mark != mark) {
+        continue
+      }
+      val spanStart = editable.getSpanStart(span)
+      val spanEnd = editable.getSpanEnd(span)
+      editable.removeSpan(span)
+      if (spanStart < start) {
+        editable.setSpan(
+          EditorMarkSpan(mark),
+          spanStart,
+          start,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+      }
+      if (spanEnd > end) {
+        editable.setSpan(
+          EditorMarkSpan(mark),
+          end,
+          spanEnd,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+      }
+    }
+  }
+
+  /** Marks present across the ENTIRE range (the AND). */
+  private fun commonMarksInRange(editable: Editable, start: Int, end: Int): Int {
+    var common = 0
+    for (mark in EditorMarks.ALL) {
+      val intervals = editable.getSpans(start, end, EditorMarkSpan::class.java)
+        .filter { it.mark == mark }
+        .map { editable.getSpanStart(it) to editable.getSpanEnd(it) }
+        .sortedBy { it.first }
+      var covered = start
+      for ((spanStart, spanEnd) in intervals) {
+        if (spanStart > covered) {
+          break
+        }
+        covered = maxOf(covered, spanEnd)
+      }
+      if (covered >= end) {
+        common = common or mark
+      }
+    }
+    return common
+  }
+
+  private fun marksAt(editable: Editable, position: Int): Int {
+    if (position < 0 || position >= editable.length) {
+      return 0
+    }
+    var flags = 0
+    for (span in editable.getSpans(position, position + 1, EditorMarkSpan::class.java)) {
+      if (editable.getSpanStart(span) <= position && editable.getSpanEnd(span) > position) {
+        flags = flags or span.mark
+      }
+    }
+    return flags
+  }
+
+  /**
+   * Rebuilds the visual spans from the data spans: boundary points from all
+   * mark spans partition the text into constant-flag intervals.
+   */
+  private fun refreshDisplaySpans(editable: Editable) {
+    for (span in editable.getSpans(0, editable.length, EditorDisplaySpan::class.java)) {
+      editable.removeSpan(span)
+    }
+    val marks = editable.getSpans(0, editable.length, EditorMarkSpan::class.java)
+    if (marks.isEmpty()) {
+      return
+    }
+    val cuts = sortedSetOf(0, editable.length)
+    for (span in marks) {
+      cuts.add(editable.getSpanStart(span).coerceIn(0, editable.length))
+      cuts.add(editable.getSpanEnd(span).coerceIn(0, editable.length))
+    }
+    val points = cuts.toIntArray()
+    for (i in 0 until points.size - 1) {
+      val start = points[i]
+      val end = points[i + 1]
+      if (end <= start) {
+        continue
+      }
+      var flags = 0
+      for (span in marks) {
+        if (editable.getSpanStart(span) <= start && editable.getSpanEnd(span) >= end) {
+          flags = flags or span.mark
+        }
+      }
+      if (flags != 0) {
+        editable.setSpan(
+          EditorDisplaySpan(flags),
+          start,
+          end,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+      }
+    }
+  }
+
+  private fun serializedMarkdown(): String {
+    val editable = text
+    val spans = editable.getSpans(0, editable.length, EditorMarkSpan::class.java)
+    val runs = IntArray(spans.size * 3)
+    for ((index, span) in spans.withIndex()) {
+      runs[index * 3] = editable.getSpanStart(span)
+      runs[index * 3 + 1] = editable.getSpanEnd(span)
+      runs[index * 3 + 2] = span.mark
+    }
+    return FastMarkdownNative.markdownFromStyled(editable.toString(), runs)
+  }
+
+  private fun emitContentChanged() {
+    publishHeight()
+    emitEvent("topEditorChangeText") { putString("text", text.toString()) }
+    emitEvent("topEditorChangeMarkdown") { putString("markdown", serializedMarkdown()) }
+  }
+
+  private fun emitState() {
+    val start = selectionStart.coerceAtLeast(0)
+    val end = selectionEnd.coerceAtLeast(start)
+    val flags = if (start == end) pendingMarks else commonMarksInRange(text, start, end)
+    if (flags == lastStateFlags) {
+      return
+    }
+    lastStateFlags = flags
+    emitEvent("topEditorChangeState") {
+      putInt("headingLevel", 0)
+      putBoolean("isBlockQuote", false)
+      putBoolean("isBold", flags and EditorMarks.BOLD != 0)
+      putBoolean("isCodeBlock", false)
+      putBoolean("isInlineCode", flags and EditorMarks.INLINE_CODE != 0)
+      putBoolean("isItalic", flags and EditorMarks.ITALIC != 0)
+      putBoolean("isOrderedList", false)
+      putBoolean("isSpoiler", flags and EditorMarks.SPOILER != 0)
+      putBoolean("isStrikethrough", flags and EditorMarks.STRIKETHROUGH != 0)
+      putBoolean("isSubscript", flags and EditorMarks.SUBSCRIPT != 0)
+      putBoolean("isSuperscript", flags and EditorMarks.SUPERSCRIPT != 0)
+      putBoolean("isUnorderedList", false)
+    }
   }
 
   fun setMultiline(value: Boolean) {
@@ -270,6 +509,8 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     defaultValueApplied = false
     pendingAutoFocus = false
     lastPublishedHeight = 0f
+    pendingMarks = 0
+    lastStateFlags = -1
     stateWrapper = null
     applyTextStyles()
   }
@@ -284,6 +525,13 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
 
   override fun onSelectionChanged(selStart: Int, selEnd: Int) {
     super.onSelectionChanged(selStart, selEnd)
+    // Sticky typing state: inherit the marks of the character before the
+    // caret. Skipped mid-edit — afterTextChanged has not applied the pending
+    // marks to the inserted text yet, so reading here would clear them.
+    if (!editInProgress && selStart == selEnd && text != null) {
+      pendingMarks = marksAt(text, selStart - 1)
+    }
+    emitState()
     emitEvent("topEditorChangeSelection") {
       putInt("start", selStart)
       putInt("end", selEnd)

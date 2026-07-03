@@ -111,6 +111,34 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     view?.setMarkdownValue(value ?: "")
   }
 
+  override fun toggleBold(view: FastMarkdownEditorView?) {
+    view?.toggleMark(EditorMarks.BOLD)
+  }
+
+  override fun toggleCode(view: FastMarkdownEditorView?) {
+    view?.toggleMark(EditorMarks.INLINE_CODE)
+  }
+
+  override fun toggleItalic(view: FastMarkdownEditorView?) {
+    view?.toggleMark(EditorMarks.ITALIC)
+  }
+
+  override fun toggleSpoiler(view: FastMarkdownEditorView?) {
+    view?.toggleMark(EditorMarks.SPOILER)
+  }
+
+  override fun toggleStrikethrough(view: FastMarkdownEditorView?) {
+    view?.toggleMark(EditorMarks.STRIKETHROUGH)
+  }
+
+  override fun toggleSubscript(view: FastMarkdownEditorView?) {
+    view?.toggleMark(EditorMarks.SUBSCRIPT)
+  }
+
+  override fun toggleSuperscript(view: FastMarkdownEditorView?) {
+    view?.toggleMark(EditorMarks.SUPERSCRIPT)
+  }
+
   override fun prepareToRecycleView(
     reactContext: ThemedReactContext,
     view: FastMarkdownEditorView,

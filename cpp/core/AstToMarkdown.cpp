@@ -51,15 +51,23 @@ bool needsLineStartEscape(char c) {
 struct InlineWriter {
   std::string out;
   bool atLineStart = true;
+  // True right after a closing star-emphasis delimiter. A star OPEN written
+  // there would merge close+open into one delimiter run and fail to
+  // re-parse; open-open runs like ***(em+strong) are fine.
+  bool tailIsStarClose = false;
 
   void raw(const std::string& value) {
     out += value;
     if (!value.empty()) {
       atLineStart = value.back() == '\n';
+      tailIsStarClose = false;
     }
   }
 
   void text(const std::string& value) {
+    if (!value.empty()) {
+      tailIsStarClose = false;
+    }
     for (size_t i = 0; i < value.size(); i++) {
       const char c = value[i];
       if (c == '\n') {
@@ -147,16 +155,26 @@ void writeInlineNode(InlineWriter& writer, const Node* node) {
     case NodeType::HardBreak:
       writer.raw("\\\n");
       break;
-    case NodeType::Bold:
-      writer.raw("**");
+    case NodeType::Bold: {
+      // Stars by default ('_' cannot open/close emphasis intraword), but
+      // flip to underscores when opening right after a star CLOSE: the
+      // close+open delimiters would merge into one run and fail to
+      // re-parse.
+      const bool star = !writer.tailIsStarClose;
+      writer.raw(star ? "**" : "__");
       writeInlineChildren(writer, node);
-      writer.raw("**");
+      writer.raw(star ? "**" : "__");
+      writer.tailIsStarClose = star;
       break;
-    case NodeType::Italic:
-      writer.raw("_");
+    }
+    case NodeType::Italic: {
+      const bool star = !writer.tailIsStarClose;
+      writer.raw(star ? "*" : "_");
       writeInlineChildren(writer, node);
-      writer.raw("_");
+      writer.raw(star ? "*" : "_");
+      writer.tailIsStarClose = star;
       break;
+    }
     case NodeType::Strikethrough:
       writer.raw("~~");
       writeInlineChildren(writer, node);

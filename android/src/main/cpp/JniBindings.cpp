@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/AstSerializer.h"
+#include "core/EditorRuns.h"
 #include "core/EditorText.h"
 #include "core/Parser.h"
 #include "react/FastMarkdownMeasurer.h"
@@ -84,6 +85,58 @@ Java_com_fastmarkdown_FastMarkdownNative_plainTextFromMarkdown(
     jbyteArray markdown) {
   const std::string result = fastmarkdown::plainTextFromMarkdown(toStdString(env, markdown));
   return toByteArray(env, reinterpret_cast<const uint8_t*>(result.data()), result.size());
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_fastmarkdown_FastMarkdownNative_markdownFromStyledText(
+    JNIEnv* env,
+    jclass,
+    jbyteArray text,
+    jintArray runs) {
+  std::vector<fastmarkdown::StyledRun> styledRuns;
+  if (runs != nullptr) {
+    const jsize length = env->GetArrayLength(runs);
+    std::vector<jint> values(static_cast<size_t>(length));
+    if (length > 0) {
+      env->GetIntArrayRegion(runs, 0, length, values.data());
+    }
+    for (jsize i = 0; i + 2 < length; i += 3) {
+      styledRuns.push_back(
+          {static_cast<uint32_t>(values[i]),
+           static_cast<uint32_t>(values[i + 1]),
+           static_cast<uint32_t>(values[i + 2])});
+    }
+  }
+  const std::string result =
+      fastmarkdown::markdownFromStyledText(toStdString(env, text), styledRuns);
+  return toByteArray(
+      env, reinterpret_cast<const uint8_t*>(result.data()), result.size());
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_fastmarkdown_FastMarkdownNative_styledTextFromMarkdown(
+    JNIEnv* env,
+    jclass,
+    jbyteArray markdown) {
+  const fastmarkdown::StyledText styled =
+      fastmarkdown::styledTextFromMarkdown(toStdString(env, markdown));
+  // [int32 runCount][runCount x (start, end, flags)][utf8 text], little-endian.
+  std::vector<uint8_t> bytes;
+  bytes.reserve(4 + styled.runs.size() * 12 + styled.text.size());
+  const auto push32 = [&bytes](uint32_t value) {
+    bytes.push_back(static_cast<uint8_t>(value & 0xFF));
+    bytes.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
+    bytes.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
+    bytes.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
+  };
+  push32(static_cast<uint32_t>(styled.runs.size()));
+  for (const fastmarkdown::StyledRun& run : styled.runs) {
+    push32(run.start);
+    push32(run.end);
+    push32(run.flags);
+  }
+  bytes.insert(bytes.end(), styled.text.begin(), styled.text.end());
+  return toByteArray(env, bytes.data(), bytes.size());
 }
 
 extern "C" JNIEXPORT void JNICALL

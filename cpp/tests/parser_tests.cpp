@@ -1,11 +1,15 @@
 // Golden tests for the shared markdown core.
 // Build & run: cpp/tests/run_tests.sh
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "../core/AstJson.h"
 #include "../core/AstToMarkdown.h"
+#include "../core/EditorRuns.h"
 #include "../core/EditorText.h"
 #include "../core/Parser.h"
 
@@ -71,6 +75,50 @@ void expectString(
     g_failures++;
     std::printf("FAIL %s\n  expected: %s\n  actual:   %s\n",
                 name, expected.c_str(), actual.c_str());
+  }
+}
+
+// Canonical form: one maximal run per mark bit, so equivalent mark coverage
+// compares equal regardless of how runs were sliced or combined.
+std::string dumpStyled(const fastmarkdown::StyledText& styled) {
+  std::string out = "\"" + styled.text + "\"";
+  for (uint32_t bit = 1; bit <= fastmarkdown::MarkSubscript; bit <<= 1) {
+    std::vector<std::pair<uint32_t, uint32_t>> intervals;
+    for (const auto& run : styled.runs) {
+      if ((run.flags & bit) == 0 || run.start >= run.end) {
+        continue;
+      }
+      intervals.push_back({run.start, run.end});
+    }
+    std::sort(intervals.begin(), intervals.end());
+    for (size_t i = 0; i < intervals.size(); i++) {
+      auto [start, end] = intervals[i];
+      while (i + 1 < intervals.size() && intervals[i + 1].first <= end) {
+        end = std::max(end, intervals[++i].second);
+      }
+      out += " " + std::to_string(start) + ":" + std::to_string(end) + ":" +
+          std::to_string(bit);
+    }
+  }
+  return out;
+}
+
+// The editor round-trip law: text + mark runs must survive serialization to
+// markdown and re-extraction unchanged.
+void expectStyledRoundTrip(
+    const char* name,
+    const std::string& text,
+    const std::vector<fastmarkdown::StyledRun>& runs) {
+  g_total++;
+  const std::string markdown = fastmarkdown::markdownFromStyledText(text, runs);
+  const auto extracted = fastmarkdown::styledTextFromMarkdown(markdown);
+  const std::string expected = dumpStyled({text, runs});
+  const std::string actual = dumpStyled(extracted);
+  if (actual != expected) {
+    g_failures++;
+    std::printf(
+        "FAIL styled %s\n  serialized: %s\n  expected:   %s\n  actual:     %s\n",
+        name, markdown.c_str(), expected.c_str(), actual.c_str());
   }
 }
 
@@ -315,6 +363,88 @@ int main() {
       "editor setValue flattens structure",
       fastmarkdown::plainTextFromMarkdown("# Title\n\nbody with **bold**\n\n- a\n- b"),
       "Title\nbody with bold\na\nb");
+
+  // --- Editor styled runs (E2) ---
+  using fastmarkdown::MarkBold;
+  using fastmarkdown::MarkInlineCode;
+  using fastmarkdown::MarkItalic;
+  using fastmarkdown::MarkSpoiler;
+  using fastmarkdown::MarkStrikethrough;
+  using fastmarkdown::MarkSubscript;
+  using fastmarkdown::MarkSuperscript;
+
+  expectString(
+      "styled bold run",
+      fastmarkdown::markdownFromStyledText("hello world", {{0, 5, MarkBold}}),
+      "**hello** world\n");
+  expectString(
+      "styled code ignores nested marks",
+      fastmarkdown::markdownFromStyledText(
+          "x code y", {{2, 6, MarkInlineCode | MarkBold}}),
+      "x **`code`** y\n");
+  expectString(
+      "styled run clipped at newline",
+      fastmarkdown::markdownFromStyledText("ab\ncd", {{0, 5, MarkBold}}),
+      "**ab**\n\n**cd**\n");
+  expectString(
+      "styled marks escape content",
+      fastmarkdown::markdownFromStyledText("a*b", {{0, 3, MarkBold}}),
+      "**a\\*b**\n");
+
+  expectStyledRoundTrip("styled rt plain", "just text", {});
+  expectStyledRoundTrip("styled rt bold", "hello world", {{0, 5, MarkBold}});
+  expectStyledRoundTrip(
+      "styled rt every mark",
+      "abcdefg",
+      {{0, 1, MarkBold},
+       {1, 2, MarkItalic},
+       {2, 3, MarkStrikethrough},
+       {3, 4, MarkInlineCode},
+       {4, 5, MarkSpoiler},
+       {5, 6, MarkSuperscript},
+       {6, 7, MarkSubscript}});
+  expectStyledRoundTrip(
+      "styled rt overlap", "abc", {{0, 2, MarkBold}, {1, 3, MarkItalic}});
+  expectStyledRoundTrip(
+      "styled rt overlap glued tail",
+      "bcd",
+      {{0, 1, MarkBold}, {0, 2, MarkItalic}});
+  expectStyledRoundTrip(
+      "styled rt partial bold in code",
+      "x bc y",
+      {{2, 4, MarkInlineCode}, {3, 4, MarkBold}});
+  expectStyledRoundTrip(
+      "styled rt nested combo",
+      "bold and italic",
+      {{0, 15, MarkBold}, {9, 15, MarkItalic}});
+  expectStyledRoundTrip(
+      "styled rt multiline",
+      "first line\nsecond line",
+      {{0, 5, MarkBold}, {11, 17, MarkStrikethrough}});
+  expectStyledRoundTrip(
+      "styled rt emoji offsets", "\xF0\x9F\x98\x80 xy", {{3, 5, MarkBold}});
+  expectStyledRoundTrip(
+      "styled rt literal specials", "keep **this** literal", {{5, 13, MarkSpoiler}});
+  expectStyledRoundTrip(
+      "styled rt adjacent same mark merge", "abc", {{0, 2, MarkBold}, {2, 3, MarkBold}});
+
+  expectString(
+      "styled extraction",
+      dumpStyled(fastmarkdown::styledTextFromMarkdown("a **b** `c`")),
+      "\"a b c\" 2:3:1 4:5:8");
+
+  expectString(
+      "styled run trims edge spaces",
+      fastmarkdown::markdownFromStyledText("hi bold", {{2, 7, MarkBold}}),
+      "hi **bold**\n");
+  expectString(
+      "styled whitespace-only run drops",
+      fastmarkdown::markdownFromStyledText("a b", {{1, 2, MarkBold}}),
+      "a b\n");
+  // The pad space survives the code-span round trip (CommonMark strips one
+  // leading/trailing space pair), so the content keeps its edge spaces.
+  expectStyledRoundTrip(
+      "styled code run keeps spaces", "x y z", {{1, 4, MarkInlineCode}});
 
   std::printf("%d/%d passed\n", g_total - g_failures, g_total);
   return g_failures == 0 ? 0 : 1;

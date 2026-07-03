@@ -105,10 +105,29 @@ interface NativeCommands {
     viewRef: React.ElementRef<EditorComponentType>,
     value: string
   ) => void;
+  toggleBold: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleCode: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleItalic: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleSpoiler: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleStrikethrough: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleSubscript: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleSuperscript: (viewRef: React.ElementRef<EditorComponentType>) => void;
 }
 
 export const Commands = codegenNativeCommands<NativeCommands>({
-  supportedCommands: ["blur", "focus", "setSelection", "setValue"],
+  supportedCommands: [
+    "blur",
+    "focus",
+    "setSelection",
+    "setValue",
+    "toggleBold",
+    "toggleCode",
+    "toggleItalic",
+    "toggleSpoiler",
+    "toggleStrikethrough",
+    "toggleSubscript",
+    "toggleSuperscript",
+  ],
 });
 
 export default codegenNativeComponent<NativeProps>("FastMarkdownEditor");
