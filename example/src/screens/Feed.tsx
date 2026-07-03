@@ -11,6 +11,7 @@ import {
   FastMarkdownView,
   type MarkdownContainerStyle,
   type MarkdownStyles,
+  mergeStyles,
 } from "react-native-fast-markdown";
 import {
   Pressable as GHPressable,
@@ -24,7 +25,7 @@ const markdownStyle: MarkdownContainerStyle = {
 
 // Hoisted per the list recipe: one styles object shared by every item so
 // the native style config is parsed exactly once.
-const styles: MarkdownStyles = {
+const styles: MarkdownStyles = mergeStyles({
   paragraph: { fontSize: 15, color: "#1F2937" },
   headings: { h2: { fontSize: 20, color: "#111827" } },
   link: { color: "#2563EB", textDecorationLine: "underline" },
@@ -41,7 +42,7 @@ const styles: MarkdownStyles = {
   codeBlock: { fontSize: 12 },
   blockQuote: { color: "#4B5563" },
   tableCell: { fontSize: 13 },
-};
+});
 
 interface Post {
   id: string;

@@ -49,16 +49,6 @@ class StyleConfig private constructor(private val root: JSONObject) {
     }
   }
 
-  /** Built-in default font size (dp) for heading level 1-6 or body (0). */
-  fun fontSize(headingLevel: Int): Float = when (headingLevel) {
-    1 -> 32f
-    2 -> 26f
-    3 -> 22f
-    4 -> 18f
-    5 -> 16f
-    6 -> 14f
-    else -> 16f
-  }
 
   companion object {
     private val cache = HashMap<String, StyleConfig>()

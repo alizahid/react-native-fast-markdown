@@ -21,12 +21,22 @@ import org.json.JSONObject
  * fully-resolved attributes (mirrors the iOS attribute-stack renderer).
  */
 object SpannableRenderer {
-  private const val DEFAULT_LINK_COLOR = 0xFF007AFF.toInt()
-  private const val DEFAULT_CODE_BACKGROUND = 0x14000000
-  private const val DEFAULT_QUOTE_BORDER = 0x33000000
   private const val DEFAULT_DIVIDER_COLOR = 0x22000000
   private const val DEFAULT_MARKER_WIDTH_DP = 24f
   private const val DEFAULT_SPOILER_COLOR = 0xFF3F3F46.toInt()
+
+  // Unstyled output is fully plain: no backgrounds, borders, or paddings
+  // unless the styles prop (e.g. defaultStyles on the JS side) provides
+  // them.
+  private val PLAIN_LAYOUT = LayoutStyleSpec(
+    backgroundColor = null,
+    paddingLeft = 0f, paddingRight = 0f, paddingTop = 0f, paddingBottom = 0f,
+    borderRadius = 0f,
+    borderLeftColor = null, borderLeftWidth = 0f,
+    borderRightColor = null, borderRightWidth = 0f,
+    borderTopColor = null, borderTopWidth = 0f,
+    borderBottomColor = null, borderBottomWidth = 0f,
+  )
 
   /** Fully-resolved text attributes at one point of the inline walk. */
   private data class ResolvedAttrs(
@@ -142,37 +152,19 @@ object SpannableRenderer {
       }
 
       MdNodeType.BLOCK_QUOTE -> {
-        val defaults = LayoutStyleSpec(
-          backgroundColor = null,
-          paddingLeft = 12f, paddingRight = 0f, paddingTop = 0f, paddingBottom = 0f,
-          borderRadius = 0f,
-          borderLeftColor = DEFAULT_QUOTE_BORDER, borderLeftWidth = 3f,
-          borderRightColor = null, borderRightWidth = 0f,
-          borderTopColor = null, borderTopWidth = 0f,
-          borderBottomColor = null, borderBottomWidth = 0f,
-        )
-        val layout = context.layoutStyle("blockQuote", defaults)
+        val layout = context.layoutStyle("blockQuote", PLAIN_LAYOUT)
         val quoteText = merge(inherited, context.styles.textStyleFor("blockQuote"))
         out.add(Block.Quote(renderBlocks(node.children, context, quoteText), layout))
       }
 
       MdNodeType.CODE_BLOCK -> {
-        val defaults = LayoutStyleSpec(
-          backgroundColor = DEFAULT_CODE_BACKGROUND,
-          paddingLeft = 12f, paddingRight = 12f, paddingTop = 12f, paddingBottom = 12f,
-          borderRadius = 6f,
-          borderLeftColor = null, borderLeftWidth = 0f,
-          borderRightColor = null, borderRightWidth = 0f,
-          borderTopColor = null, borderTopWidth = 0f,
-          borderBottomColor = null, borderBottomWidth = 0f,
-        )
-        val layout = context.layoutStyle("codeBlock", defaults)
-        // Base color cascades into code; the monospace family and size are
-        // element builtins that only styles.codeBlock overrides.
-        var attrs = context.apply(ResolvedAttrs(fontSizePx = 14f), "base").copy(
-          fontSizePx = 14f * context.density * context.fontScale,
-          family = "monospace",
-        )
+        val layout = context.layoutStyle("codeBlock", PLAIN_LAYOUT)
+        // Base cascades into code; the monospace family is semantic and
+        // only styles.codeBlock overrides it.
+        var attrs = context.apply(
+          ResolvedAttrs(fontSizePx = 16f * context.density * context.fontScale),
+          "base",
+        ).copy(family = "monospace")
         attrs = context.apply(attrs, inherited)
         attrs = context.apply(attrs, "codeBlock")
         val text = SpannableStringBuilder()
@@ -184,8 +176,14 @@ object SpannableRenderer {
 
       MdNodeType.TABLE -> out.add(tableBlock(node, context, inherited))
 
-      MdNodeType.THEMATIC_BREAK ->
-        out.add(Block.Divider(DEFAULT_DIVIDER_COLOR, 1f * context.density))
+      MdNodeType.THEMATIC_BREAK -> {
+        val section = context.styles.rawSection("divider")
+        // Hairline fallback: a divider is content, so it stays visible even
+        // fully unstyled.
+        val color = section?.let { TextStyleSpec.from(it)?.color } ?: DEFAULT_DIVIDER_COLOR
+        val height = section?.optDpOr("height", 1f) ?: 1f
+        out.add(Block.Divider(color, height * context.density))
+      }
 
       else -> {
         if (node.children.isNotEmpty()) {
@@ -229,8 +227,7 @@ object SpannableRenderer {
     val density = context.density
     return Block.Image(
       url = node.url,
-      backgroundColor = section?.let { TextStyleSpec.from(it)?.backgroundColor }
-        ?: 0x14000000,
+      backgroundColor = section?.let { TextStyleSpec.from(it)?.backgroundColor },
       borderRadiusPx = (section?.optDpOr("borderRadius", 0f) ?: 0f) * density,
       heightPx = (section?.optDpOr("height", 0f) ?: 0f) * density,
       maxHeightPx = (section?.optDpOr("maxHeight", 0f) ?: 0f) * density,
@@ -251,7 +248,7 @@ object SpannableRenderer {
 
     val itemText = merge(inherited, styles.textStyleFor("listItem"))
 
-    var markerAttrs = ResolvedAttrs(fontSizePx = styles.fontSize(0) * context.density * context.fontScale)
+    var markerAttrs = ResolvedAttrs(fontSizePx = 16f * context.density * context.fontScale)
     markerAttrs = context.apply(markerAttrs, "base")
     markerAttrs = context.apply(markerAttrs, "paragraph")
     markerAttrs = context.apply(markerAttrs, itemText)
@@ -286,23 +283,15 @@ object SpannableRenderer {
     val tableSection = styles.rawSection("table")
     val cellSection = styles.rawSection("tableCell")
 
-    val rowDefaults = LayoutStyleSpec(
-      backgroundColor = null,
-      paddingLeft = 0f, paddingRight = 0f, paddingTop = 0f, paddingBottom = 0f,
-      borderRadius = 0f,
-      borderLeftColor = null, borderLeftWidth = 0f,
-      borderRightColor = null, borderRightWidth = 0f,
-      borderTopColor = null, borderTopWidth = 0f,
-      borderBottomColor = 0x1F000000, borderBottomWidth = 1f,
-    )
+    val rowDefaults = PLAIN_LAYOUT
 
     val cellText = merge(inherited, styles.textStyleFor("tableCell"))
-    var cellAttrs = ResolvedAttrs(fontSizePx = styles.fontSize(0) * density * context.fontScale)
+    var cellAttrs = ResolvedAttrs(fontSizePx = 16f * density * context.fontScale)
     cellAttrs = context.apply(cellAttrs, "base")
     cellAttrs = context.apply(cellAttrs, "paragraph")
     cellAttrs = context.apply(cellAttrs, cellText)
 
-    val cellPadding = cellSection.optPadding(density, defaultAll = 8f)
+    val cellPadding = cellSection.optPadding(density, defaultAll = 0f)
 
     val rows = ArrayList<Block.TableRowData>()
     for (rowNode in node.children) {
@@ -389,18 +378,17 @@ object SpannableRenderer {
   }
 
   private fun baseAttrs(node: MdNode, context: Context, inherited: TextStyleSpec?): ResolvedAttrs {
-    val styles = context.styles
     val scale = context.density * context.fontScale
     var attrs: ResolvedAttrs
+    // Unstyled output is fully plain: heading sizes/weights come from the
+    // hN sections (defaultStyles on the JS side), not builtins.
     if (node.type == MdNodeType.HEADING) {
-      // Base cascades under heading builtins: family/color flow in, the
-      // level's size and bold weight stay unless hN overrides them.
-      attrs = context.apply(ResolvedAttrs(fontSizePx = styles.fontSize(0) * scale), "base")
-        .copy(fontSizePx = styles.fontSize(node.level) * scale, weight = 700)
+      attrs = ResolvedAttrs(fontSizePx = 16f * scale)
+      attrs = context.apply(attrs, "base")
       attrs = context.apply(attrs, inherited)
       attrs = context.apply(attrs, "h${node.level}")
     } else {
-      attrs = ResolvedAttrs(fontSizePx = styles.fontSize(0) * scale)
+      attrs = ResolvedAttrs(fontSizePx = 16f * scale)
       attrs = context.apply(attrs, "base")
       attrs = context.apply(attrs, "paragraph")
       attrs = context.apply(attrs, inherited)
@@ -431,7 +419,7 @@ object SpannableRenderer {
             context,
           )
         MdNodeType.LINK -> {
-          var next = attrs.copy(color = DEFAULT_LINK_COLOR, linkUrl = node.url)
+          var next = attrs.copy(linkUrl = node.url)
           val variant = context.styles.mentionVariants.firstOrNull {
             it.pattern.matcher(node.url).find()
           }
@@ -443,7 +431,7 @@ object SpannableRenderer {
           walk(builder, node, next, context)
         }
         MdNodeType.INLINE_CODE -> {
-          var next = attrs.copy(family = "monospace", backgroundColor = DEFAULT_CODE_BACKGROUND)
+          var next = attrs.copy(family = "monospace")
           next = context.apply(next, "inlineCode")
           appendRun(builder, node.text, next)
         }

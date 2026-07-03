@@ -119,6 +119,11 @@ export interface MarkdownSpoilerStyle {
   borderRadius?: number;
 }
 
+export interface MarkdownDividerStyle {
+  color?: ColorValue;
+  height?: number;
+}
+
 export interface MarkdownListStyle {
   marginLeft?: number;
 }
@@ -165,6 +170,7 @@ export interface MarkdownStyles {
   blockQuote?: MarkdownTextStyle & MarkdownLayoutStyle;
   bold?: MarkdownTextStyle;
   codeBlock?: MarkdownTextStyle & MarkdownLayoutStyle;
+  divider?: MarkdownDividerStyle;
   headings?: Partial<Record<MarkdownHeadingLevel, MarkdownTextStyle>>;
   image?: MarkdownImageStyle;
   inlineCode?: MarkdownInlineCodeStyle;

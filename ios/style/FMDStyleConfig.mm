@@ -105,16 +105,4 @@
   }
 }
 
-- (CGFloat)fontSizeForHeadingLevel:(NSInteger)level {
-  switch (level) {
-    case 1: return 32;
-    case 2: return 26;
-    case 3: return 22;
-    case 4: return 18;
-    case 5: return 16;
-    case 6: return 14;
-    default: return 16;
-  }
-}
-
 @end

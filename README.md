@@ -23,9 +23,16 @@ Requires React Native 0.86+ with the New Architecture (Fabric).
 ## Usage
 
 ```tsx
-import { FastMarkdownView, type MarkdownStyles } from 'react-native-fast-markdown';
+import {
+  FastMarkdownView,
+  mergeStyles,
+  type MarkdownStyles,
+} from 'react-native-fast-markdown';
 
-const styles: MarkdownStyles = {
+// Default look + overrides. Or pass `defaultStyles` as-is, or your own
+// object from scratch — with no `styles` prop the viewer renders fully
+// plain text.
+const styles: MarkdownStyles = mergeStyles({
   paragraph: { fontSize: 16, color: '#1F2937' },
   link: { color: '#2563EB', textDecorationLine: 'underline' },
   mention: {
@@ -36,7 +43,7 @@ const styles: MarkdownStyles = {
     },
   },
   spoiler: { backgroundColor: '#374151', borderRadius: 4 },
-};
+});
 
 <FastMarkdownView
   markdown={'Hello **world**, ping [@ali](users://ali)!'}
@@ -52,13 +59,18 @@ const styles: MarkdownStyles = {
 | --- | --- | --- |
 | `markdown` | `string` | The markdown source. |
 | `style` | `MarkdownContainerStyle` | Main container style: `backgroundColor`, `padding`/`padding{Left,Right,Top,Bottom}`, `gap` (spacing between blocks), plus base text styles (`fontSize`, `fontWeight`, `fontFamily`, `color`, `fontVariant`, `textDecoration*`) that cascade into every text element unless overridden per-element via `styles`. Element builtins survive the cascade: heading sizes/weight stay unless `headings.hN` overrides, and code blocks keep their monospace font unless `codeBlock` overrides. For outer layout (margin, width, flex), wrap the viewer in a `View`. |
-| `styles` | `MarkdownStyles` | Per-element styles (below). Hoist to module scope or memoize. |
+| `styles` | `MarkdownStyles` | Per-element styles (below). Omitted = fully plain output (no colors, boxes, heading sizes — only bold/italic runs, monospace code, list markers, and the spoiler cover). Pass the exported `defaultStyles` for the classic look, or `mergeStyles(overrides)` for defaults + your changes. Hoist to module scope or memoize. |
 | `images` | `{ url, width, height }[]` | Pre-sizing data. Listed images lay out at their final size immediately — zero layout shift. Unlisted images render a styled 100×100 placeholder, then grow when loaded. Loading runs on SDWebImage (iOS) and Glide (Android) — the same cores expo-image uses — with memory + disk caches, request dedupe, and animated GIF playback (plus APNG on iOS). |
 | `onLinkPress` | `({ url }) => void` | Link or mention tapped. Mentions arrive with their scheme (e.g. `users://ali`). |
 | `onLinkLongPress` | `({ url }) => void` | Link long-pressed. |
 | `onImagePress` | `({ url }) => void` | Image tapped. |
 
 ## Styling
+
+The viewer ships **unstyled by default**. Two exports cover the common cases:
+
+- `defaultStyles` — a plain `MarkdownStyles` object with the classic markdown look (heading scale, blue links, code boxes, quote bar, table separators). It's just data: spread it, fork it, or use it as a reference.
+- `mergeStyles(overrides)` — deep-merges your overrides into `defaultStyles` (element sections merge key-by-key, heading levels individually).
 
 Two shared shapes compose every element style:
 
@@ -68,23 +80,24 @@ Two shared shapes compose every element style:
 
 | Key | Accepts | Notes |
 | --- | --- | --- |
-| `headings.h1`–`h6` | text | Defaults: 32/26/22/18/16/14, bold. Do **not** inherit `paragraph`. |
+| `headings.h1`–`h6` | text | Do **not** inherit `paragraph`. `defaultStyles`: 32/26/22/18/16/14, bold. |
 | `paragraph` | text | Base for body text; inline styles cascade on top. |
 | `bold`, `italic`, `strikethrough` | text | |
-| `link` | text | Default: system blue. |
+| `link` | text | `defaultStyles`: system blue. |
 | `mention` | text + `variants` | `variants` maps a regex (tested against the link URL, longest pattern first) to a style. A link matching any variant is a mention. |
-| `inlineCode` | text + `backgroundColor`, `borderRadius`, `padding(Left/Right)` | Default: monospace on 8% black. |
+| `inlineCode` | text + `backgroundColor`, `borderRadius`, `padding(Left/Right)` | Always monospace. `defaultStyles`: 8% black background. |
 | `superscript`, `subscript` | text | Default: 0.7x size with baseline shift. |
 | `spoiler` | `backgroundColor`, `borderRadius`, `borderCurve` | The tap-to-reveal cover — one contiguous polygon even across line wraps. |
-| `codeBlock` | text + layout | Default: monospace 14, 8% black, radius 6, padding 12. Long lines scroll horizontally. |
-| `blockQuote` | text + layout | Text styles cascade into quoted content. Default: 3pt left border. |
+| `codeBlock` | text + layout | Always monospace; long lines scroll horizontally. `defaultStyles`: 14pt, 8% black, radius 6, padding 12. |
+| `blockQuote` | text + layout | Text styles cascade into quoted content. `defaultStyles`: 3pt left border, 12pt left padding. |
 | `list` | `marginLeft` | |
 | `listMarker` | `width`, `marginLeft`, `color` | Fixed-width marker column (default 24). |
 | `listItem` | text | Cascades into item content. |
 | `image` | `borderRadius`, `backgroundColor`, `height`, `maxHeight` | `backgroundColor` shows while loading. |
 | `table` | layout + `minColumnWidth`, `maxColumnWidth` | Column widths clamp to `[44, 320]` by default. |
-| `tableRow` | layout | Default: 1pt bottom-border separator. |
-| `tableCell` | text + `padding*` | Header cells default bold. |
+| `tableRow` | layout | `defaultStyles`: 1pt bottom-border separator. |
+| `tableCell` | text + `padding*` | Header cells are always bold. `defaultStyles`: padding 8. |
+| `divider` | `color`, `height` | Thematic break (`---`). Renders a subtle hairline even unstyled. |
 
 ### Tables
 

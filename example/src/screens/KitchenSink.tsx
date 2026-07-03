@@ -3,6 +3,7 @@ import {
   FastMarkdownView,
   type MarkdownContainerStyle,
   type MarkdownStyles,
+  mergeStyles,
 } from "react-native-fast-markdown";
 
 const MARKDOWN = `# Fast Markdown
@@ -79,7 +80,7 @@ Wide (scrolls horizontally):
 | 1 | [react-native-fast-markdown](https://alizahid.dev) | 0.1.0 | 120,394 | MIT | *@ali* | 2 days ago | A really long descriptive note that pads this cell |
 | 2 | react-native-enriched | 1.0.0 | 88,120 | MIT | **swmansion** | 1 week ago | Another very descriptive note about the package |`;
 
-const styles: MarkdownStyles = {
+const styles: MarkdownStyles = mergeStyles({
   headings: {
     h1: { color: "#111827" },
     h2: { color: "#1D4ED8" },
@@ -108,7 +109,7 @@ const styles: MarkdownStyles = {
   superscript: { color: "#EA580C" },
   subscript: { color: "#0284C7" },
   image: { borderRadius: 12, backgroundColor: "#E5E7EB", maxHeight: 260 },
-};
+});
 
 const images = [
   { url: "https://picsum.photos/id/1015/600/400", width: 300, height: 200 },

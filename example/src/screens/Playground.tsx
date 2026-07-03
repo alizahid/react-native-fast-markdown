@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
+  defaultStyles,
   FastMarkdownView,
   type MarkdownContainerStyle,
   type MarkdownStyles,
+  mergeStyles,
 } from "react-native-fast-markdown";
 
 const MARKDOWN = `# Theme playground
@@ -22,16 +24,18 @@ Lorem ipsum dolor sit amet, >!consectetur adipiscing elit. Mauris eget felis ut 
 interface Theme {
   /** Base text styles: cascade into every text element from the style prop. */
   container?: MarkdownContainerStyle;
-  styles: MarkdownStyles;
+  styles?: MarkdownStyles;
 }
 
 const THEMES: Record<string, Theme> = {
-  Default: { styles: {} },
+  // No styles prop at all: the viewer renders fully plain.
+  None: {},
+  Default: { styles: defaultStyles },
   Serif: {
     // fontFamily/fontSize/color cascade into paragraphs, lists, quotes,
     // and headings — only deviations live in `styles`.
     container: { fontFamily: "Georgia", fontSize: 17, color: "#44403C" },
-    styles: {
+    styles: mergeStyles({
       headings: {
         h1: { color: "#7C2D12" },
       },
@@ -46,11 +50,11 @@ const THEMES: Record<string, Theme> = {
       link: { color: "#C2410C", textDecorationLine: "underline" },
       mention: { color: "#9333EA", fontWeight: "700" },
       spoiler: { backgroundColor: "#7C2D12", borderRadius: 8 },
-    },
+    }),
   },
   Compact: {
     container: { fontSize: 13, color: "#111" },
-    styles: {
+    styles: mergeStyles({
       headings: { h1: { fontSize: 22 } },
       blockQuote: { color: "#666" },
       inlineCode: {
@@ -59,7 +63,7 @@ const THEMES: Record<string, Theme> = {
         color: "#4338CA",
       },
       spoiler: { backgroundColor: "#111827", borderRadius: 2 },
-    },
+    }),
   },
 };
 

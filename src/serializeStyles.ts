@@ -186,6 +186,15 @@ export function serializeStyles(
       }
     }
 
+    if (styles.divider != null) {
+      const divider: Serialized = {};
+      putColor(divider, "color", styles.divider.color);
+      put(divider, "height", styles.divider.height);
+      if (Object.keys(divider).length > 0) {
+        out.divider = divider;
+      }
+    }
+
     put(out, "superscript", serializeText(styles.superscript));
     put(out, "subscript", serializeText(styles.subscript));
     put(out, "bold", serializeText(styles.bold));

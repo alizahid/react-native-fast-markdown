@@ -33,7 +33,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable FMDTextStyle *)textStyleFor:(NSString *)key;
 
 /// Built-in default font size for a heading level 1-6 or body text (0).
-- (CGFloat)fontSizeForHeadingLevel:(NSInteger)level;
 
 @end
 

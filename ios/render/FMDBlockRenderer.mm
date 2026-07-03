@@ -278,10 +278,10 @@ class BlockBuilder {
       case NodeType::BlockQuote: {
         FMDLayoutStyle *defaults = [FMDLayoutStyle
             defaultsWithBackground:nil
-                           padding:UIEdgeInsetsMake(0, 12, 0, 0)
+                           padding:UIEdgeInsetsZero
                       borderRadius:0
-                   borderLeftColor:[UIColor colorWithWhite:0 alpha:0.2]
-                   borderLeftWidth:3];
+                   borderLeftColor:nil
+                   borderLeftWidth:0];
         FMDLayoutStyle *layout =
             [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"blockQuote"] defaults:defaults];
         NSArray<FMDTextStyle *> *quoteInherited =
@@ -296,19 +296,19 @@ class BlockBuilder {
 
       case NodeType::CodeBlock: {
         FMDLayoutStyle *defaults = [FMDLayoutStyle
-            defaultsWithBackground:[UIColor colorWithWhite:0 alpha:0.08]
-                           padding:UIEdgeInsetsMake(12, 12, 12, 12)
-                      borderRadius:6
+            defaultsWithBackground:nil
+                           padding:UIEdgeInsetsZero
+                      borderRadius:0
                    borderLeftColor:nil
                    borderLeftWidth:0];
         FMDLayoutStyle *layout =
             [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"codeBlock"] defaults:defaults];
 
         ResolvedAttrs attrs;
-        // Base color cascades into code; the monospace family and size are
-        // element builtins that only styles.codeBlock overrides.
+        attrs.fontSize = 16 * fontScale_;
+        // Base cascades into code; the monospace family is semantic and
+        // only styles.codeBlock overrides it.
         applyStyle(attrs, [styles_ textStyleFor:@"base"], fontScale_);
-        attrs.fontSize = 14 * fontScale_;
         attrs.family = @"Menlo";
         if (attrs.color == nil) {
           attrs.color = UIColor.blackColor;
@@ -341,10 +341,17 @@ class BlockBuilder {
         break;
 
       case NodeType::ThematicBreak: {
+        NSDictionary *section = [styles_ rawSectionFor:@"divider"];
+        NSNumber *height = [section[@"height"] isKindOfClass:[NSNumber class]]
+            ? section[@"height"]
+            : @1;
         FMDBlock *block = [FMDBlock new];
         block.kind = FMDBlockKindDivider;
-        block.dividerColor = [UIColor colorWithWhite:0 alpha:0.13];
-        block.dividerThickness = 1;
+        // Hairline fallback: a divider is content, so it stays visible even
+        // fully unstyled.
+        block.dividerColor = [FMDTextStyle colorFromJson:section[@"color"]]
+            ?: [UIColor colorWithWhite:0 alpha:0.13];
+        block.dividerThickness = height.doubleValue;
         [out addObject:block];
         break;
       }
@@ -408,9 +415,7 @@ class BlockBuilder {
     FMDBlock *block = [FMDBlock new];
     block.kind = FMDBlockKindImage;
     block.imageUrl = toNSString(node->url);
-    block.imageBackground =
-        [FMDTextStyle colorFromJson:section[@"backgroundColor"]]
-            ?: [UIColor colorWithWhite:0 alpha:0.08];
+    block.imageBackground = [FMDTextStyle colorFromJson:section[@"backgroundColor"]];
     block.imageBorderRadius = number(section, @"borderRadius", 0);
     block.imageHeight = number(section, @"height", 0);
     block.imageMaxHeight = number(section, @"maxHeight", 0);
@@ -437,7 +442,7 @@ class BlockBuilder {
         appendStyle(inherited, [styles_ textStyleFor:@"listItem"]);
 
     ResolvedAttrs markerAttrs;
-    markerAttrs.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
+    markerAttrs.fontSize = 16 * fontScale_;
     markerAttrs.color = UIColor.blackColor;
     applyStyle(markerAttrs, [styles_ textStyleFor:@"base"], fontScale_);
     applyStyle(markerAttrs, [styles_ textStyleFor:@"paragraph"], fontScale_);
@@ -482,16 +487,11 @@ class BlockBuilder {
                   borderRadius:0
                borderLeftColor:nil
                borderLeftWidth:0];
-    // Default row separator via bottom border.
-    FMDLayoutStyle *rowStyle = [FMDLayoutStyle
-        fromJson:[styles_ rawSectionFor:@"tableRow"]
-        defaults:[FMDLayoutStyle fromJson:@{
-          @"borderBottomColor" : @((uint32_t)0x1F000000),
-          @"borderBottomWidth" : @1,
-        } defaults:rowDefaults]];
+    FMDLayoutStyle *rowStyle =
+        [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"tableRow"] defaults:rowDefaults];
 
     ResolvedAttrs cellAttrs;
-    cellAttrs.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
+    cellAttrs.fontSize = 16 * fontScale_;
     cellAttrs.color = UIColor.blackColor;
     applyStyle(cellAttrs, [styles_ textStyleFor:@"base"], fontScale_);
     applyStyle(cellAttrs, [styles_ textStyleFor:@"paragraph"], fontScale_);
@@ -531,10 +531,10 @@ class BlockBuilder {
     block.layoutStyle = [FMDLayoutStyle fromJson:tableSection defaults:nil];
     block.rowStyle = rowStyle;
     block.cellPadding = UIEdgeInsetsMake(
-        number(cellSection, @"paddingTop", 8),
-        number(cellSection, @"paddingLeft", 8),
-        number(cellSection, @"paddingBottom", 8),
-        number(cellSection, @"paddingRight", 8));
+        number(cellSection, @"paddingTop", 0),
+        number(cellSection, @"paddingLeft", 0),
+        number(cellSection, @"paddingBottom", 0),
+        number(cellSection, @"paddingRight", 0));
     block.minColumnWidth = number(tableSection, @"minColumnWidth", 44);
     block.maxColumnWidth = number(tableSection, @"maxColumnWidth", 320);
     return block;
@@ -544,13 +544,12 @@ class BlockBuilder {
     NSMutableAttributedString *output = [NSMutableAttributedString new];
 
     ResolvedAttrs base;
+    base.fontSize = 16 * fontScale_;
     base.color = UIColor.blackColor;
+    // Unstyled output is fully plain: heading sizes/weights come from the
+    // hN sections (defaultStyles on the JS side), not builtins.
     if (node->type == NodeType::Heading) {
-      // Base cascades under heading builtins: family/color flow in, the
-      // level's size and bold weight stay unless hN overrides them.
       applyStyle(base, [styles_ textStyleFor:@"base"], fontScale_);
-      base.fontSize = [styles_ fontSizeForHeadingLevel:node->level] * fontScale_;
-      base.weight = 700;
       for (FMDTextStyle *style in inherited) {
         applyStyle(base, style, fontScale_);
       }
@@ -559,7 +558,6 @@ class BlockBuilder {
           [styles_ textStyleFor:[NSString stringWithFormat:@"h%d", (int)node->level]],
           fontScale_);
     } else {
-      base.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
       applyStyle(base, [styles_ textStyleFor:@"base"], fontScale_);
       applyStyle(base, [styles_ textStyleFor:@"paragraph"], fontScale_);
       for (FMDTextStyle *style in inherited) {
@@ -637,7 +635,6 @@ class BlockBuilder {
         }
         case NodeType::Link: {
           ResolvedAttrs next = attrs;
-          next.color = [UIColor colorWithRed:0 green:0.478 blue:1 alpha:1];
           NSString *url = toNSString(node->url);
           next.linkUrl = url;
           FMDTextStyle *variantStyle = nil;
@@ -663,7 +660,6 @@ class BlockBuilder {
         case NodeType::InlineCode: {
           ResolvedAttrs next = attrs;
           next.family = @"Menlo";
-          next.backgroundColor = [UIColor colorWithWhite:0 alpha:0.08];
           applyStyle(next, [styles_ textStyleFor:@"inlineCode"], fontScale_);
           append(output, toNSString(node->text), next);
           break;
