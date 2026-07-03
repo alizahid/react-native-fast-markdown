@@ -36,14 +36,20 @@ export function FastMarkdownEditor({
         textRef.current = markdown;
         inputRef.current?.setNativeProps({ text: markdown });
       },
-      // Mark toggles are not supported in the web fallback (raw markdown).
+      // Formatting toggles are not supported in the web fallback (raw
+      // markdown).
+      toggleBlockQuote: () => undefined,
       toggleBold: () => undefined,
       toggleCode: () => undefined,
+      toggleCodeBlock: () => undefined,
+      toggleHeading: () => undefined,
       toggleItalic: () => undefined,
+      toggleOrderedList: () => undefined,
       toggleSpoiler: () => undefined,
       toggleStrikethrough: () => undefined,
       toggleSubscript: () => undefined,
       toggleSuperscript: () => undefined,
+      toggleUnorderedList: () => undefined,
     }),
     []
   );

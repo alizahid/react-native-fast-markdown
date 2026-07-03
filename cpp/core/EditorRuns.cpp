@@ -119,8 +119,8 @@ struct Segment {
   uint32_t flags = 0;
 };
 
-// Builds inline nodes for a paragraph's segments. The mark whose run
-// extends over the most upcoming segments wraps them (ties broken by
+// Builds inline nodes for a line's segments. The mark whose run extends
+// over the most upcoming segments wraps them (ties broken by
 // kNestingOrder), which keeps overlapping runs nested instead of producing
 // adjacent close/open delimiter runs that merge when re-parsed. Inline code
 // never wraps other marks (markdown cannot format inside a code span), so
@@ -180,27 +180,33 @@ void buildInlineNodes(
   }
 }
 
-void collectStyledText(
-    const Node* node,
-    StyledText& out,
-    uint32_t activeFlags,
-    bool& atBlockStart);
+struct EditorLineContent {
+  std::vector<Segment> segments;
+  EditorLine block;
 
-void collectStyledChildren(
-    const Node* node,
-    StyledText& out,
-    uint32_t activeFlags,
-    bool& atBlockStart) {
-  for (const Node* child : node->children) {
-    collectStyledText(child, out, activeFlags, atBlockStart);
+  bool empty() const {
+    return segments.empty();
   }
-}
 
-void appendMarkedText(StyledText& out, const std::string& text, uint32_t flags) {
+  std::string rawText() const {
+    std::string out;
+    for (const Segment& segment : segments) {
+      out += segment.text;
+    }
+    return out;
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Markdown extraction (parse -> editor document)
+// ---------------------------------------------------------------------------
+
+void appendMarkedText(EditorDocument& out, const std::string& text, uint32_t flags) {
   if (text.empty()) {
     return;
   }
-  const auto start = static_cast<uint32_t>(utf16Length(out.text.data(), out.text.size()));
+  const auto start =
+      static_cast<uint32_t>(utf16Length(out.text.data(), out.text.size()));
   out.text += text;
   if (flags != 0) {
     const auto end = start + static_cast<uint32_t>(utf16Length(text.data(), text.size()));
@@ -213,74 +219,129 @@ void appendMarkedText(StyledText& out, const std::string& text, uint32_t flags) 
   }
 }
 
-void beginStyledBlock(StyledText& out, bool& atBlockStart) {
-  if (!atBlockStart && !out.text.empty()) {
+struct EditorCollector {
+  EditorDocument& out;
+  bool atBlockStart = true;
+  EditorLine currentLine;
+
+  // Completes the current text line: every '\n' appended to out.text gets a
+  // matching entry in out.lines.
+  void endLine() {
+    out.lines.push_back(currentLine);
     out.text += '\n';
   }
-  atBlockStart = true;
-}
 
-void collectStyledText(
-    const Node* node,
-    StyledText& out,
-    uint32_t activeFlags,
-    bool& atBlockStart) {
-  const uint32_t mark = markForNodeType(node->type);
-  if (mark != 0 && node->type != NodeType::InlineCode) {
-    collectStyledChildren(node, out, activeFlags | mark, atBlockStart);
-    return;
-  }
-  switch (node->type) {
-    case NodeType::Text:
-      appendMarkedText(out, node->text, activeFlags);
-      break;
-    case NodeType::SoftBreak:
-    case NodeType::HardBreak:
-      out.text += '\n';
-      break;
-    case NodeType::InlineCode:
-      appendMarkedText(out, node->text, activeFlags | MarkInlineCode);
-      break;
-    case NodeType::Image:
-      appendMarkedText(out, node->text, activeFlags);
-      break;
-    case NodeType::CodeBlock: {
-      beginStyledBlock(out, atBlockStart);
-      std::string content = node->text;
-      if (!content.empty() && content.back() == '\n') {
-        content.pop_back();
-      }
-      out.text += content;
-      atBlockStart = false;
-      break;
+  void beginBlock(const EditorLine& line) {
+    if (!atBlockStart && !out.text.empty()) {
+      endLine();
     }
-    case NodeType::Paragraph:
-    case NodeType::Heading:
-    case NodeType::ListItem:
-    case NodeType::TableRow:
-      beginStyledBlock(out, atBlockStart);
-      collectStyledChildren(node, out, activeFlags, atBlockStart);
-      atBlockStart = false;
-      break;
-    case NodeType::TableCell:
-      if (!atBlockStart && !out.text.empty() && out.text.back() != '\n') {
-        out.text += ' ';
-      }
-      collectStyledChildren(node, out, activeFlags, atBlockStart);
-      break;
-    case NodeType::ThematicBreak:
-      break;
-    default:
-      collectStyledChildren(node, out, activeFlags, atBlockStart);
-      break;
+    currentLine = line;
+    atBlockStart = true;
   }
-}
+
+  void collectChildren(const Node* node, uint32_t activeFlags, EditorLine context) {
+    for (const Node* child : node->children) {
+      collect(child, activeFlags, context);
+    }
+  }
+
+  void collect(const Node* node, uint32_t activeFlags, EditorLine context) {
+    const uint32_t mark = markForNodeType(node->type);
+    if (mark != 0 && node->type != NodeType::InlineCode) {
+      collectChildren(node, activeFlags | mark, context);
+      return;
+    }
+    switch (node->type) {
+      case NodeType::Text:
+        appendMarkedText(out, node->text, activeFlags);
+        break;
+      case NodeType::SoftBreak:
+      case NodeType::HardBreak:
+        endLine();
+        currentLine = context;
+        break;
+      case NodeType::InlineCode:
+        appendMarkedText(out, node->text, activeFlags | MarkInlineCode);
+        break;
+      case NodeType::Image:
+        appendMarkedText(out, node->text, activeFlags);
+        break;
+      case NodeType::CodeBlock: {
+        beginBlock({EditorBlockType::Code, 0});
+        std::string content = node->text;
+        if (!content.empty() && content.back() == '\n') {
+          content.pop_back();
+        }
+        size_t lineStart = 0;
+        while (true) {
+          const size_t newline = content.find('\n', lineStart);
+          out.text += content.substr(
+              lineStart, newline == std::string::npos ? std::string::npos
+                                                      : newline - lineStart);
+          if (newline == std::string::npos) {
+            break;
+          }
+          endLine();
+          currentLine = {EditorBlockType::Code, 0};
+          lineStart = newline + 1;
+        }
+        atBlockStart = false;
+        break;
+      }
+      case NodeType::Heading:
+        beginBlock({EditorBlockType::Heading, node->level});
+        collectChildren(node, activeFlags, {EditorBlockType::Heading, node->level});
+        atBlockStart = false;
+        break;
+      case NodeType::Paragraph:
+      case NodeType::TableRow:
+        beginBlock(context);
+        collectChildren(node, activeFlags, context);
+        atBlockStart = false;
+        break;
+      case NodeType::BlockQuote:
+        // Innermost block wins: lists inside a quote become list lines.
+        collectChildren(node, activeFlags, {EditorBlockType::Quote, 0});
+        break;
+      case NodeType::List: {
+        const EditorLine itemLine = {
+            node->ordered ? EditorBlockType::Ordered : EditorBlockType::Bullet, 0};
+        for (const Node* item : node->children) {
+          // Tight items hold inline children directly; force a fresh line
+          // for each item, then collect content in item context.
+          beginBlock(itemLine);
+          collectChildren(item, activeFlags, itemLine);
+          atBlockStart = false;
+        }
+        break;
+      }
+      case NodeType::TableCell:
+        if (!atBlockStart && !out.text.empty() && out.text.back() != '\n') {
+          out.text += ' ';
+        }
+        collectChildren(node, activeFlags, context);
+        break;
+      case NodeType::ThematicBreak:
+        break;
+      default:
+        collectChildren(node, activeFlags, context);
+        break;
+    }
+  }
+
+  void finish() {
+    // Line entries exist per newline; the final (unterminated) line gets
+    // its entry here so lines.size() == line count.
+    out.lines.push_back(currentLine);
+  }
+};
 
 } // namespace
 
-std::string markdownFromStyledText(
+std::string markdownFromEditor(
     const std::string& text,
-    const std::vector<StyledRun>& runs) {
+    const std::vector<StyledRun>& runs,
+    const std::vector<EditorLine>& lines) {
   const std::vector<size_t> toByte = utf16ToByteTable(text);
   const auto utf16Size = static_cast<uint32_t>(toByte.size() - 1);
 
@@ -323,19 +384,14 @@ std::string markdownFromStyledText(
     }
   }
 
-  MarkdownDocument document;
-  Node* root = document.arena.alloc(NodeType::Document);
-  document.root = root;
-
-  std::vector<Segment> line;
-  auto flushLine = [&]() {
-    if (!line.empty()) {
-      Node* paragraph = document.arena.alloc(NodeType::Paragraph);
-      root->children.push_back(paragraph);
-      buildInlineNodes(document, paragraph, line, 0, line.size(), 0);
-    }
-    line.clear();
+  // Collect lines (keeping empties so indices align with `lines`).
+  std::vector<EditorLineContent> collected;
+  collected.push_back({});
+  size_t lineIndex = 0;
+  const auto blockForLine = [&](size_t index) -> EditorLine {
+    return index < lines.size() ? lines[index] : EditorLine{};
   };
+  collected.back().block = blockForLine(0);
 
   auto it = cuts.begin();
   uint32_t prev = *it;
@@ -344,7 +400,9 @@ std::string markdownFromStyledText(
     const std::string piece =
         text.substr(toByte[prev], toByte[next] - toByte[prev]);
     if (piece == "\n") {
-      flushLine();
+      lineIndex++;
+      collected.push_back({});
+      collected.back().block = blockForLine(lineIndex);
     } else if (!piece.empty()) {
       uint32_t flags = 0;
       for (const StyledRun& run : trimmed) {
@@ -352,23 +410,131 @@ std::string markdownFromStyledText(
           flags |= run.flags;
         }
       }
-      line.push_back({piece, flags});
+      collected.back().segments.push_back({piece, flags});
     }
     prev = next;
   }
-  flushLine();
+
+  // Group consecutive same-block lines into markdown block nodes.
+  MarkdownDocument document;
+  Node* root = document.arena.alloc(NodeType::Document);
+  document.root = root;
+
+  size_t i = 0;
+  while (i < collected.size()) {
+    const EditorLineContent& line = collected[i];
+    switch (line.block.type) {
+      case EditorBlockType::Heading: {
+        if (!line.empty()) {
+          Node* heading = document.arena.alloc(NodeType::Heading);
+          heading->level = std::clamp<uint8_t>(line.block.level, 1, 6);
+          root->children.push_back(heading);
+          buildInlineNodes(document, heading, line.segments, 0, line.segments.size(), 0);
+        }
+        i++;
+        break;
+      }
+      case EditorBlockType::Quote: {
+        Node* quote = document.arena.alloc(NodeType::BlockQuote);
+        bool any = false;
+        while (i < collected.size() &&
+               collected[i].block.type == EditorBlockType::Quote) {
+          if (!collected[i].empty()) {
+            Node* paragraph = document.arena.alloc(NodeType::Paragraph);
+            quote->children.push_back(paragraph);
+            buildInlineNodes(
+                document, paragraph, collected[i].segments, 0,
+                collected[i].segments.size(), 0);
+            any = true;
+          }
+          i++;
+        }
+        if (any) {
+          root->children.push_back(quote);
+        }
+        break;
+      }
+      case EditorBlockType::Code: {
+        // Raw text; inline marks cannot exist inside a code fence. Empty
+        // interior lines stay; the fence itself provides the boundaries.
+        Node* code = document.arena.alloc(NodeType::CodeBlock);
+        std::string content;
+        bool any = false;
+        while (i < collected.size() &&
+               collected[i].block.type == EditorBlockType::Code) {
+          if (!content.empty() || any) {
+            content += '\n';
+          }
+          content += collected[i].rawText();
+          any = true;
+          i++;
+        }
+        if (any && !content.empty()) {
+          code->text = content + "\n";
+          root->children.push_back(code);
+        }
+        break;
+      }
+      case EditorBlockType::Bullet:
+      case EditorBlockType::Ordered: {
+        const EditorBlockType type = line.block.type;
+        Node* list = document.arena.alloc(NodeType::List);
+        list->ordered = type == EditorBlockType::Ordered;
+        list->startIndex = 1;
+        bool any = false;
+        while (i < collected.size() && collected[i].block.type == type) {
+          if (!collected[i].empty()) {
+            Node* item = document.arena.alloc(NodeType::ListItem);
+            list->children.push_back(item);
+            buildInlineNodes(
+                document, item, collected[i].segments, 0,
+                collected[i].segments.size(), 0);
+            any = true;
+          }
+          i++;
+        }
+        if (any) {
+          root->children.push_back(list);
+        }
+        break;
+      }
+      case EditorBlockType::Paragraph:
+      default: {
+        if (!line.empty()) {
+          Node* paragraph = document.arena.alloc(NodeType::Paragraph);
+          root->children.push_back(paragraph);
+          buildInlineNodes(
+              document, paragraph, line.segments, 0, line.segments.size(), 0);
+        }
+        i++;
+        break;
+      }
+    }
+  }
 
   return astToMarkdown(root);
 }
 
-StyledText styledTextFromMarkdown(const std::string& markdown) {
+EditorDocument editorFromMarkdown(const std::string& markdown) {
   auto document = parseMarkdown(markdown);
-  StyledText out;
-  bool atBlockStart = true;
+  EditorDocument out;
+  EditorCollector collector{out, true, EditorLine{}};
   if (document->root != nullptr) {
-    collectStyledChildren(document->root, out, 0, atBlockStart);
+    collector.collectChildren(document->root, 0, EditorLine{});
   }
+  collector.finish();
   return out;
+}
+
+std::string markdownFromStyledText(
+    const std::string& text,
+    const std::vector<StyledRun>& runs) {
+  return markdownFromEditor(text, runs, {});
+}
+
+StyledText styledTextFromMarkdown(const std::string& markdown) {
+  EditorDocument document = editorFromMarkdown(markdown);
+  return {std::move(document.text), std::move(document.runs)};
 }
 
 } // namespace fastmarkdown

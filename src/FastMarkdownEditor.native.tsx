@@ -100,6 +100,11 @@ export function FastMarkdownEditor({
           Commands.setValue(nativeRef.current, markdown);
         }
       },
+      toggleBlockQuote: () => {
+        if (nativeRef.current) {
+          Commands.toggleBlockQuote(nativeRef.current);
+        }
+      },
       toggleBold: () => {
         if (nativeRef.current) {
           Commands.toggleBold(nativeRef.current);
@@ -110,9 +115,24 @@ export function FastMarkdownEditor({
           Commands.toggleCode(nativeRef.current);
         }
       },
+      toggleCodeBlock: () => {
+        if (nativeRef.current) {
+          Commands.toggleCodeBlock(nativeRef.current);
+        }
+      },
+      toggleHeading: (level: number) => {
+        if (nativeRef.current) {
+          Commands.toggleHeading(nativeRef.current, level);
+        }
+      },
       toggleItalic: () => {
         if (nativeRef.current) {
           Commands.toggleItalic(nativeRef.current);
+        }
+      },
+      toggleOrderedList: () => {
+        if (nativeRef.current) {
+          Commands.toggleOrderedList(nativeRef.current);
         }
       },
       toggleSpoiler: () => {
@@ -133,6 +153,11 @@ export function FastMarkdownEditor({
       toggleSuperscript: () => {
         if (nativeRef.current) {
           Commands.toggleSuperscript(nativeRef.current);
+        }
+      },
+      toggleUnorderedList: () => {
+        if (nativeRef.current) {
+          Commands.toggleUnorderedList(nativeRef.current);
         }
       },
     }),

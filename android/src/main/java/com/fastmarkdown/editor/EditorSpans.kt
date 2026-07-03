@@ -1,7 +1,12 @@
 package com.fastmarkdown.editor
 
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.Typeface
+import android.text.Layout
 import android.text.TextPaint
+import android.text.style.LeadingMarginSpan
+import android.text.style.LineBackgroundSpan
 import android.text.style.MetricAffectingSpan
 
 /** Inline mark bits; mirrors fastmarkdown::EditorMark in cpp/core/EditorRuns.h. */
@@ -19,14 +24,35 @@ object EditorMarks {
   )
 }
 
+/** Per-line block types; mirrors fastmarkdown::EditorBlockType. */
+object EditorBlocks {
+  const val PARAGRAPH = 0
+  const val HEADING = 1
+  const val QUOTE = 2
+  const val CODE = 3
+  const val BULLET = 4
+  const val ORDERED = 5
+
+  fun pack(type: Int, level: Int): Int = (type shl 8) or level
+
+  fun type(packed: Int): Int = packed shr 8
+
+  fun level(packed: Int): Int = packed and 0xFF
+
+  fun isList(packed: Int): Boolean = type(packed) == BULLET || type(packed) == ORDERED
+}
+
+/** Marker for every derived visual span; removed wholesale on rebuild. */
+interface EditorDerivedSpan
+
 /**
  * Data-only source of truth for one inline mark over a range. Visual styling
- * is carried by [EditorDisplaySpan]s rebuilt from these after every change.
+ * is carried by derived spans rebuilt from these after every change.
  */
 class EditorMarkSpan(val mark: Int)
 
 /** Derived visual styling for the combined mark flags of a range. */
-class EditorDisplaySpan(private val flags: Int) : MetricAffectingSpan() {
+class EditorDisplaySpan(private val flags: Int) : MetricAffectingSpan(), EditorDerivedSpan {
   override fun updateMeasureState(paint: TextPaint) {
     apply(paint)
   }
@@ -66,5 +92,116 @@ class EditorDisplaySpan(private val flags: Int) : MetricAffectingSpan() {
         paint.baselineShift += (size * 0.15f).toInt()
       }
     }
+  }
+}
+
+/** Heading lines scale up and embolden. */
+class HeadingDisplaySpan(level: Int) : MetricAffectingSpan(), EditorDerivedSpan {
+  private val scale = when (level) {
+    1 -> 2f
+    2 -> 1.5f
+    3 -> 1.25f
+    4 -> 1.125f
+    5 -> 1f
+    else -> 0.875f
+  }
+
+  override fun updateMeasureState(paint: TextPaint) = apply(paint)
+
+  override fun updateDrawState(paint: TextPaint) = apply(paint)
+
+  private fun apply(paint: TextPaint) {
+    paint.textSize = paint.textSize * scale
+    paint.isFakeBoldText = true
+  }
+}
+
+/** Code lines: monospace glyphs plus a full-width background stripe. */
+class CodeLineDisplaySpan :
+  MetricAffectingSpan(),
+  LineBackgroundSpan,
+  EditorDerivedSpan {
+  override fun updateMeasureState(paint: TextPaint) {
+    paint.typeface = Typeface.MONOSPACE
+  }
+
+  override fun updateDrawState(paint: TextPaint) {
+    paint.typeface = Typeface.MONOSPACE
+  }
+
+  override fun drawBackground(
+    canvas: Canvas,
+    paint: Paint,
+    left: Int,
+    right: Int,
+    top: Int,
+    baseline: Int,
+    bottom: Int,
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    lineNumber: Int,
+  ) {
+    val previous = paint.color
+    paint.color = 0x14808080
+    canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), paint)
+    paint.color = previous
+  }
+}
+
+/** Quote lines: leading margin with a vertical bar. */
+class QuoteDisplaySpan(private val density: Float) : LeadingMarginSpan, EditorDerivedSpan {
+  override fun getLeadingMargin(first: Boolean): Int = (16 * density).toInt()
+
+  override fun drawLeadingMargin(
+    canvas: Canvas,
+    paint: Paint,
+    x: Int,
+    dir: Int,
+    top: Int,
+    baseline: Int,
+    bottom: Int,
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    first: Boolean,
+    layout: Layout,
+  ) {
+    val previous = paint.color
+    val width = 3 * density
+    paint.color = (paint.color and 0x00FFFFFF) or -0x67000000
+    val barLeft = x + dir * 4 * density
+    canvas.drawRect(barLeft, top.toFloat(), barLeft + dir * width, bottom.toFloat(), paint)
+    paint.color = previous
+  }
+}
+
+/** List lines: leading margin drawing the bullet or the item number. */
+class ListMarkerDisplaySpan(
+  private val marker: String,
+  private val density: Float,
+) : LeadingMarginSpan, EditorDerivedSpan {
+  override fun getLeadingMargin(first: Boolean): Int = (28 * density).toInt()
+
+  override fun drawLeadingMargin(
+    canvas: Canvas,
+    paint: Paint,
+    x: Int,
+    dir: Int,
+    top: Int,
+    baseline: Int,
+    bottom: Int,
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    first: Boolean,
+    layout: Layout,
+  ) {
+    if (!first) {
+      return
+    }
+    val width = paint.measureText(marker)
+    val position = x + dir * ((24 * density) - width - (6 * density))
+    canvas.drawText(marker, position, baseline.toFloat(), paint)
   }
 }

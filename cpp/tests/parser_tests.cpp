@@ -103,6 +103,38 @@ std::string dumpStyled(const fastmarkdown::StyledText& styled) {
   return out;
 }
 
+std::string dumpEditor(const fastmarkdown::EditorDocument& document) {
+  std::string out = dumpStyled({document.text, document.runs});
+  out += " |";
+  for (const auto& line : document.lines) {
+    out += " " + std::to_string(static_cast<int>(line.type));
+    if (line.level != 0) {
+      out += "." + std::to_string(line.level);
+    }
+  }
+  return out;
+}
+
+// The editor round-trip law with blocks: text + runs + line blocks must
+// survive serialization to markdown and re-extraction unchanged.
+void expectEditorRoundTrip(
+    const char* name,
+    const std::string& text,
+    const std::vector<fastmarkdown::StyledRun>& runs,
+    const std::vector<fastmarkdown::EditorLine>& lines) {
+  g_total++;
+  const std::string markdown = fastmarkdown::markdownFromEditor(text, runs, lines);
+  const auto extracted = fastmarkdown::editorFromMarkdown(markdown);
+  const std::string expected = dumpEditor({text, runs, lines});
+  const std::string actual = dumpEditor(extracted);
+  if (actual != expected) {
+    g_failures++;
+    std::printf(
+        "FAIL editor %s\n  serialized: %s\n  expected:   %s\n  actual:     %s\n",
+        name, markdown.c_str(), expected.c_str(), actual.c_str());
+  }
+}
+
 // The editor round-trip law: text + mark runs must survive serialization to
 // markdown and re-extraction unchanged.
 void expectStyledRoundTrip(
@@ -445,6 +477,72 @@ int main() {
   // leading/trailing space pair), so the content keeps its edge spaces.
   expectStyledRoundTrip(
       "styled code run keeps spaces", "x y z", {{1, 4, MarkInlineCode}});
+
+  // --- Editor line blocks (E3) ---
+  using fastmarkdown::EditorBlockType;
+  using fastmarkdown::EditorLine;
+  const EditorLine P = {EditorBlockType::Paragraph, 0};
+  const EditorLine Q = {EditorBlockType::Quote, 0};
+  const EditorLine C = {EditorBlockType::Code, 0};
+  const EditorLine UL = {EditorBlockType::Bullet, 0};
+  const EditorLine OL = {EditorBlockType::Ordered, 0};
+
+  expectString(
+      "editor heading line",
+      fastmarkdown::markdownFromEditor(
+          "Title\nbody", {}, {{EditorBlockType::Heading, 2}, P}),
+      "## Title\n\nbody\n");
+  expectString(
+      "editor quote lines merge",
+      fastmarkdown::markdownFromEditor("a\nb", {}, {Q, Q}),
+      "> a\n>\n> b\n");
+  expectString(
+      "editor code lines merge raw",
+      fastmarkdown::markdownFromEditor(
+          "x = 1\ny *= 2", {{0, 5, MarkBold}}, {C, C}),
+      "```\nx = 1\ny *= 2\n```\n");
+  expectString(
+      "editor bullet list",
+      fastmarkdown::markdownFromEditor("a\nb", {}, {UL, UL}),
+      "- a\n- b\n");
+  expectString(
+      "editor ordered list",
+      fastmarkdown::markdownFromEditor("a\nb", {}, {OL, OL}),
+      "1. a\n2. b\n");
+  expectString(
+      "editor mixed blocks",
+      fastmarkdown::markdownFromEditor(
+          "Title\nintro\nitem", {{0, 5, MarkBold}},
+          {{EditorBlockType::Heading, 1}, P, UL}),
+      "# **Title**\n\nintro\n\n- item\n");
+
+  expectEditorRoundTrip("editor rt paragraphs", "one\ntwo", {}, {P, P});
+  expectEditorRoundTrip(
+      "editor rt heading levels",
+      "h1\nh6",
+      {},
+      {{EditorBlockType::Heading, 1}, {EditorBlockType::Heading, 6}});
+  expectEditorRoundTrip("editor rt quote", "quoted\nlines", {}, {Q, Q});
+  expectEditorRoundTrip(
+      "editor rt code block", "const x = 1;\nreturn x;", {}, {C, C});
+  expectEditorRoundTrip("editor rt bullets", "a\nb\nc", {}, {UL, UL, UL});
+  expectEditorRoundTrip("editor rt ordered", "a\nb", {}, {OL, OL});
+  expectEditorRoundTrip(
+      "editor rt marked list items",
+      "bold item\nplain",
+      {{0, 4, MarkBold}},
+      {UL, UL});
+  expectEditorRoundTrip(
+      "editor rt block transitions",
+      "head\npara\nquote\ncode\nitem one\nitem two\ntail",
+      {},
+      {{EditorBlockType::Heading, 3}, P, Q, C, UL, UL, P});
+
+  expectString(
+      "editor extraction with blocks",
+      dumpEditor(fastmarkdown::editorFromMarkdown(
+          "# Title\n\n- a\n- **b**\n\n> q\n\n```\nx\n```")),
+      "\"Title\na\nb\nq\nx\" 8:9:1 | 1.1 4 4 2 3");
 
   std::printf("%d/%d passed\n", g_total - g_failures, g_total);
   return g_failures == 0 ? 0 : 1;

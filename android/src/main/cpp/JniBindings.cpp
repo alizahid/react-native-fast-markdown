@@ -88,11 +88,12 @@ Java_com_fastmarkdown_FastMarkdownNative_plainTextFromMarkdown(
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_fastmarkdown_FastMarkdownNative_markdownFromStyledText(
+Java_com_fastmarkdown_FastMarkdownNative_markdownFromEditorContent(
     JNIEnv* env,
     jclass,
     jbyteArray text,
-    jintArray runs) {
+    jintArray runs,
+    jintArray lineBlocks) {
   std::vector<fastmarkdown::StyledRun> styledRuns;
   if (runs != nullptr) {
     const jsize length = env->GetArrayLength(runs);
@@ -107,35 +108,56 @@ Java_com_fastmarkdown_FastMarkdownNative_markdownFromStyledText(
            static_cast<uint32_t>(values[i + 2])});
     }
   }
-  const std::string result =
-      fastmarkdown::markdownFromStyledText(toStdString(env, text), styledRuns);
+  std::vector<fastmarkdown::EditorLine> lines;
+  if (lineBlocks != nullptr) {
+    const jsize length = env->GetArrayLength(lineBlocks);
+    std::vector<jint> values(static_cast<size_t>(length));
+    if (length > 0) {
+      env->GetIntArrayRegion(lineBlocks, 0, length, values.data());
+    }
+    for (jsize i = 0; i + 1 < length; i += 2) {
+      lines.push_back(
+          {static_cast<fastmarkdown::EditorBlockType>(values[i]),
+           static_cast<uint8_t>(values[i + 1])});
+    }
+  }
+  const std::string result = fastmarkdown::markdownFromEditor(
+      toStdString(env, text), styledRuns, lines);
   return toByteArray(
       env, reinterpret_cast<const uint8_t*>(result.data()), result.size());
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_fastmarkdown_FastMarkdownNative_styledTextFromMarkdown(
+Java_com_fastmarkdown_FastMarkdownNative_editorFromMarkdownContent(
     JNIEnv* env,
     jclass,
     jbyteArray markdown) {
-  const fastmarkdown::StyledText styled =
-      fastmarkdown::styledTextFromMarkdown(toStdString(env, markdown));
-  // [int32 runCount][runCount x (start, end, flags)][utf8 text], little-endian.
+  const fastmarkdown::EditorDocument document =
+      fastmarkdown::editorFromMarkdown(toStdString(env, markdown));
+  // [int32 runCount][runCount x (start, end, flags)][int32 lineCount]
+  // [lineCount x (type, level)][utf8 text], little-endian.
   std::vector<uint8_t> bytes;
-  bytes.reserve(4 + styled.runs.size() * 12 + styled.text.size());
+  bytes.reserve(
+      8 + document.runs.size() * 12 + document.lines.size() * 8 +
+      document.text.size());
   const auto push32 = [&bytes](uint32_t value) {
     bytes.push_back(static_cast<uint8_t>(value & 0xFF));
     bytes.push_back(static_cast<uint8_t>((value >> 8) & 0xFF));
     bytes.push_back(static_cast<uint8_t>((value >> 16) & 0xFF));
     bytes.push_back(static_cast<uint8_t>((value >> 24) & 0xFF));
   };
-  push32(static_cast<uint32_t>(styled.runs.size()));
-  for (const fastmarkdown::StyledRun& run : styled.runs) {
+  push32(static_cast<uint32_t>(document.runs.size()));
+  for (const fastmarkdown::StyledRun& run : document.runs) {
     push32(run.start);
     push32(run.end);
     push32(run.flags);
   }
-  bytes.insert(bytes.end(), styled.text.begin(), styled.text.end());
+  push32(static_cast<uint32_t>(document.lines.size()));
+  for (const fastmarkdown::EditorLine& line : document.lines) {
+    push32(static_cast<uint32_t>(line.type));
+    push32(line.level);
+  }
+  bytes.insert(bytes.end(), document.text.begin(), document.text.end());
   return toByteArray(env, bytes.data(), bytes.size());
 }
 

@@ -288,17 +288,24 @@ export interface FastMarkdownEditorRef {
   setSelection(start: number, end: number): void;
   /** Replaces the content; the value is parsed as markdown. */
   setValue(markdown: string): void;
+  /** Block toggles apply to every line the selection touches. */
+  toggleBlockQuote(): void;
   /**
-   * Each toggle applies to the selection, or arms/disarms the mark for
-   * text typed at the collapsed cursor.
+   * Each inline toggle applies to the selection, or arms/disarms the mark
+   * for text typed at the collapsed cursor.
    */
   toggleBold(): void;
   toggleCode(): void;
+  toggleCodeBlock(): void;
+  /** Toggles the heading level (1-6) on the selected lines. */
+  toggleHeading(level: number): void;
   toggleItalic(): void;
+  toggleOrderedList(): void;
   toggleSpoiler(): void;
   toggleStrikethrough(): void;
   toggleSubscript(): void;
   toggleSuperscript(): void;
+  toggleUnorderedList(): void;
 }
 
 export interface FastMarkdownEditorProps {

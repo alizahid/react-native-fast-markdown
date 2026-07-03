@@ -105,6 +105,43 @@ export function Editor() {
         keyboardShouldPersistTaps="always"
         style={sheet.toolbar}
       >
+        <ToolbarButton
+          active={state?.headingLevel === 1}
+          label="H1"
+          onPress={() => editor.toggleHeading(1)}
+        />
+        <ToolbarButton
+          active={state?.headingLevel === 2}
+          label="H2"
+          onPress={() => editor.toggleHeading(2)}
+        />
+        <ToolbarButton
+          active={state?.isBlockQuote}
+          label="Quote"
+          onPress={editor.toggleBlockQuote}
+        />
+        <ToolbarButton
+          active={state?.isCodeBlock}
+          label="Code blk"
+          onPress={editor.toggleCodeBlock}
+        />
+        <ToolbarButton
+          active={state?.isUnorderedList}
+          label="• List"
+          onPress={editor.toggleUnorderedList}
+        />
+        <ToolbarButton
+          active={state?.isOrderedList}
+          label="1. List"
+          onPress={editor.toggleOrderedList}
+        />
+      </ScrollView>
+      <ScrollView
+        contentContainerStyle={sheet.toolbarContent}
+        horizontal
+        keyboardShouldPersistTaps="always"
+        style={sheet.toolbar}
+      >
         <ToolbarButton label="Focus" onPress={editor.focus} />
         <ToolbarButton label="Blur" onPress={editor.blur} />
         <ToolbarButton

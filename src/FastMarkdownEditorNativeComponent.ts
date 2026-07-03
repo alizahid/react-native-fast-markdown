@@ -105,13 +105,21 @@ interface NativeCommands {
     viewRef: React.ElementRef<EditorComponentType>,
     value: string
   ) => void;
+  toggleBlockQuote: (viewRef: React.ElementRef<EditorComponentType>) => void;
   toggleBold: (viewRef: React.ElementRef<EditorComponentType>) => void;
   toggleCode: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleCodeBlock: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleHeading: (
+    viewRef: React.ElementRef<EditorComponentType>,
+    level: CodegenTypes.Int32
+  ) => void;
   toggleItalic: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleOrderedList: (viewRef: React.ElementRef<EditorComponentType>) => void;
   toggleSpoiler: (viewRef: React.ElementRef<EditorComponentType>) => void;
   toggleStrikethrough: (viewRef: React.ElementRef<EditorComponentType>) => void;
   toggleSubscript: (viewRef: React.ElementRef<EditorComponentType>) => void;
   toggleSuperscript: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  toggleUnorderedList: (viewRef: React.ElementRef<EditorComponentType>) => void;
 }
 
 export const Commands = codegenNativeCommands<NativeCommands>({
@@ -120,13 +128,18 @@ export const Commands = codegenNativeCommands<NativeCommands>({
     "focus",
     "setSelection",
     "setValue",
+    "toggleBlockQuote",
     "toggleBold",
     "toggleCode",
+    "toggleCodeBlock",
+    "toggleHeading",
     "toggleItalic",
+    "toggleOrderedList",
     "toggleSpoiler",
     "toggleStrikethrough",
     "toggleSubscript",
     "toggleSuperscript",
+    "toggleUnorderedList",
   ],
 });
 

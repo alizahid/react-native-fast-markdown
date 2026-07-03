@@ -25,6 +25,10 @@ using FMDEditorComponentDescriptor =
 // backgrounds) are always derived from it.
 static NSAttributedStringKey const FMDEditorMarksAttribute = @"FMDEditorMarks";
 
+// Source of truth for the line's block type: (EditorBlockType << 8) | level,
+// stored on every character of the line (and carried by the newline).
+static NSAttributedStringKey const FMDEditorBlockAttribute = @"FMDEditorBlock";
+
 static NSString *FMDStringFromCpp(const std::string &value) {
   return [[NSString alloc] initWithBytes:value.data()
                                   length:value.size()
@@ -36,12 +40,53 @@ static uint32_t FMDFlagsFromValue(id value) {
   return value == nil ? 0 : [(NSNumber *)value unsignedIntValue];
 }
 
+static uint32_t FMDPackBlock(fastmarkdown::EditorBlockType type, uint8_t level) {
+  return (static_cast<uint32_t>(type) << 8) | level;
+}
+
+static fastmarkdown::EditorBlockType FMDBlockType(uint32_t packed) {
+  return static_cast<fastmarkdown::EditorBlockType>(packed >> 8);
+}
+
+static BOOL FMDBlockIsList(uint32_t packed) {
+  const auto type = FMDBlockType(packed);
+  return type == fastmarkdown::EditorBlockType::Bullet ||
+      type == fastmarkdown::EditorBlockType::Ordered;
+}
+
+@class FastMarkdownEditor;
+
+// Draws list markers and quote bars in the gutter created by the line
+// blocks' paragraph indents. Sits above the text view; never interactive.
+@interface FMDEditorMarkerView : UIView
+@property (nonatomic, weak) FastMarkdownEditor *editor;
+@end
+
 @interface FastMarkdownEditor () <UITextViewDelegate, RCTFastMarkdownEditorViewProtocol>
+- (void)drawMarkersInContext:(CGContextRef)context view:(FMDEditorMarkerView *)view;
+@end
+
+@implementation FMDEditorMarkerView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+  if (self = [super initWithFrame:frame]) {
+    self.userInteractionEnabled = NO;
+    self.backgroundColor = UIColor.clearColor;
+    self.contentMode = UIViewContentModeRedraw;
+  }
+  return self;
+}
+
+- (void)drawRect:(CGRect)rect {
+  [self.editor drawMarkersInContext:UIGraphicsGetCurrentContext() view:self];
+}
+
 @end
 
 @implementation FastMarkdownEditor {
   UITextView *_textView;
   UILabel *_placeholderLabel;
+  FMDEditorMarkerView *_markerView;
   NSString *_stylesJson;
   BOOL _defaultValueApplied;
   BOOL _autoFocusHandled;
@@ -53,8 +98,12 @@ static uint32_t FMDFlagsFromValue(id value) {
   // user has toggled at this caret position; re-derived from the character
   // before the caret whenever the selection moves.
   uint32_t _typingFlags;
+  // Block armed for the caret's line (empty lines carry no characters, so
+  // the attribute alone cannot represent them).
+  uint32_t _typingBlock;
+  BOOL _paragraphAfterNewline;
   NSRange _lastSelection;
-  uint32_t _lastStateFlags;
+  uint64_t _lastStateKey;
   BOOL _stateEmitted;
   FastMarkdownEditorShadowNode::ConcreteState::Shared _state;
 }
@@ -81,6 +130,10 @@ static uint32_t FMDFlagsFromValue(id value) {
     _textView.textContainer.lineFragmentPadding = 0;
     _textView.textContainerInset = UIEdgeInsetsZero;
     [self addSubview:_textView];
+
+    _markerView = [[FMDEditorMarkerView alloc] initWithFrame:CGRectZero];
+    _markerView.editor = self;
+    [self addSubview:_markerView];
 
     _placeholderLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     _placeholderLabel.numberOfLines = 1;
@@ -136,25 +189,38 @@ static uint32_t FMDFlagsFromValue(id value) {
 
   _placeholderLabel.font = font;
   [self setNeedsLayout];
+  [_markerView setNeedsDisplay];
   [self publishHeight];
 }
 
-#pragma mark - Mark attributes
+#pragma mark - Attributes
 
-- (NSDictionary<NSAttributedStringKey, id> *)attributesForFlags:(uint32_t)flags {
-  const CGFloat baseSize = _baseFont.pointSize;
-  const BOOL isCode = (flags & fastmarkdown::MarkInlineCode) != 0;
+- (NSDictionary<NSAttributedStringKey, id> *)attributesForFlags:(uint32_t)flags
+                                                          block:(uint32_t)block {
+  const auto blockType = FMDBlockType(block);
+  const uint8_t level = block & 0xFF;
+  const BOOL isCodeBlock = blockType == fastmarkdown::EditorBlockType::Code;
+  const BOOL isHeading = blockType == fastmarkdown::EditorBlockType::Heading;
+  const BOOL isCode = isCodeBlock || (flags & fastmarkdown::MarkInlineCode) != 0;
   const BOOL isSuper = (flags & fastmarkdown::MarkSuperscript) != 0;
   const BOOL isSub = (flags & fastmarkdown::MarkSubscript) != 0;
 
+  static const CGFloat headingScale[7] = {1, 2.0, 1.5, 1.25, 1.125, 1.0, 0.875};
+  CGFloat size = _baseFont.pointSize;
+  if (isHeading) {
+    size *= headingScale[MIN(level, (uint8_t)6)];
+  }
   // Sup/sub match the viewer's 0.7 scaling.
-  const CGFloat size = (isSuper || isSub) ? baseSize * 0.7 : baseSize;
+  if (isSuper || isSub) {
+    size *= 0.7;
+  }
+
   UIFont *font = isCode
       ? [UIFont monospacedSystemFontOfSize:size weight:UIFontWeightRegular]
-      : (size == baseSize ? _baseFont : [_baseFont fontWithSize:size]);
+      : [_baseFont fontWithSize:size];
 
   UIFontDescriptorSymbolicTraits traits = font.fontDescriptor.symbolicTraits;
-  if ((flags & fastmarkdown::MarkBold) != 0) {
+  if ((flags & fastmarkdown::MarkBold) != 0 || isHeading) {
     traits |= UIFontDescriptorTraitBold;
   }
   if ((flags & fastmarkdown::MarkItalic) != 0) {
@@ -182,35 +248,195 @@ static uint32_t FMDFlagsFromValue(id value) {
         [UIColor colorWithWhite:0.35 alpha:0.25];
   }
   if (isSuper) {
-    attributes[NSBaselineOffsetAttributeName] = @(baseSize * 0.33);
+    attributes[NSBaselineOffsetAttributeName] = @(_baseFont.pointSize * 0.33);
   } else if (isSub) {
-    attributes[NSBaselineOffsetAttributeName] = @(-baseSize * 0.15);
+    attributes[NSBaselineOffsetAttributeName] = @(-_baseFont.pointSize * 0.15);
   }
+
+  if (blockType == fastmarkdown::EditorBlockType::Quote ||
+      FMDBlockIsList(block)) {
+    NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
+    const CGFloat indent =
+        blockType == fastmarkdown::EditorBlockType::Quote ? 16 : 28;
+    paragraph.firstLineHeadIndent = indent;
+    paragraph.headIndent = indent;
+    attributes[NSParagraphStyleAttributeName] = paragraph;
+  }
+
   if (flags != 0) {
     attributes[FMDEditorMarksAttribute] = @(flags);
+  }
+  if (block != 0) {
+    attributes[FMDEditorBlockAttribute] = @(block);
   }
   return attributes;
 }
 
+// Rebuilds display attributes from the data attributes (marks + block).
 - (void)refreshDisplayAttributesInRange:(NSRange)range {
   if (range.length == 0) {
     return;
   }
   NSTextStorage *storage = _textView.textStorage;
   [storage beginEditing];
+  [storage enumerateAttributesInRange:range
+                              options:0
+                           usingBlock:^(NSDictionary *attrs, NSRange runRange, BOOL *stop) {
+                             const uint32_t flags =
+                                 FMDFlagsFromValue(attrs[FMDEditorMarksAttribute]);
+                             const uint32_t block =
+                                 FMDFlagsFromValue(attrs[FMDEditorBlockAttribute]);
+                             [storage setAttributes:[self attributesForFlags:flags
+                                                                       block:block]
+                                              range:runRange];
+                           }];
+  [storage endEditing];
+}
+
+- (void)applyTypingAttributes {
+  _textView.typingAttributes = [self attributesForFlags:_typingFlags
+                                                  block:_typingBlock];
+}
+
+#pragma mark - Lines
+
+- (NSRange)contentRangeOfLineAt:(NSUInteger)location {
+  NSString *text = _textView.text;
+  NSUInteger start = 0;
+  NSUInteger contentsEnd = 0;
+  const NSRange probe = NSMakeRange(MIN(location, text.length), 0);
+  [text getLineStart:&start end:nil contentsEnd:&contentsEnd forRange:probe];
+  return NSMakeRange(start, contentsEnd - start);
+}
+
+- (uint32_t)blockOfLineAt:(NSUInteger)location {
+  const NSRange content = [self contentRangeOfLineAt:location];
+  if (content.length == 0) {
+    return 0;
+  }
+  return FMDFlagsFromValue([_textView.textStorage attribute:FMDEditorBlockAttribute
+                                                    atIndex:content.location
+                                             effectiveRange:nil]);
+}
+
+// Sets the block on every line the range touches, preserving per-character
+// marks.
+- (void)applyBlock:(uint32_t)block toLinesInRange:(NSRange)range {
+  NSString *text = _textView.text;
+  const NSRange lines = [text lineRangeForRange:range];
+  if (lines.length == 0) {
+    return;
+  }
+  NSTextStorage *storage = _textView.textStorage;
+  [storage beginEditing];
   [storage enumerateAttribute:FMDEditorMarksAttribute
-                      inRange:range
+                      inRange:lines
                       options:0
                    usingBlock:^(id value, NSRange runRange, BOOL *stop) {
-                     [storage setAttributes:[self attributesForFlags:FMDFlagsFromValue(value)]
+                     [storage setAttributes:[self attributesForFlags:FMDFlagsFromValue(value)
+                                                                block:block]
                                       range:runRange];
                    }];
   [storage endEditing];
 }
 
-- (void)applyTypingAttributes {
-  _textView.typingAttributes = [self attributesForFlags:_typingFlags];
+- (void)toggleBlock:(fastmarkdown::EditorBlockType)type level:(uint8_t)level {
+  const uint32_t target = FMDPackBlock(type, level);
+  const NSRange selection = _textView.selectedRange;
+  NSString *text = _textView.text;
+  const NSRange lines =
+      text.length == 0 ? NSMakeRange(0, 0) : [text lineRangeForRange:selection];
+
+  BOOL allMatch = YES;
+  if (lines.length == 0) {
+    allMatch = _typingBlock == target;
+  } else {
+    NSUInteger cursor = lines.location;
+    while (cursor < NSMaxRange(lines)) {
+      const NSRange content = [self contentRangeOfLineAt:cursor];
+      if (content.length > 0 && [self blockOfLineAt:cursor] != target) {
+        allMatch = NO;
+        break;
+      }
+      if (content.length == 0 && _typingBlock != target) {
+        allMatch = NO;
+        break;
+      }
+      cursor = NSMaxRange(content) + 1;
+    }
+  }
+
+  const uint32_t next = allMatch ? 0 : target;
+  if (lines.length > 0) {
+    [self applyBlock:next toLinesInRange:lines];
+    _textView.selectedRange = selection;
+  }
+  _typingBlock = next;
+  [self applyTypingAttributes];
+  [_markerView setNeedsDisplay];
+  [self textContentChanged];
+  [self emitState];
 }
+
+#pragma mark - Markers
+
+- (void)drawMarkersInContext:(CGContextRef)context view:(FMDEditorMarkerView *)view {
+  if (context == nil || _textView.text.length == 0) {
+    return;
+  }
+  NSString *text = _textView.text;
+  NSLayoutManager *layoutManager = _textView.layoutManager;
+  const UIEdgeInsets inset = _textView.textContainerInset;
+  UIColor *markerColor = [_baseColor colorWithAlphaComponent:0.6];
+
+  NSUInteger location = 0;
+  NSInteger orderedNumber = 0;
+  while (location <= text.length) {
+    const NSRange content = [self contentRangeOfLineAt:location];
+    const uint32_t block =
+        content.length > 0 ? [self blockOfLineAt:content.location] : 0;
+    const auto type = FMDBlockType(block);
+
+    if (type == fastmarkdown::EditorBlockType::Ordered) {
+      orderedNumber += 1;
+    } else {
+      orderedNumber = 0;
+    }
+
+    if (block != 0 && content.length > 0) {
+      const NSRange glyphs =
+          [layoutManager glyphRangeForCharacterRange:content actualCharacterRange:nil];
+      const CGRect lineRect =
+          [layoutManager boundingRectForGlyphRange:glyphs
+                                   inTextContainer:_textView.textContainer];
+      const CGFloat top = lineRect.origin.y + inset.top;
+
+      if (type == fastmarkdown::EditorBlockType::Quote) {
+        [markerColor setFill];
+        UIRectFill(CGRectMake(inset.left + 4, top, 3, lineRect.size.height));
+      } else if (type == fastmarkdown::EditorBlockType::Bullet ||
+                 type == fastmarkdown::EditorBlockType::Ordered) {
+        NSString *marker = type == fastmarkdown::EditorBlockType::Bullet
+            ? @"•"
+            : [NSString stringWithFormat:@"%ld.", (long)orderedNumber];
+        NSDictionary *attributes = @{
+          NSFontAttributeName : [_baseFont fontWithSize:_baseFont.pointSize],
+          NSForegroundColorAttributeName : markerColor,
+        };
+        const CGSize size = [marker sizeWithAttributes:attributes];
+        [marker drawAtPoint:CGPointMake(inset.left + 24 - size.width - 6, top)
+             withAttributes:attributes];
+      }
+    }
+
+    if (NSMaxRange(content) >= text.length) {
+      break;
+    }
+    location = NSMaxRange(content) + 1;
+  }
+}
+
+#pragma mark - Marks
 
 // Marks present across the ENTIRE range (the AND), which drives both toggle
 // direction and the reported selection state.
@@ -251,15 +477,19 @@ static uint32_t FMDFlagsFromValue(id value) {
   const BOOL allHave = ([self commonFlagsInRange:selection] & mark) != 0;
   NSTextStorage *storage = _textView.textStorage;
   [storage beginEditing];
-  [storage enumerateAttribute:FMDEditorMarksAttribute
-                      inRange:selection
-                      options:0
-                   usingBlock:^(id value, NSRange runRange, BOOL *stop) {
-                     const uint32_t flags = FMDFlagsFromValue(value);
-                     const uint32_t next = allHave ? (flags & ~mark) : (flags | mark);
-                     [storage setAttributes:[self attributesForFlags:next]
-                                      range:runRange];
-                   }];
+  [storage enumerateAttributesInRange:selection
+                              options:0
+                           usingBlock:^(NSDictionary *attrs, NSRange runRange, BOOL *stop) {
+                             const uint32_t flags =
+                                 FMDFlagsFromValue(attrs[FMDEditorMarksAttribute]);
+                             const uint32_t block =
+                                 FMDFlagsFromValue(attrs[FMDEditorBlockAttribute]);
+                             const uint32_t next =
+                                 allHave ? (flags & ~mark) : (flags | mark);
+                             [storage setAttributes:[self attributesForFlags:next
+                                                                       block:block]
+                                              range:runRange];
+                           }];
   [storage endEditing];
   _textView.selectedRange = selection;
   [self textContentChanged];
@@ -352,6 +582,8 @@ static uint32_t FMDFlagsFromValue(id value) {
   _autoFocusHandled = NO;
   _lastPublishedHeight = 0;
   _typingFlags = 0;
+  _typingBlock = 0;
+  _paragraphAfterNewline = NO;
   _lastSelection = NSMakeRange(0, 0);
   _stateEmitted = NO;
   _state = nullptr;
@@ -362,6 +594,7 @@ static uint32_t FMDFlagsFromValue(id value) {
 - (void)layoutSubviews {
   [super layoutSubviews];
   _textView.frame = self.bounds;
+  _markerView.frame = self.bounds;
 
   const UIEdgeInsets inset = _textView.textContainerInset;
   const CGSize placeholderSize = [_placeholderLabel sizeThatFits:CGSizeMake(
@@ -369,6 +602,7 @@ static uint32_t FMDFlagsFromValue(id value) {
   _placeholderLabel.frame = CGRectMake(
       inset.left, inset.top, placeholderSize.width, placeholderSize.height);
 
+  [_markerView setNeedsDisplay];
   [self publishHeight];
 }
 
@@ -398,7 +632,9 @@ static uint32_t FMDFlagsFromValue(id value) {
 
 - (std::string)serializedMarkdown {
   NSTextStorage *storage = _textView.textStorage;
-  const std::string text(_textView.text.UTF8String ?: "");
+  NSString *text = _textView.text;
+  const std::string utf8(text.UTF8String ?: "");
+
   __block std::vector<fastmarkdown::StyledRun> runs;
   [storage enumerateAttribute:FMDEditorMarksAttribute
                       inRange:NSMakeRange(0, storage.length)
@@ -412,12 +648,28 @@ static uint32_t FMDFlagsFromValue(id value) {
                             flags});
                      }
                    }];
-  return fastmarkdown::markdownFromStyledText(text, runs);
+
+  std::vector<fastmarkdown::EditorLine> lines;
+  NSUInteger location = 0;
+  while (location <= text.length) {
+    const NSRange content = [self contentRangeOfLineAt:location];
+    const uint32_t block =
+        content.length > 0 ? [self blockOfLineAt:content.location] : 0;
+    lines.push_back(
+        {FMDBlockType(block), static_cast<uint8_t>(block & 0xFF)});
+    if (NSMaxRange(content) >= text.length) {
+      break;
+    }
+    location = NSMaxRange(content) + 1;
+  }
+
+  return fastmarkdown::markdownFromEditor(utf8, runs, lines);
 }
 
 - (void)textContentChanged {
   [self refreshPlaceholderVisibility];
   [self publishHeight];
+  [_markerView setNeedsDisplay];
   if (const auto *emitter = [self editorEventEmitter]) {
     const std::string text(_textView.text.UTF8String ?: "");
     emitter->onEditorChangeText({.text = text});
@@ -430,25 +682,32 @@ static uint32_t FMDFlagsFromValue(id value) {
   const uint32_t flags = selection.length == 0
       ? _typingFlags
       : [self commonFlagsInRange:selection];
-  if (_stateEmitted && flags == _lastStateFlags) {
+  const NSRange caretLine = [self contentRangeOfLineAt:selection.location];
+  const uint32_t block =
+      caretLine.length > 0 ? [self blockOfLineAt:caretLine.location] : _typingBlock;
+  const uint64_t stateKey = (static_cast<uint64_t>(block) << 32) | flags;
+  if (_stateEmitted && stateKey == _lastStateKey) {
     return;
   }
-  _lastStateFlags = flags;
+  _lastStateKey = stateKey;
   _stateEmitted = YES;
   if (const auto *emitter = [self editorEventEmitter]) {
+    const auto type = FMDBlockType(block);
     emitter->onEditorChangeState({
-        .headingLevel = 0,
-        .isBlockQuote = false,
+        .headingLevel = type == fastmarkdown::EditorBlockType::Heading
+            ? static_cast<int>(block & 0xFF)
+            : 0,
+        .isBlockQuote = type == fastmarkdown::EditorBlockType::Quote,
         .isBold = (flags & fastmarkdown::MarkBold) != 0,
-        .isCodeBlock = false,
+        .isCodeBlock = type == fastmarkdown::EditorBlockType::Code,
         .isInlineCode = (flags & fastmarkdown::MarkInlineCode) != 0,
         .isItalic = (flags & fastmarkdown::MarkItalic) != 0,
-        .isOrderedList = false,
+        .isOrderedList = type == fastmarkdown::EditorBlockType::Ordered,
         .isSpoiler = (flags & fastmarkdown::MarkSpoiler) != 0,
         .isStrikethrough = (flags & fastmarkdown::MarkStrikethrough) != 0,
         .isSubscript = (flags & fastmarkdown::MarkSubscript) != 0,
         .isSuperscript = (flags & fastmarkdown::MarkSuperscript) != 0,
-        .isUnorderedList = false,
+        .isUnorderedList = type == fastmarkdown::EditorBlockType::Bullet,
     });
   }
 }
@@ -466,10 +725,51 @@ static uint32_t FMDFlagsFromValue(id value) {
     [textView resignFirstResponder];
     return NO;
   }
+
+  if ([text isEqualToString:@"\n"] && range.length == 0) {
+    const NSRange content = [self contentRangeOfLineAt:range.location];
+    const uint32_t block =
+        content.length > 0 ? [self blockOfLineAt:content.location] : _typingBlock;
+    if (FMDBlockIsList(block) && content.length == 0) {
+      // Enter on an empty list item exits the list instead of continuing.
+      _typingBlock = 0;
+      [self applyTypingAttributes];
+      [_markerView setNeedsDisplay];
+      [self emitState];
+      return NO;
+    }
+    if (FMDBlockType(block) == fastmarkdown::EditorBlockType::Heading) {
+      // A heading does not continue onto the next line.
+      _paragraphAfterNewline = YES;
+    }
+  }
+
+  // Backspace at the start of a formatted line clears the block first.
+  if (text.length == 0 && range.length == 1 &&
+      [_textView.text characterAtIndex:range.location] == '\n') {
+    const NSUInteger lineStart = range.location + 1;
+    const uint32_t block = [self blockOfLineAt:lineStart];
+    if (block != 0) {
+      [self applyBlock:0
+          toLinesInRange:NSMakeRange(lineStart, 0)];
+      _typingBlock = 0;
+      [self applyTypingAttributes];
+      [_markerView setNeedsDisplay];
+      [self textContentChanged];
+      [self emitState];
+      return NO;
+    }
+  }
+
   return YES;
 }
 
 - (void)textViewDidChange:(UITextView *)textView {
+  if (_paragraphAfterNewline) {
+    _paragraphAfterNewline = NO;
+    _typingBlock = 0;
+    [self applyTypingAttributes];
+  }
   [self textContentChanged];
 }
 
@@ -481,6 +781,20 @@ static uint32_t FMDFlagsFromValue(id value) {
     // Sticky typing state: inherit the marks of the character before the
     // caret (which is the just-typed character while typing).
     _typingFlags = [self flagsBeforeCaret:selection.location];
+    const NSRange content = [self contentRangeOfLineAt:selection.location];
+    if (content.length > 0) {
+      _typingBlock = [self blockOfLineAt:content.location];
+    } else if (selection.location > 0 &&
+               selection.location <= _textView.textStorage.length) {
+      // Empty line: inherit the block carried by the preceding newline so
+      // lists continue across Enter.
+      _typingBlock = FMDFlagsFromValue([_textView.textStorage
+          attribute:FMDEditorBlockAttribute
+            atIndex:selection.location - 1
+     effectiveRange:nil]);
+    } else {
+      _typingBlock = 0;
+    }
     [self applyTypingAttributes];
   }
   [self emitState];
@@ -519,17 +833,56 @@ static uint32_t FMDFlagsFromValue(id value) {
 }
 
 - (void)applyMarkdownValue:(const std::string &)markdown {
-  const auto styled = fastmarkdown::styledTextFromMarkdown(markdown);
+  const auto document = fastmarkdown::editorFromMarkdown(markdown);
+  NSString *text = FMDStringFromCpp(document.text);
   NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc]
-      initWithString:FMDStringFromCpp(styled.text)
-          attributes:[self attributesForFlags:0]];
-  for (const auto &run : styled.runs) {
-    const NSRange range = NSMakeRange(run.start, run.end - run.start);
-    if (NSMaxRange(range) <= attributed.length) {
-      [attributed setAttributes:[self attributesForFlags:run.flags] range:range];
+      initWithString:text
+          attributes:[self attributesForFlags:0 block:0]];
+
+  // Line blocks first (line granularity), then mark runs refine spans.
+  NSUInteger location = 0;
+  size_t lineIndex = 0;
+  while (location <= text.length && lineIndex < document.lines.size()) {
+    NSUInteger start = 0;
+    NSUInteger contentsEnd = 0;
+    NSUInteger end = 0;
+    [text getLineStart:&start
+                   end:&end
+           contentsEnd:&contentsEnd
+              forRange:NSMakeRange(MIN(location, text.length), 0)];
+    const auto &line = document.lines[lineIndex];
+    const uint32_t block = FMDPackBlock(line.type, line.level);
+    if (block != 0 && contentsEnd > start) {
+      [attributed setAttributes:[self attributesForFlags:0 block:block]
+                          range:NSMakeRange(start, contentsEnd - start)];
+    }
+    if (end <= location || end > text.length) {
+      break;
+    }
+    location = end;
+    lineIndex++;
+    if (contentsEnd == end) {
+      break;
     }
   }
+
+  for (const auto &run : document.runs) {
+    const NSRange range = NSMakeRange(run.start, run.end - run.start);
+    if (NSMaxRange(range) <= attributed.length) {
+      uint32_t block = 0;
+      if (range.location < attributed.length) {
+        block = FMDFlagsFromValue([attributed attribute:FMDEditorBlockAttribute
+                                                atIndex:range.location
+                                         effectiveRange:nil]);
+      }
+      [attributed setAttributes:[self attributesForFlags:run.flags block:block]
+                          range:range];
+    }
+  }
+
   _textView.attributedText = attributed;
+  _typingFlags = 0;
+  _typingBlock = 0;
   [self applyTypingAttributes];
   [self textContentChanged];
 }
@@ -571,6 +924,27 @@ static uint32_t FMDFlagsFromValue(id value) {
 
 - (void)toggleSuperscript {
   [self toggleMark:fastmarkdown::MarkSuperscript];
+}
+
+- (void)toggleBlockQuote {
+  [self toggleBlock:fastmarkdown::EditorBlockType::Quote level:0];
+}
+
+- (void)toggleCodeBlock {
+  [self toggleBlock:fastmarkdown::EditorBlockType::Code level:0];
+}
+
+- (void)toggleHeading:(NSInteger)level {
+  [self toggleBlock:fastmarkdown::EditorBlockType::Heading
+              level:(uint8_t)MAX(1, MIN(level, 6))];
+}
+
+- (void)toggleOrderedList {
+  [self toggleBlock:fastmarkdown::EditorBlockType::Ordered level:0];
+}
+
+- (void)toggleUnorderedList {
+  [self toggleBlock:fastmarkdown::EditorBlockType::Bullet level:0];
 }
 
 @end

@@ -40,30 +40,44 @@ object FastMarkdownNative {
       .toString(Charsets.UTF_8)
   }
 
+  /** Decoded editor content: text, inline-mark runs, per-line blocks. */
+  class EditorContent(
+    val text: String,
+    /** Flat `[start, end, flags]` triples in UTF-16 offsets. */
+    val runs: IntArray,
+    /** Flat `[type, level]` pairs, one per text line. */
+    val lineBlocks: IntArray,
+  )
+
   /**
-   * Editor: markdown from text plus inline-mark runs. Runs are flat
-   * `[start, end, flags]` triples in UTF-16 offsets (Spannable indices).
+   * Editor: markdown from text + inline-mark runs + per-line blocks. Runs
+   * are flat `[start, end, flags]` triples in UTF-16 offsets (Spannable
+   * indices); lineBlocks are `[type, level]` pairs per line.
    */
-  fun markdownFromStyled(text: String, runs: IntArray): String {
-    return markdownFromStyledText(text.toByteArray(Charsets.UTF_8), runs)
+  fun markdownFromEditor(text: String, runs: IntArray, lineBlocks: IntArray): String {
+    return markdownFromEditorContent(text.toByteArray(Charsets.UTF_8), runs, lineBlocks)
       .toString(Charsets.UTF_8)
   }
 
   /**
-   * Editor: markdown parsed into text + inline-mark runs. The native payload
-   * is `[int32 runCount][runCount x (start, end, flags) int32][utf8 text]`,
+   * Editor: markdown parsed into editor content. The native payload is
+   * `[int32 runCount][triples][int32 lineCount][pairs][utf8 text]`,
    * little-endian.
    */
-  fun styledFromMarkdown(markdown: String): Pair<String, IntArray> {
-    val bytes = styledTextFromMarkdown(markdown.toByteArray(Charsets.UTF_8))
+  fun editorFromMarkdown(markdown: String): EditorContent {
+    val bytes = editorFromMarkdownContent(markdown.toByteArray(Charsets.UTF_8))
     val buffer = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
     val runs = IntArray(buffer.int * 3)
     for (i in runs.indices) {
       runs[i] = buffer.int
     }
+    val lineBlocks = IntArray(buffer.int * 2)
+    for (i in lineBlocks.indices) {
+      lineBlocks[i] = buffer.int
+    }
     val text = ByteArray(buffer.remaining())
     buffer.get(text)
-    return Pair(text.toString(Charsets.UTF_8), runs)
+    return EditorContent(text.toString(Charsets.UTF_8), runs, lineBlocks)
   }
 
   @JvmStatic private external fun parse(markdown: ByteArray): ByteArray
@@ -72,12 +86,13 @@ object FastMarkdownNative {
 
   @JvmStatic private external fun plainTextFromMarkdown(markdown: ByteArray): ByteArray
 
-  @JvmStatic private external fun markdownFromStyledText(
+  @JvmStatic private external fun markdownFromEditorContent(
     text: ByteArray,
     runs: IntArray,
+    lineBlocks: IntArray,
   ): ByteArray
 
-  @JvmStatic private external fun styledTextFromMarkdown(markdown: ByteArray): ByteArray
+  @JvmStatic private external fun editorFromMarkdownContent(markdown: ByteArray): ByteArray
 
   @JvmStatic private external fun installMeasurer(measurer: MarkdownMeasurer)
 }

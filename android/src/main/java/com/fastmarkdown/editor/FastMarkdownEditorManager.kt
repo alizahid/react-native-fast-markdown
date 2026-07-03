@@ -111,8 +111,28 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     view?.setMarkdownValue(value ?: "")
   }
 
+  override fun toggleBlockQuote(view: FastMarkdownEditorView?) {
+    view?.toggleBlock(EditorBlocks.QUOTE, 0)
+  }
+
   override fun toggleBold(view: FastMarkdownEditorView?) {
     view?.toggleMark(EditorMarks.BOLD)
+  }
+
+  override fun toggleCodeBlock(view: FastMarkdownEditorView?) {
+    view?.toggleBlock(EditorBlocks.CODE, 0)
+  }
+
+  override fun toggleHeading(view: FastMarkdownEditorView?, level: Int) {
+    view?.toggleBlock(EditorBlocks.HEADING, level.coerceIn(1, 6))
+  }
+
+  override fun toggleOrderedList(view: FastMarkdownEditorView?) {
+    view?.toggleBlock(EditorBlocks.ORDERED, 0)
+  }
+
+  override fun toggleUnorderedList(view: FastMarkdownEditorView?) {
+    view?.toggleBlock(EditorBlocks.BULLET, 0)
   }
 
   override fun toggleCode(view: FastMarkdownEditorView?) {
