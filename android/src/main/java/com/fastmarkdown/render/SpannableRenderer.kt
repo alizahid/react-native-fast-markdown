@@ -10,6 +10,7 @@ import android.text.TextPaint
 import com.fastmarkdown.parser.MdNode
 import com.fastmarkdown.parser.MdNodeType
 import com.fastmarkdown.render.spans.LinkSpan
+import com.fastmarkdown.render.spans.MarkdownLineHeightSpan
 import com.fastmarkdown.render.spans.RunSpan
 import com.fastmarkdown.render.spans.SpoilerSpan
 import com.fastmarkdown.style.LayoutStyleSpec
@@ -40,6 +41,7 @@ object SpannableRenderer {
   /** Fully-resolved text attributes at one point of the inline walk. */
   private data class ResolvedAttrs(
     val fontSizePx: Float,
+    val lineHeightPx: Int = 0, // 0 = natural
     val weight: Int = 400,
     val italic: Boolean = false,
     val family: String? = null,
@@ -68,6 +70,7 @@ object SpannableRenderer {
       }
       var next = attrs
       spec.fontSize?.let { next = next.copy(fontSizePx = it * density * fontScale) }
+      spec.lineHeight?.let { next = next.copy(lineHeightPx = (it * density * fontScale).toInt()) }
       spec.fontWeight?.let { next = next.copy(weight = it) }
       spec.fontFamily?.let { next = next.copy(family = it) }
       spec.color?.let { next = next.copy(color = it) }
@@ -356,6 +359,7 @@ object SpannableRenderer {
       fontSize = over.fontSize ?: base.fontSize,
       fontWeight = over.fontWeight ?: base.fontWeight,
       fontFamily = over.fontFamily ?: base.fontFamily,
+      lineHeight = over.lineHeight ?: base.lineHeight,
       color = over.color ?: base.color,
       fontVariant = over.fontVariant ?: base.fontVariant,
       textDecorationColor = over.textDecorationColor ?: base.textDecorationColor,
@@ -502,6 +506,14 @@ object SpannableRenderer {
       builder.length,
       Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
     )
+    if (attrs.lineHeightPx > 0) {
+      builder.setSpan(
+        MarkdownLineHeightSpan(attrs.lineHeightPx),
+        start,
+        builder.length,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+    }
     if (attrs.linkUrl != null) {
       builder.setSpan(LinkSpan(attrs.linkUrl), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }

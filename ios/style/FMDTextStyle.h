@@ -8,6 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly, nullable) NSNumber *fontSize;
 @property (nonatomic, readonly, nullable) NSNumber *fontWeight; // 100-900
 @property (nonatomic, readonly, nullable) NSString *fontFamily;
+@property (nonatomic, readonly, nullable) NSNumber *lineHeight;
 @property (nonatomic, readonly, nullable) UIColor *color;
 @property (nonatomic, readonly, nullable) NSArray<NSString *> *fontVariant;
 @property (nonatomic, readonly, nullable) UIColor *textDecorationColor;

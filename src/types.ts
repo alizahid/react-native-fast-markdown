@@ -58,6 +58,8 @@ export interface MarkdownTextStyle {
   fontSize?: number;
   fontVariant?: FontVariant[];
   fontWeight?: FontWeight;
+  /** Total line height in points, like React Native's `lineHeight`. */
+  lineHeight?: number;
   textDecorationColor?: ColorValue;
   /**
    * Android renders `underline` and `line-through` natively; decoration

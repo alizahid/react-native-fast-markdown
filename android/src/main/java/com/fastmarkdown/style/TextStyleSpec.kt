@@ -8,6 +8,7 @@ class TextStyleSpec(
   val fontSize: Float?,
   val fontWeight: Int?,
   val fontFamily: String?,
+  val lineHeight: Float?,
   val color: Int?,
   val fontVariant: List<String>?,
   val textDecorationColor: Int?,
@@ -29,6 +30,7 @@ class TextStyleSpec(
           else -> weight.toIntOrNull()?.takeIf { it in 100..900 }
         },
         fontFamily = json.optString("fontFamily", "").ifEmpty { null },
+        lineHeight = json.optNumber("lineHeight"),
         color = json.optColor("color"),
         fontVariant = (json.optJSONArray("fontVariant"))?.toStringList(),
         textDecorationColor = json.optColor("textDecorationColor"),

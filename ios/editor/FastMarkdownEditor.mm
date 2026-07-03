@@ -187,6 +187,11 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   CGFloat _lastPublishedHeight;
   UIFont *_baseFont;
   UIColor *_baseColor;
+  // Resolved lineHeight per context; 0 = natural. Headings and code use
+  // their own element style, everything else the base/paragraph cascade.
+  CGFloat _lineHeight;
+  CGFloat _headingLineHeights[7];
+  CGFloat _codeLineHeight;
   // Marks armed for text typed at the collapsed cursor. Explicit while the
   // user has toggled at this caret position; re-derived from the character
   // before the caret whenever the selection moves.
@@ -268,6 +273,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   CGFloat fontSize = 16;
   NSString *fontFamily = nil;
   UIColor *color = UIColor.blackColor;
+  CGFloat lineHeight = 0;
   for (NSString *key in @[ @"base", @"paragraph" ]) {
     FMDTextStyle *style = [styles textStyleFor:key];
     if (style.fontSize != nil) {
@@ -279,7 +285,20 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     if (style.color != nil) {
       color = style.color;
     }
+    if (style.lineHeight != nil) {
+      lineHeight = style.lineHeight.doubleValue;
+    }
   }
+  _lineHeight = lineHeight;
+  for (uint8_t level = 1; level <= 6; level++) {
+    FMDTextStyle *heading =
+        [styles textStyleFor:[NSString stringWithFormat:@"h%d", level]];
+    _headingLineHeights[level] =
+        heading.lineHeight != nil ? heading.lineHeight.doubleValue : 0;
+  }
+  FMDTextStyle *codeStyle = [styles textStyleFor:@"codeBlock"];
+  _codeLineHeight =
+      codeStyle.lineHeight != nil ? codeStyle.lineHeight.doubleValue : lineHeight;
 
   UIFont *font = nil;
   if (fontFamily != nil) {
@@ -370,15 +389,40 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     attributes[NSBackgroundColorAttributeName] =
         [UIColor colorWithWhite:0.35 alpha:0.25];
   }
+  CGFloat baselineOffset = 0;
   if (isSuper) {
-    attributes[NSBaselineOffsetAttributeName] = @(_baseFont.pointSize * 0.33);
+    baselineOffset = _baseFont.pointSize * 0.33;
   } else if (isSub) {
-    attributes[NSBaselineOffsetAttributeName] = @(-_baseFont.pointSize * 0.15);
+    baselineOffset = -_baseFont.pointSize * 0.15;
+  }
+
+  // Line height: headings/code use their element style, everything else
+  // the base/paragraph cascade (0 = natural). Glyphs center in the line
+  // box, matching React Native.
+  CGFloat lineHeight = _lineHeight;
+  if (isHeading) {
+    lineHeight = _headingLineHeights[MIN(level, (uint8_t)6)];
+  } else if (isCodeBlock) {
+    lineHeight = _codeLineHeight;
   }
 
   NSMutableParagraphStyle *paragraph = [self paragraphStyleForBlock:block];
+  if (lineHeight > 0) {
+    if (paragraph == nil) {
+      paragraph = [[NSMutableParagraphStyle alloc] init];
+    }
+    paragraph.minimumLineHeight = lineHeight;
+    paragraph.maximumLineHeight = lineHeight;
+    const CGFloat delta = lineHeight - font.lineHeight;
+    if (delta > 0) {
+      baselineOffset += delta / 2;
+    }
+  }
   if (paragraph != nil) {
     attributes[NSParagraphStyleAttributeName] = paragraph;
+  }
+  if (baselineOffset != 0) {
+    attributes[NSBaselineOffsetAttributeName] = @(baselineOffset);
   }
 
   if (link.length > 0) {

@@ -21,6 +21,7 @@ const editorStyle: MarkdownContainerStyle = {
   backgroundColor: "#F9FAFB",
   fontSize: 16,
   padding: 12,
+  lineHeight: 24,
 };
 
 export function Editor() {

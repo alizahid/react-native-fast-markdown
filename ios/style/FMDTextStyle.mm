@@ -43,6 +43,8 @@
   style->_fontWeight = fontWeight;
   style->_fontFamily =
       [json[@"fontFamily"] isKindOfClass:[NSString class]] ? json[@"fontFamily"] : nil;
+  style->_lineHeight =
+      [json[@"lineHeight"] isKindOfClass:[NSNumber class]] ? json[@"lineHeight"] : nil;
   style->_color = [self colorFromJson:json[@"color"]];
   style->_fontVariant =
       [json[@"fontVariant"] isKindOfClass:[NSArray class]] ? json[@"fontVariant"] : nil;

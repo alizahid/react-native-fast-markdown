@@ -58,6 +58,7 @@ FMDTextStyle *FMDTextStyleWithoutBackground(FMDStyleConfig *styles, NSString *ke
 // Fully-resolved text attributes at one point of the inline tree walk.
 struct ResolvedAttrs {
   CGFloat fontSize = 16;
+  CGFloat lineHeight = 0; // 0 = natural
   NSInteger weight = 400;
   bool italic = false;
   NSString *__strong family = nil;
@@ -85,6 +86,9 @@ void applyStyle(ResolvedAttrs &attrs, FMDTextStyle *style, CGFloat fontScale) {
   }
   if (style.fontFamily != nil) {
     attrs.family = style.fontFamily;
+  }
+  if (style.lineHeight != nil) {
+    attrs.lineHeight = style.lineHeight.doubleValue * fontScale;
   }
   if (style.color != nil) {
     attrs.color = style.color;
@@ -209,8 +213,22 @@ NSUnderlineStyle decorationMask(NSString *style) {
 
 NSDictionary *attributesDictionary(const ResolvedAttrs &attrs) {
   NSMutableDictionary *attributes = [NSMutableDictionary new];
-  attributes[NSFontAttributeName] = buildFont(attrs);
+  UIFont *font = buildFont(attrs);
+  attributes[NSFontAttributeName] = font;
   attributes[NSForegroundColorAttributeName] = attrs.color ?: UIColor.blackColor;
+  CGFloat baselineOffset = attrs.baselineOffset;
+  if (attrs.lineHeight > 0) {
+    // RN semantics: the line box is exactly lineHeight tall and glyphs
+    // center vertically inside it.
+    NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
+    paragraph.minimumLineHeight = attrs.lineHeight;
+    paragraph.maximumLineHeight = attrs.lineHeight;
+    attributes[NSParagraphStyleAttributeName] = paragraph;
+    const CGFloat delta = attrs.lineHeight - font.lineHeight;
+    if (delta > 0) {
+      baselineOffset += delta / 2;
+    }
+  }
   if (attrs.underline) {
     attributes[NSUnderlineStyleAttributeName] = @(decorationMask(attrs.decorationStyle));
     if (attrs.decorationColor != nil) {
@@ -223,8 +241,8 @@ NSDictionary *attributesDictionary(const ResolvedAttrs &attrs) {
       attributes[NSStrikethroughColorAttributeName] = attrs.decorationColor;
     }
   }
-  if (attrs.baselineOffset != 0) {
-    attributes[NSBaselineOffsetAttributeName] = @(attrs.baselineOffset);
+  if (baselineOffset != 0) {
+    attributes[NSBaselineOffsetAttributeName] = @(baselineOffset);
   }
   if (attrs.backgroundColor != nil) {
     attributes[NSBackgroundColorAttributeName] = attrs.backgroundColor;

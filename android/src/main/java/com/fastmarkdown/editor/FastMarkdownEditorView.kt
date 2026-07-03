@@ -76,6 +76,13 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   private var lastMentionQuery: String? = null
   private var linkColor = -0xbd5a0b // #4285F5-ish default; styles override
 
+  // Resolved lineHeight per context (px); 0 = natural. Headings and code
+  // use their own element style, everything else the base/paragraph
+  // cascade.
+  private var lineHeightPx = 0
+  private val headingLineHeightsPx = IntArray(7)
+  private var codeLineHeightPx = 0
+
   // Drawn manually: Fabric never drives onMeasure, and TextView's native
   // hint rendering depends on measure-time layout construction.
   private var placeholderText: String? = null
@@ -197,12 +204,23 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     var fontSize = 16f
     var fontFamily: String? = null
     var color = Color.BLACK
+    var lineHeight = 0f
     for (key in listOf("base", "paragraph")) {
       val spec = styles.textStyleFor(key) ?: continue
       spec.fontSize?.let { fontSize = it }
       spec.fontFamily?.let { fontFamily = it }
       spec.color?.let { color = it }
+      spec.lineHeight?.let { lineHeight = it }
     }
+    lineHeightPx = (lineHeight * density).toInt()
+    for (level in 1..6) {
+      headingLineHeightsPx[level] =
+        ((styles.textStyleFor("h$level")?.lineHeight ?: 0f) * density).toInt()
+    }
+    codeLineHeightPx =
+      styles.textStyleFor("codeBlock")?.lineHeight
+        ?.let { (it * density).toInt() }
+        ?: lineHeightPx
 
     setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize * density)
     setTextColor(color)
@@ -985,6 +1003,22 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
           )
         }
+      }
+      // Line height from the styles cascade: headings/code use their
+      // element style, everything else base/paragraph (0 = natural).
+      val lineHeight = when (type) {
+        EditorBlocks.HEADING -> headingLineHeightsPx[EditorBlocks.level(block).coerceIn(1, 6)]
+        EditorBlocks.CODE -> codeLineHeightPx
+        else -> lineHeightPx
+      }
+      val spanEnd = if (newline == -1) lineEnd else newline + 1
+      if (lineHeight > 0 && spanEnd > lineStart) {
+        editable.setSpan(
+          EditorLineHeightSpan(lineHeight),
+          lineStart,
+          spanEnd,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
       }
       if (newline == -1) {
         break

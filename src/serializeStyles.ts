@@ -26,6 +26,7 @@ const MAIN_STYLE_KEYS = [
   "fontSize",
   "fontWeight",
   "fontFamily",
+  "lineHeight",
   "color",
   "fontVariant",
   "textDecorationColor",
@@ -119,6 +120,7 @@ function serializeText(
     out.fontWeight = String(style.fontWeight);
   }
   put(out, "fontFamily", style.fontFamily);
+  put(out, "lineHeight", style.lineHeight);
   putColor(out, "color", style.color);
   put(out, "fontVariant", style.fontVariant);
   putColor(out, "textDecorationColor", style.textDecorationColor);

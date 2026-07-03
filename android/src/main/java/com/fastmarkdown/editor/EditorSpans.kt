@@ -172,6 +172,11 @@ class QuoteDisplaySpan(private val density: Float) : LeadingMarginSpan, EditorDe
   }
 }
 
+/** Line-height span the display refresh can remove wholesale. */
+class EditorLineHeightSpan(heightPx: Int) :
+  com.fastmarkdown.render.spans.MarkdownLineHeightSpan(heightPx),
+  EditorDerivedSpan
+
 /**
  * No-op run splitter for a heading's newline: keeps it out of the
  * heading's font run so the trailing empty line's caret doesn't inherit

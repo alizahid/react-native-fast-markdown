@@ -141,6 +141,18 @@ describe("serializeStyles", () => {
     });
   });
 
+  test("lineHeight rides in text styles and the base section", () => {
+    const out = parse(
+      serializeStyles(
+        { paragraph: { lineHeight: 26 }, headings: { h1: { lineHeight: 40 } } },
+        { lineHeight: 24 }
+      )
+    );
+    expect(out.base.lineHeight).toBe(24);
+    expect(out.paragraph.lineHeight).toBe(26);
+    expect(out.h1.lineHeight).toBe(40);
+  });
+
   test("styles gap serializes top-level, main gap stays in main", () => {
     const out = parse(serializeStyles({ gap: 12 }, { gap: 8 }));
     expect(out.gap).toBe(12);

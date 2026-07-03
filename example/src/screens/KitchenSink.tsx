@@ -137,6 +137,7 @@ export function KitchenSink() {
 const markdownStyle: MarkdownContainerStyle = {
   padding: 16,
   gap: 12,
+  lineHeight: 24,
 };
 
 const sheet = StyleSheet.create({
