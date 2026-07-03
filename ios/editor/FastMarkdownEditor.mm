@@ -67,9 +67,18 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 @property (nonatomic, weak) FastMarkdownEditor *editor;
 @end
 
+// Draws the full-width background stripe behind code-block lines. Sits
+// below the text view so glyphs stay crisp.
+@interface FMDEditorCodeBackgroundView : UIView
+@property (nonatomic, weak) FastMarkdownEditor *editor;
+@end
+
 @protocol FMDEditorTextViewActions <NSObject>
 - (void)editorTextViewDidPaste;
 - (void)editorTextViewShortcut:(uint32_t)mark;
+// Backspace with the caret at the very start of the document: UIKit has
+// nothing to delete, but a formatted first line should shed its block.
+- (BOOL)editorTextViewHandleDeleteAtDocumentStart;
 @end
 
 // Intercepts paste (the clipboard is reported to JS, which owns the
@@ -82,6 +91,14 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
 - (void)paste:(id)sender {
   [self.actionDelegate editorTextViewDidPaste];
+}
+
+- (void)deleteBackward {
+  if (self.selectedRange.location == 0 && self.selectedRange.length == 0 &&
+      [self.actionDelegate editorTextViewHandleDeleteAtDocumentStart]) {
+    return;
+  }
+  [super deleteBackward];
 }
 
 - (NSArray<UIKeyCommand *> *)keyCommands {
@@ -121,6 +138,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
                                   FMDEditorTextViewActions,
                                   RCTFastMarkdownEditorViewProtocol>
 - (void)drawMarkersInContext:(CGContextRef)context view:(FMDEditorMarkerView *)view;
+- (void)drawCodeBackgroundsInView:(FMDEditorCodeBackgroundView *)view;
 @end
 
 @implementation FMDEditorMarkerView
@@ -140,10 +158,28 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
 @end
 
+@implementation FMDEditorCodeBackgroundView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+  if (self = [super initWithFrame:frame]) {
+    self.userInteractionEnabled = NO;
+    self.backgroundColor = UIColor.clearColor;
+    self.contentMode = UIViewContentModeRedraw;
+  }
+  return self;
+}
+
+- (void)drawRect:(CGRect)rect {
+  [self.editor drawCodeBackgroundsInView:self];
+}
+
+@end
+
 @implementation FastMarkdownEditor {
   FMDEditorTextView *_textView;
   UILabel *_placeholderLabel;
   FMDEditorMarkerView *_markerView;
+  FMDEditorCodeBackgroundView *_codeBackgroundView;
   NSString *_stylesJson;
   BOOL _defaultValueApplied;
   BOOL _autoFocusHandled;
@@ -159,6 +195,11 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   // the attribute alone cannot represent them).
   uint32_t _typingBlock;
   BOOL _paragraphAfterNewline;
+  // Autocorrect/autocapitalize from props; suppressed while the caret is in
+  // a code context (code block line or armed inline-code mark).
+  BOOL _propAutoCorrect;
+  UITextAutocapitalizationType _propAutoCapitalize;
+  BOOL _suppressFocusEvents;
   UIColor *_linkColor;
   NSArray<NSString *> *_mentionTriggers;
   BOOL _mentionActive;
@@ -189,6 +230,10 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     _linkColor = UIColor.systemBlueColor;
     _mentionTriggers = @[];
     _lastSelection = NSMakeRange(0, 0);
+
+    _codeBackgroundView = [[FMDEditorCodeBackgroundView alloc] initWithFrame:CGRectZero];
+    _codeBackgroundView.editor = self;
+    [self addSubview:_codeBackgroundView];
 
     _textView = [[FMDEditorTextView alloc] initWithFrame:CGRectZero];
     _textView.actionDelegate = self;
@@ -258,7 +303,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
   _placeholderLabel.font = font;
   [self setNeedsLayout];
-  [_markerView setNeedsDisplay];
+  [self invalidateDecorations];
   [self publishHeight];
 }
 
@@ -315,7 +360,9 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   if ((flags & fastmarkdown::MarkStrikethrough) != 0) {
     attributes[NSStrikethroughStyleAttributeName] = @(NSUnderlineStyleSingle);
   }
-  if (isCode) {
+  // Inline code gets a per-run background; code BLOCK lines get a
+  // full-width stripe from the background view instead.
+  if ((flags & fastmarkdown::MarkInlineCode) != 0) {
     attributes[NSBackgroundColorAttributeName] =
         [UIColor colorWithWhite:0.5 alpha:0.15];
   }
@@ -392,6 +439,41 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 - (void)applyTypingAttributes {
   _textView.typingAttributes = [self attributesForFlags:_typingFlags
                                                   block:_typingBlock];
+}
+
+// Autocorrect/autocapitalize/spellcheck follow the caret: suppressed in
+// code contexts (`let` must not become `Let`), restored from props outside.
+- (void)updateInputTraits {
+  const BOOL inCode =
+      FMDBlockType(_typingBlock) == fastmarkdown::EditorBlockType::Code ||
+      (_typingFlags & fastmarkdown::MarkInlineCode) != 0;
+  const UITextAutocorrectionType correction = (!inCode && _propAutoCorrect)
+      ? UITextAutocorrectionTypeDefault
+      : UITextAutocorrectionTypeNo;
+  const UITextAutocapitalizationType capitalization =
+      inCode ? UITextAutocapitalizationTypeNone : _propAutoCapitalize;
+  const UITextSpellCheckingType spelling =
+      inCode ? UITextSpellCheckingTypeNo : UITextSpellCheckingTypeDefault;
+  if (_textView.autocorrectionType == correction &&
+      _textView.autocapitalizationType == capitalization &&
+      _textView.spellCheckingType == spelling) {
+    return;
+  }
+  _textView.autocorrectionType = correction;
+  _textView.autocapitalizationType = capitalization;
+  _textView.spellCheckingType = spelling;
+  if (_textView.isFirstResponder) {
+    // reloadInputViews alone leaves an already-latched shift key engaged
+    // (the first code character would still capitalize); cycling the
+    // responder resets the keyboard's state. Focus/blur events are
+    // suppressed — JS must not see a blip.
+    _suppressFocusEvents = YES;
+    [UIView performWithoutAnimation:^{
+      [self->_textView resignFirstResponder];
+      [self->_textView becomeFirstResponder];
+    }];
+    _suppressFocusEvents = NO;
+  }
 }
 
 #pragma mark - Lines
@@ -471,19 +553,57 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   }
   _typingBlock = next;
   [self applyTypingAttributes];
-  [_markerView setNeedsDisplay];
+  [self updateInputTraits];
+  [self invalidateDecorations];
   [self textContentChanged];
   [self emitState];
 }
 
 #pragma mark - Markers
 
+- (void)invalidateDecorations {
+  [_markerView setNeedsDisplay];
+  [_codeBackgroundView setNeedsDisplay];
+}
+
+// The block shown for a line: stored attribute for content lines; for the
+// EMPTY caret line, the armed typing block (immediate feedback on toggle).
+- (uint32_t)displayBlockForLineContent:(NSRange)content {
+  if (content.length > 0) {
+    return [self blockOfLineAt:content.location];
+  }
+  const NSRange selection = _textView.selectedRange;
+  if (selection.length == 0 && selection.location == content.location) {
+    return _typingBlock;
+  }
+  return 0;
+}
+
+- (CGRect)rectForLineContent:(NSRange)content {
+  if (content.length > 0) {
+    NSLayoutManager *layoutManager = _textView.layoutManager;
+    const NSRange glyphs =
+        [layoutManager glyphRangeForCharacterRange:content actualCharacterRange:nil];
+    CGRect rect = [layoutManager boundingRectForGlyphRange:glyphs
+                                           inTextContainer:_textView.textContainer];
+    rect.origin.x += _textView.textContainerInset.left;
+    rect.origin.y += _textView.textContainerInset.top;
+    return rect;
+  }
+  UITextPosition *position =
+      [_textView positionFromPosition:_textView.beginningOfDocument
+                               offset:(NSInteger)content.location];
+  if (position == nil) {
+    return CGRectZero;
+  }
+  return [_textView caretRectForPosition:position];
+}
+
 - (void)drawMarkersInContext:(CGContextRef)context view:(FMDEditorMarkerView *)view {
-  if (context == nil || _textView.text.length == 0) {
+  if (context == nil) {
     return;
   }
   NSString *text = _textView.text;
-  NSLayoutManager *layoutManager = _textView.layoutManager;
   const UIEdgeInsets inset = _textView.textContainerInset;
   UIColor *markerColor = [_baseColor colorWithAlphaComponent:0.6];
 
@@ -491,8 +611,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   NSInteger orderedNumber = 0;
   while (location <= text.length) {
     const NSRange content = [self contentRangeOfLineAt:location];
-    const uint32_t block =
-        content.length > 0 ? [self blockOfLineAt:content.location] : 0;
+    const uint32_t block = [self displayBlockForLineContent:content];
     const auto type = FMDBlockType(block);
 
     if (type == fastmarkdown::EditorBlockType::Ordered) {
@@ -501,29 +620,27 @@ static BOOL FMDBlockIsList(uint32_t packed) {
       orderedNumber = 0;
     }
 
-    if (block != 0 && content.length > 0) {
-      const NSRange glyphs =
-          [layoutManager glyphRangeForCharacterRange:content actualCharacterRange:nil];
-      const CGRect lineRect =
-          [layoutManager boundingRectForGlyphRange:glyphs
-                                   inTextContainer:_textView.textContainer];
-      const CGFloat top = lineRect.origin.y + inset.top;
+    if (block != 0) {
+      const CGRect lineRect = [self rectForLineContent:content];
+      if (!CGRectIsEmpty(lineRect)) {
+        const CGFloat top = lineRect.origin.y;
 
-      if (type == fastmarkdown::EditorBlockType::Quote) {
-        [markerColor setFill];
-        UIRectFill(CGRectMake(inset.left + 4, top, 3, lineRect.size.height));
-      } else if (type == fastmarkdown::EditorBlockType::Bullet ||
-                 type == fastmarkdown::EditorBlockType::Ordered) {
-        NSString *marker = type == fastmarkdown::EditorBlockType::Bullet
-            ? @"•"
-            : [NSString stringWithFormat:@"%ld.", (long)orderedNumber];
-        NSDictionary *attributes = @{
-          NSFontAttributeName : [_baseFont fontWithSize:_baseFont.pointSize],
-          NSForegroundColorAttributeName : markerColor,
-        };
-        const CGSize size = [marker sizeWithAttributes:attributes];
-        [marker drawAtPoint:CGPointMake(inset.left + 24 - size.width - 6, top)
-             withAttributes:attributes];
+        if (type == fastmarkdown::EditorBlockType::Quote) {
+          [markerColor setFill];
+          UIRectFill(CGRectMake(inset.left + 4, top, 3, lineRect.size.height));
+        } else if (type == fastmarkdown::EditorBlockType::Bullet ||
+                   type == fastmarkdown::EditorBlockType::Ordered) {
+          NSString *marker = type == fastmarkdown::EditorBlockType::Bullet
+              ? @"•"
+              : [NSString stringWithFormat:@"%ld.", (long)orderedNumber];
+          NSDictionary *attributes = @{
+            NSFontAttributeName : [_baseFont fontWithSize:_baseFont.pointSize],
+            NSForegroundColorAttributeName : markerColor,
+          };
+          const CGSize size = [marker sizeWithAttributes:attributes];
+          [marker drawAtPoint:CGPointMake(inset.left + 24 - size.width - 6, top)
+               withAttributes:attributes];
+        }
       }
     }
 
@@ -532,6 +649,55 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     }
     location = NSMaxRange(content) + 1;
   }
+}
+
+- (void)drawCodeBackgroundsInView:(FMDEditorCodeBackgroundView *)view {
+  NSString *text = _textView.text;
+  const UIEdgeInsets inset = _textView.textContainerInset;
+  const CGFloat left = MAX(inset.left - 6, 0);
+  const CGFloat width = view.bounds.size.width - left - MAX(inset.right - 6, 0);
+  UIColor *fill = [UIColor colorWithWhite:0.5 alpha:0.1];
+
+  // Contiguous code lines merge into one rounded stripe.
+  CGFloat groupTop = 0;
+  CGFloat groupBottom = 0;
+  BOOL inGroup = NO;
+  const auto flush = [&]() {
+    if (inGroup) {
+      UIBezierPath *path = [UIBezierPath
+          bezierPathWithRoundedRect:CGRectMake(left, groupTop - 2, width,
+                                               groupBottom - groupTop + 4)
+                       cornerRadius:6];
+      [fill setFill];
+      [path fill];
+      inGroup = NO;
+    }
+  };
+
+  NSUInteger location = 0;
+  while (location <= text.length) {
+    const NSRange content = [self contentRangeOfLineAt:location];
+    const uint32_t block = [self displayBlockForLineContent:content];
+    const CGRect lineRect = FMDBlockType(block) == fastmarkdown::EditorBlockType::Code
+        ? [self rectForLineContent:content]
+        : CGRectZero;
+
+    if (!CGRectIsEmpty(lineRect)) {
+      if (!inGroup) {
+        inGroup = YES;
+        groupTop = lineRect.origin.y;
+      }
+      groupBottom = CGRectGetMaxY(lineRect);
+    } else {
+      flush();
+    }
+
+    if (NSMaxRange(content) >= text.length) {
+      break;
+    }
+    location = NSMaxRange(content) + 1;
+  }
+  flush();
 }
 
 #pragma mark - Marks
@@ -558,6 +724,11 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   if (probe >= storage.length) {
     return 0;
   }
+  // Marks end at the paragraph break: a newline never carries them forward
+  // (otherwise a mark armed once would leak into every following line).
+  if ([_textView.text characterAtIndex:probe] == '\n') {
+    return 0;
+  }
   return FMDFlagsFromValue([storage attribute:FMDEditorMarksAttribute
                                       atIndex:probe
                                effectiveRange:nil]);
@@ -568,6 +739,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   if (selection.length == 0) {
     _typingFlags ^= mark;
     [self applyTypingAttributes];
+    [self updateInputTraits];
     [self emitState];
     return;
   }
@@ -622,23 +794,22 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   _textView.scrollEnabled = newProps.scrollEnabled;
   _multiline = newProps.multiline;
 
-  _textView.autocorrectionType =
-      newProps.autoCorrect ? UITextAutocorrectionTypeDefault : UITextAutocorrectionTypeNo;
-
+  _propAutoCorrect = newProps.autoCorrect;
   switch (newProps.autoCapitalize) {
     case FastMarkdownEditorAutoCapitalize::None:
-      _textView.autocapitalizationType = UITextAutocapitalizationTypeNone;
+      _propAutoCapitalize = UITextAutocapitalizationTypeNone;
       break;
     case FastMarkdownEditorAutoCapitalize::Words:
-      _textView.autocapitalizationType = UITextAutocapitalizationTypeWords;
+      _propAutoCapitalize = UITextAutocapitalizationTypeWords;
       break;
     case FastMarkdownEditorAutoCapitalize::Characters:
-      _textView.autocapitalizationType = UITextAutocapitalizationTypeAllCharacters;
+      _propAutoCapitalize = UITextAutocapitalizationTypeAllCharacters;
       break;
     case FastMarkdownEditorAutoCapitalize::Sentences:
-      _textView.autocapitalizationType = UITextAutocapitalizationTypeSentences;
+      _propAutoCapitalize = UITextAutocapitalizationTypeSentences;
       break;
   }
+  [self updateInputTraits];
 
   if (newProps.cursorColor != 0) {
     _textView.tintColor = [FMDTextStyle colorFromJson:@(newProps.cursorColor)];
@@ -706,6 +877,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   [super layoutSubviews];
   _textView.frame = self.bounds;
   _markerView.frame = self.bounds;
+  _codeBackgroundView.frame = self.bounds;
 
   const UIEdgeInsets inset = _textView.textContainerInset;
   const CGSize placeholderSize = [_placeholderLabel sizeThatFits:CGSizeMake(
@@ -713,7 +885,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   _placeholderLabel.frame = CGRectMake(
       inset.left, inset.top, placeholderSize.width, placeholderSize.height);
 
-  [_markerView setNeedsDisplay];
+  [self invalidateDecorations];
   [self publishHeight];
 }
 
@@ -794,7 +966,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 - (void)textContentChanged {
   [self refreshPlaceholderVisibility];
   [self publishHeight];
-  [_markerView setNeedsDisplay];
+  [self invalidateDecorations];
   if (const auto *emitter = [self editorEventEmitter]) {
     const std::string text(_textView.text.UTF8String ?: "");
     emitter->onEditorChangeText({.text = text});
@@ -1039,11 +1211,13 @@ static BOOL FMDIsWordBreak(unichar c) {
     const NSRange content = [self contentRangeOfLineAt:range.location];
     const uint32_t block =
         content.length > 0 ? [self blockOfLineAt:content.location] : _typingBlock;
-    if (FMDBlockIsList(block) && content.length == 0) {
-      // Enter on an empty list item exits the list instead of continuing.
+    if (block != 0 && content.length == 0) {
+      // Enter on any empty formatted line (list item, quote, code block,
+      // heading) exits the block instead of continuing it.
       _typingBlock = 0;
       [self applyTypingAttributes];
-      [_markerView setNeedsDisplay];
+      [self updateInputTraits];
+      [self invalidateDecorations];
       [self emitState];
       return NO;
     }
@@ -1063,7 +1237,7 @@ static BOOL FMDIsWordBreak(unichar c) {
           toLinesInRange:NSMakeRange(lineStart, 0)];
       _typingBlock = 0;
       [self applyTypingAttributes];
-      [_markerView setNeedsDisplay];
+      [self invalidateDecorations];
       [self textContentChanged];
       [self emitState];
       return NO;
@@ -1089,6 +1263,10 @@ static BOOL FMDIsWordBreak(unichar c) {
   }
   [self updateMentionSession];
   [self textContentChanged];
+  // The heading-to-paragraph reset above changes the caret context after
+  // didChangeSelection already emitted; re-emit so toolbars never show a
+  // stale block.
+  [self emitState];
 }
 
 - (void)textViewDidChangeSelection:(UITextView *)textView {
@@ -1114,9 +1292,13 @@ static BOOL FMDIsWordBreak(unichar c) {
       _typingBlock = 0;
     }
     [self applyTypingAttributes];
+    [self updateInputTraits];
   }
   if (moved) {
     [self updateMentionSession];
+    // The empty caret line renders its armed block (marker/stripe), so a
+    // caret move can change what the decorations show.
+    [self invalidateDecorations];
   }
   [self emitState];
   if (const auto *emitter = [self editorEventEmitter]) {
@@ -1128,12 +1310,18 @@ static BOOL FMDIsWordBreak(unichar c) {
 }
 
 - (void)textViewDidBeginEditing:(UITextView *)textView {
+  if (_suppressFocusEvents) {
+    return;
+  }
   if (const auto *emitter = [self editorEventEmitter]) {
     emitter->onEditorFocus({});
   }
 }
 
 - (void)textViewDidEndEditing:(UITextView *)textView {
+  if (_suppressFocusEvents) {
+    return;
+  }
   if (const auto *emitter = [self editorEventEmitter]) {
     emitter->onEditorBlur({});
   }
@@ -1282,6 +1470,21 @@ static BOOL FMDIsWordBreak(unichar c) {
 
 - (void)editorTextViewShortcut:(uint32_t)mark {
   [self toggleMark:mark];
+}
+
+- (BOOL)editorTextViewHandleDeleteAtDocumentStart {
+  const uint32_t block = [self blockOfLineAt:0] ?: _typingBlock;
+  if (block == 0) {
+    return NO;
+  }
+  [self applyBlock:0 toLinesInRange:NSMakeRange(0, 0)];
+  _typingBlock = 0;
+  [self applyTypingAttributes];
+  [self updateInputTraits];
+  [self invalidateDecorations];
+  [self textContentChanged];
+  [self emitState];
+  return YES;
 }
 
 - (void)setSelection:(NSInteger)start end:(NSInteger)end {

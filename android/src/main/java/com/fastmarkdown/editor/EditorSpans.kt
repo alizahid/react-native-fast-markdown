@@ -132,36 +132,17 @@ class HeadingDisplaySpan(level: Int) : MetricAffectingSpan(), EditorDerivedSpan 
   }
 }
 
-/** Code lines: monospace glyphs plus a full-width background stripe. */
-class CodeLineDisplaySpan :
-  MetricAffectingSpan(),
-  LineBackgroundSpan,
-  EditorDerivedSpan {
+/**
+ * Code lines: monospace glyphs. The full-width background stripe is drawn
+ * by the view (spans cannot cover empty lines).
+ */
+class CodeLineDisplaySpan : MetricAffectingSpan(), EditorDerivedSpan {
   override fun updateMeasureState(paint: TextPaint) {
     paint.typeface = Typeface.MONOSPACE
   }
 
   override fun updateDrawState(paint: TextPaint) {
     paint.typeface = Typeface.MONOSPACE
-  }
-
-  override fun drawBackground(
-    canvas: Canvas,
-    paint: Paint,
-    left: Int,
-    right: Int,
-    top: Int,
-    baseline: Int,
-    bottom: Int,
-    text: CharSequence,
-    start: Int,
-    end: Int,
-    lineNumber: Int,
-  ) {
-    val previous = paint.color
-    paint.color = 0x14808080
-    canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), paint)
-    paint.color = previous
   }
 }
 

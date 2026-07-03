@@ -46,6 +46,11 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   // Marks armed for text typed at the collapsed cursor; re-derived from the
   // character before the caret whenever the selection moves outside an edit.
   private var pendingMarks = 0
+
+  // Caret position where marks were explicitly toggled. The IME re-syncs
+  // its selection asynchronously after external text mutations; a selection
+  // event at the SAME position must not wipe a just-armed mark.
+  private var pendingArmedAt = -1
   private var lastStateKey = -1L
   private var editInProgress = false
   private var suppressWatcher = false
@@ -126,20 +131,28 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
           return
         }
         spliceLineBlocks()
+        if (s.isEmpty()) {
+          // Deleting all content resets the document to one plain line;
+          // a block must not haunt an empty editor.
+          lineBlocks.clear()
+          ensureLineBlocks()
+          pendingMarks = 0
+        }
         var exitedList = false
         if (insertedNewlines == 1 && changeInserted == 1 && removedNewlines == 0) {
           val block = lineBlocks.getOrElse(editLine) { 0 }
-          if (EditorBlocks.type(block) == EditorBlocks.HEADING) {
-            // A heading does not continue onto the next line.
-            lineBlocks[editLine + 1] = 0
-          } else if (EditorBlocks.isList(block) && lineContentRange(editLine).isEmpty()) {
-            // Enter on an empty list item exits the list.
+          if (block != 0 && lineContentRange(editLine).isEmpty()) {
+            // Enter on any empty formatted line (list item, quote, code
+            // block, heading) exits the block instead of continuing it.
             lineBlocks[editLine] = 0
             lineBlocks.removeAt(editLine + 1)
             suppressWatcher = true
             s.delete(changeStart, changeStart + 1)
             suppressWatcher = false
             exitedList = true
+          } else if (EditorBlocks.type(block) == EditorBlocks.HEADING) {
+            // A heading does not continue onto the next line.
+            lineBlocks[editLine + 1] = 0
           }
         }
         if (!exitedList && changeInserted > 0 && pendingMarks != 0) {
@@ -207,16 +220,39 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     publishHeight()
   }
 
+  // Autocorrect/autocapitalize/suggestions are suppressed while the caret
+  // is in a code context (`let` must not become `Let`).
+  private var codeContextActive = false
+
+  private fun caretInCodeContext(): Boolean {
+    if (pendingMarks and EditorMarks.INLINE_CODE != 0) {
+      return true
+    }
+    val line = lineIndexAt(selectionStart.coerceAtLeast(0))
+    return EditorBlocks.type(lineBlocks.getOrElse(line) { 0 }) == EditorBlocks.CODE
+  }
+
+  private fun updateInputTypeForContext() {
+    val inCode = caretInCodeContext()
+    if (inCode != codeContextActive) {
+      codeContextActive = inCode
+      applyInputType()
+    }
+  }
+
   // Setting inputType resets the typeface, so callers reapply styles after.
   private fun applyInputType() {
     var type = InputType.TYPE_CLASS_TEXT
     if (multiline) {
       type = type or InputType.TYPE_TEXT_FLAG_MULTI_LINE
     }
-    if (autoCorrectEnabled) {
+    if (autoCorrectEnabled && !codeContextActive) {
       type = type or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
     }
-    type = type or when (capitalizeMode) {
+    if (codeContextActive) {
+      type = type or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+    }
+    type = type or when (if (codeContextActive) "none" else capitalizeMode) {
       "words" -> InputType.TYPE_TEXT_FLAG_CAP_WORDS
       "characters" -> InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
       "none" -> 0
@@ -384,6 +420,8 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       }
     }
     refreshDisplaySpans(text)
+    updateInputTypeForContext()
+    invalidate()
     emitContentChanged()
     emitState()
   }
@@ -415,24 +453,28 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
 
   private fun interceptBackspace(): Boolean {
     val start = selectionStart
-    if (start != selectionEnd || start <= 0) {
+    if (start != selectionEnd || start < 0) {
       return false
     }
-    // Backspacing into an atomic token removes the whole token.
     val editable = text
-    for (span in editable.getSpans(start - 1, start, LinkDataSpan::class.java)) {
-      if (!span.atomic) {
-        continue
-      }
-      val spanStart = editable.getSpanStart(span)
-      val spanEnd = editable.getSpanEnd(span)
-      if (start - 1 in spanStart until spanEnd) {
-        editable.removeSpan(span)
-        editable.delete(spanStart, spanEnd)
-        return true
+    if (start > 0) {
+      // Backspacing into an atomic token removes the whole token.
+      for (span in editable.getSpans(start - 1, start, LinkDataSpan::class.java)) {
+        if (!span.atomic) {
+          continue
+        }
+        val spanStart = editable.getSpanStart(span)
+        val spanEnd = editable.getSpanEnd(span)
+        if (start - 1 in spanStart until spanEnd) {
+          editable.removeSpan(span)
+          editable.delete(spanStart, spanEnd)
+          return true
+        }
       }
     }
-    if (text[start - 1] != '\n') {
+    // Backspace at a line start (including the document start) clears the
+    // line's block before deleting anything.
+    if (start > 0 && text[start - 1] != '\n') {
       return false
     }
     val line = lineIndexAt(start)
@@ -441,6 +483,8 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     }
     lineBlocks[line] = 0
     refreshDisplaySpans(text)
+    updateInputTypeForContext()
+    invalidate()
     emitContentChanged()
     emitState()
     return true
@@ -754,6 +798,8 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     val end = selectionEnd.coerceAtLeast(start)
     if (start == end) {
       pendingMarks = pendingMarks xor mark
+      pendingArmedAt = start
+      updateInputTypeForContext()
       emitState()
       return
     }
@@ -1044,7 +1090,11 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     }
   }
 
+  private val decorationPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val decorationTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+
   override fun onDraw(canvas: Canvas) {
+    drawBlockDecorations(canvas)
     super.onDraw(canvas)
     val hint = placeholderText
     if (!hint.isNullOrEmpty() && text.isEmpty()) {
@@ -1058,6 +1108,99 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
         placeholderPaint,
       )
     }
+  }
+
+  /**
+   * Block visuals spans cannot provide: the full-width code stripe (drawn
+   * per contiguous code GROUP, empty lines included) and markers/bars for
+   * empty block lines (spans need at least one character).
+   */
+  private fun drawBlockDecorations(canvas: Canvas) {
+    val textLayout = layout ?: return
+    if (lineBlocks.isEmpty()) {
+      return
+    }
+    val offsetY = compoundPaddingTop.toFloat()
+    val contentLeft = compoundPaddingLeft.toFloat()
+    val stripeLeft = (contentLeft - 6 * density).coerceAtLeast(0f)
+    val stripeRight =
+      (width - compoundPaddingRight + 6 * density).coerceAtMost(width.toFloat())
+    val markerColor = (currentTextColor and 0x00FFFFFF) or -0x67000000
+
+    var lineStart = 0
+    var index = 0
+    var orderedNumber = 0
+    var groupTop = -1f
+    var groupBottom = 0f
+
+    fun flushCodeGroup() {
+      if (groupTop >= 0f) {
+        decorationPaint.color = 0x14808080
+        canvas.drawRoundRect(
+          stripeLeft,
+          groupTop - 2 * density,
+          stripeRight,
+          groupBottom + 2 * density,
+          6 * density,
+          6 * density,
+          decorationPaint,
+        )
+        groupTop = -1f
+      }
+    }
+
+    while (true) {
+      val newline = text.indexOf('\n', lineStart)
+      val lineEnd = if (newline == -1) text.length else newline
+      val block = lineBlocks.getOrElse(index) { 0 }
+      val type = EditorBlocks.type(block)
+      orderedNumber = if (type == EditorBlocks.ORDERED) orderedNumber + 1 else 0
+
+      val layoutLine = textLayout.getLineForOffset(lineStart)
+      val top = textLayout.getLineTop(layoutLine) + offsetY
+      val bottom =
+        textLayout.getLineBottom(textLayout.getLineForOffset(lineEnd)) + offsetY
+
+      if (type == EditorBlocks.CODE) {
+        if (groupTop < 0f) {
+          groupTop = top
+        }
+        groupBottom = bottom
+      } else {
+        flushCodeGroup()
+      }
+
+      if (lineEnd == lineStart && block != 0) {
+        when (type) {
+          EditorBlocks.QUOTE -> {
+            decorationPaint.color = markerColor
+            val barLeft = contentLeft + 4 * density
+            canvas.drawRect(barLeft, top, barLeft + 3 * density, bottom, decorationPaint)
+          }
+          EditorBlocks.BULLET, EditorBlocks.ORDERED -> {
+            val marker = if (type == EditorBlocks.BULLET) "•" else "$orderedNumber."
+            decorationTextPaint.textSize = textSize
+            decorationTextPaint.typeface = typeface
+            decorationTextPaint.color = markerColor
+            val markerWidth = decorationTextPaint.measureText(marker)
+            canvas.drawText(
+              marker,
+              contentLeft + (24 - 6) * density - markerWidth,
+              textLayout.getLineBaseline(layoutLine) + offsetY,
+              decorationTextPaint,
+            )
+          }
+          else -> Unit
+        }
+      }
+
+      if (newline == -1) {
+        break
+      }
+      lineStart = newline + 1
+      index++
+    }
+    flushCodeGroup()
   }
 
   fun setCursorColorInt(value: Int) {
@@ -1107,11 +1250,16 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     pendingAutoFocus = false
     lastPublishedHeight = 0f
     pendingMarks = 0
+    pendingArmedAt = -1
     lastStateKey = -1L
     lineBlocks.clear()
     mentionActive = false
     lastMentionQuery = null
     stateWrapper = null
+    if (codeContextActive) {
+      codeContextActive = false
+      applyInputType()
+    }
     applyTextStyles()
   }
 
@@ -1131,8 +1279,18 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     // Sticky typing state: inherit the marks of the character before the
     // caret. Skipped mid-edit — afterTextChanged has not applied the pending
     // marks to the inserted text yet, so reading here would clear them.
-    if (!editInProgress && selStart == selEnd && text != null) {
-      pendingMarks = marksAt(text, selStart - 1)
+    // Marks end at the paragraph break: a newline never carries them
+    // forward.
+    if (!editInProgress && selStart == selEnd && text != null &&
+      selStart != pendingArmedAt
+    ) {
+      pendingArmedAt = -1
+      pendingMarks = if (selStart > 0 && text[selStart - 1] == '\n') {
+        0
+      } else {
+        marksAt(text, selStart - 1)
+      }
+      updateInputTypeForContext()
     }
     if (!editInProgress) {
       updateMentionSession()

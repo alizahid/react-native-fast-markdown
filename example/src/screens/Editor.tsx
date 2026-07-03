@@ -33,7 +33,7 @@ export function Editor() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={sheet.container}
     >
       <ScrollView keyboardDismissMode="interactive" style={sheet.scroll}>
