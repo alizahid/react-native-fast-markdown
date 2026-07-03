@@ -990,7 +990,12 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
           )
         }
-        if (gapPx > 0 &&
+        // Empty lines get no spacing on either side: they are already
+        // visual separators, and the cursor spans the full line height —
+        // gap spacing would render a gap-tall cursor.
+        val nextLineEmpty =
+          newline + 1 >= editable.length || editable[newline + 1] == '\n'
+        if (gapPx > 0 && lineEnd > lineStart && !nextLineEmpty &&
           !EditorBlocks.sameGroup(block, lineBlocks.getOrElse(index + 1) { 0 })
         ) {
           editable.setSpan(
@@ -1187,7 +1192,7 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       val top = textLayout.getLineTop(layoutLine) + offsetY
       // The block gap lives inside the last display line's height; stripes
       // and bars must stop before it.
-      val gapApplied = newline != -1 && gapPx > 0 &&
+      val gapApplied = newline != -1 && gapPx > 0 && lineEnd > lineStart &&
         !EditorBlocks.sameGroup(block, lineBlocks.getOrElse(index + 1) { 0 })
       val bottom =
         textLayout.getLineBottom(textLayout.getLineForOffset(lineEnd)) + offsetY -

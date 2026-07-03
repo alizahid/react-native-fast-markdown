@@ -443,13 +443,17 @@ static BOOL FMDSameBlockGroup(uint32_t a, uint32_t b) {
         content.length > 0 ? [self blockOfLineAt:content.location] : 0;
     const BOOL hasNext = NSMaxRange(content) < text.length;
 
+    // Empty lines get no spacing on either side: they are already visual
+    // separators, and the caret on an empty line is sized from the line
+    // fragment — paragraph spacing there would render a gap-tall caret.
     CGFloat spacing = 0;
-    if (hasNext && _gap > 0) {
+    if (hasNext && _gap > 0 && content.length > 0) {
       const NSUInteger nextStart = NSMaxRange(content) + 1;
       const NSRange nextContent = [self contentRangeOfLineAt:nextStart];
-      const uint32_t nextBlock =
-          nextContent.length > 0 ? [self blockOfLineAt:nextContent.location] : 0;
-      spacing = FMDSameBlockGroup(block, nextBlock) ? 0 : _gap;
+      if (nextContent.length > 0) {
+        const uint32_t nextBlock = [self blockOfLineAt:nextContent.location];
+        spacing = FMDSameBlockGroup(block, nextBlock) ? 0 : _gap;
+      }
     }
 
     const NSUInteger lineEnd =
