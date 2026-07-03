@@ -29,6 +29,11 @@ static NSAttributedStringKey const FMDEditorMarksAttribute = @"FMDEditorMarks";
 // stored on every character of the line (and carried by the newline).
 static NSAttributedStringKey const FMDEditorBlockAttribute = @"FMDEditorBlock";
 
+// Linked ranges: the URL string. Mentions are links with app-scheme URLs
+// plus the atomic flag (the token edits as one unit).
+static NSAttributedStringKey const FMDEditorLinkAttribute = @"FMDEditorLink";
+static NSAttributedStringKey const FMDEditorAtomicAttribute = @"FMDEditorAtomic";
+
 static NSString *FMDStringFromCpp(const std::string &value) {
   return [[NSString alloc] initWithBytes:value.data()
                                   length:value.size()
@@ -102,6 +107,14 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   // the attribute alone cannot represent them).
   uint32_t _typingBlock;
   BOOL _paragraphAfterNewline;
+  UIColor *_linkColor;
+  NSArray<NSString *> *_mentionTriggers;
+  BOOL _mentionActive;
+  NSString *_mentionTrigger;
+  NSUInteger _mentionStart;
+  // Dedupes onMentionChange: typing fires both didChangeSelection and
+  // didChange, which each re-evaluate the session.
+  NSString *_lastMentionQuery;
   NSRange _lastSelection;
   uint64_t _lastStateKey;
   BOOL _stateEmitted;
@@ -121,6 +134,8 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     _lastPublishedHeight = 0;
     _baseFont = [UIFont systemFontOfSize:16];
     _baseColor = UIColor.blackColor;
+    _linkColor = UIColor.systemBlueColor;
+    _mentionTriggers = @[];
     _lastSelection = NSMakeRange(0, 0);
 
     _textView = [[UITextView alloc] initWithFrame:CGRectZero];
@@ -178,6 +193,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
   _baseFont = font;
   _baseColor = color;
+  _linkColor = [styles textStyleFor:@"link"].color ?: UIColor.systemBlueColor;
   _textView.font = font;
   _textView.textColor = color;
   _textView.textContainerInset = UIEdgeInsetsMake(
@@ -197,6 +213,13 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
 - (NSDictionary<NSAttributedStringKey, id> *)attributesForFlags:(uint32_t)flags
                                                           block:(uint32_t)block {
+  return [self attributesForFlags:flags block:block link:nil atomic:NO];
+}
+
+- (NSDictionary<NSAttributedStringKey, id> *)attributesForFlags:(uint32_t)flags
+                                                          block:(uint32_t)block
+                                                           link:(NSString *)link
+                                                         atomic:(BOOL)atomic {
   const auto blockType = FMDBlockType(block);
   const uint8_t level = block & 0xFF;
   const BOOL isCodeBlock = blockType == fastmarkdown::EditorBlockType::Code;
@@ -263,6 +286,14 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     attributes[NSParagraphStyleAttributeName] = paragraph;
   }
 
+  if (link.length > 0) {
+    attributes[NSForegroundColorAttributeName] = _linkColor;
+    attributes[NSUnderlineStyleAttributeName] = @(NSUnderlineStyleSingle);
+    attributes[FMDEditorLinkAttribute] = link;
+    if (atomic) {
+      attributes[FMDEditorAtomicAttribute] = @YES;
+    }
+  }
   if (flags != 0) {
     attributes[FMDEditorMarksAttribute] = @(flags);
   }
@@ -270,6 +301,17 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     attributes[FMDEditorBlockAttribute] = @(block);
   }
   return attributes;
+}
+
+// Full attributes for a run described by an existing attribute dictionary.
+- (NSDictionary<NSAttributedStringKey, id> *)attributesFromExisting:
+                                                 (NSDictionary *)attrs
+                                                          withFlags:(uint32_t)flags
+                                                              block:(uint32_t)block {
+  return [self attributesForFlags:flags
+                            block:block
+                             link:attrs[FMDEditorLinkAttribute]
+                           atomic:[attrs[FMDEditorAtomicAttribute] boolValue]];
 }
 
 // Rebuilds display attributes from the data attributes (marks + block).
@@ -286,8 +328,9 @@ static BOOL FMDBlockIsList(uint32_t packed) {
                                  FMDFlagsFromValue(attrs[FMDEditorMarksAttribute]);
                              const uint32_t block =
                                  FMDFlagsFromValue(attrs[FMDEditorBlockAttribute]);
-                             [storage setAttributes:[self attributesForFlags:flags
-                                                                       block:block]
+                             [storage setAttributes:[self attributesFromExisting:attrs
+                                                                       withFlags:flags
+                                                                           block:block]
                                               range:runRange];
                            }];
   [storage endEditing];
@@ -329,14 +372,16 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   }
   NSTextStorage *storage = _textView.textStorage;
   [storage beginEditing];
-  [storage enumerateAttribute:FMDEditorMarksAttribute
-                      inRange:lines
-                      options:0
-                   usingBlock:^(id value, NSRange runRange, BOOL *stop) {
-                     [storage setAttributes:[self attributesForFlags:FMDFlagsFromValue(value)
-                                                                block:block]
-                                      range:runRange];
-                   }];
+  [storage enumerateAttributesInRange:lines
+                              options:0
+                           usingBlock:^(NSDictionary *attrs, NSRange runRange, BOOL *stop) {
+                             const uint32_t flags =
+                                 FMDFlagsFromValue(attrs[FMDEditorMarksAttribute]);
+                             [storage setAttributes:[self attributesFromExisting:attrs
+                                                                       withFlags:flags
+                                                                           block:block]
+                                              range:runRange];
+                           }];
   [storage endEditing];
 }
 
@@ -486,8 +531,9 @@ static BOOL FMDBlockIsList(uint32_t packed) {
                                  FMDFlagsFromValue(attrs[FMDEditorBlockAttribute]);
                              const uint32_t next =
                                  allHave ? (flags & ~mark) : (flags | mark);
-                             [storage setAttributes:[self attributesForFlags:next
-                                                                       block:block]
+                             [storage setAttributes:[self attributesFromExisting:attrs
+                                                                       withFlags:next
+                                                                           block:block]
                                               range:runRange];
                            }];
   [storage endEditing];
@@ -545,6 +591,15 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     _textView.tintColor = [FMDTextStyle colorFromJson:@(newProps.cursorColor)];
   }
 
+  NSMutableArray<NSString *> *triggers = [NSMutableArray array];
+  for (const auto &trigger : newProps.mentionTriggers) {
+    NSString *value = FMDStringFromCpp(trigger);
+    if (value.length > 0) {
+      [triggers addObject:[value substringToIndex:1]];
+    }
+  }
+  _mentionTriggers = triggers;
+
   NSString *placeholder = FMDStringFromCpp(newProps.placeholder);
   if (![placeholder isEqualToString:_placeholderLabel.text]) {
     _placeholderLabel.text = placeholder;
@@ -584,6 +639,8 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   _typingFlags = 0;
   _typingBlock = 0;
   _paragraphAfterNewline = NO;
+  _mentionActive = NO;
+  _lastMentionQuery = nil;
   _lastSelection = NSMakeRange(0, 0);
   _stateEmitted = NO;
   _state = nullptr;
@@ -663,7 +720,21 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     location = NSMaxRange(content) + 1;
   }
 
-  return fastmarkdown::markdownFromEditor(utf8, runs, lines);
+  __block std::vector<fastmarkdown::LinkRun> links;
+  [storage enumerateAttribute:FMDEditorLinkAttribute
+                      inRange:NSMakeRange(0, storage.length)
+                      options:0
+                   usingBlock:^(id value, NSRange runRange, BOOL *stop) {
+                     NSString *url = (NSString *)value;
+                     if (url.length > 0) {
+                       links.push_back(
+                           {static_cast<uint32_t>(runRange.location),
+                            static_cast<uint32_t>(NSMaxRange(runRange)),
+                            std::string(url.UTF8String ?: "")});
+                     }
+                   }];
+
+  return fastmarkdown::markdownFromEditor(utf8, runs, lines, links);
 }
 
 - (void)textContentChanged {
@@ -716,6 +787,160 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   _placeholderLabel.hidden = _textView.text.length > 0;
 }
 
+#pragma mark - Links & mentions
+
+static BOOL FMDIsWordBreak(unichar c) {
+  return c == ' ' || c == '\t' || c == '\n';
+}
+
+// The atomic token range containing (or abutting) the position, if any.
+- (NSRange)atomicRangeAt:(NSUInteger)location {
+  NSTextStorage *storage = _textView.textStorage;
+  if (storage.length == 0 || location >= storage.length) {
+    return NSMakeRange(NSNotFound, 0);
+  }
+  NSRange effective = NSMakeRange(NSNotFound, 0);
+  id value = [storage attribute:FMDEditorAtomicAttribute
+                        atIndex:location
+          longestEffectiveRange:&effective
+                        inRange:NSMakeRange(0, storage.length)];
+  return [value boolValue] ? effective : NSMakeRange(NSNotFound, 0);
+}
+
+- (void)endMentionSession {
+  if (!_mentionActive) {
+    return;
+  }
+  _mentionActive = NO;
+  _lastMentionQuery = nil;
+  if (const auto *emitter = [self editorEventEmitter]) {
+    emitter->onEditorMentionEnd(
+        {.trigger = std::string(_mentionTrigger.UTF8String ?: "")});
+  }
+}
+
+// Runs after every content or caret change: starts, updates, or ends the
+// mention session based on the text between the trigger and the caret.
+- (void)updateMentionSession {
+  if (_mentionTriggers.count == 0) {
+    return;
+  }
+  NSString *text = _textView.text;
+  const NSRange selection = _textView.selectedRange;
+  if (selection.length != 0) {
+    [self endMentionSession];
+    return;
+  }
+  const NSUInteger caret = selection.location;
+
+  if (_mentionActive) {
+    BOOL valid = _mentionStart < text.length && caret > _mentionStart &&
+        caret <= text.length;
+    if (valid) {
+      NSString *trigger = [text substringWithRange:NSMakeRange(_mentionStart, 1)];
+      valid = [trigger isEqualToString:_mentionTrigger];
+    }
+    NSString *query = @"";
+    if (valid) {
+      query = [text substringWithRange:NSMakeRange(
+          _mentionStart + 1, caret - _mentionStart - 1)];
+      for (NSUInteger i = 0; i < query.length; i++) {
+        if (FMDIsWordBreak([query characterAtIndex:i])) {
+          valid = NO;
+          break;
+        }
+      }
+    }
+    if (!valid) {
+      [self endMentionSession];
+      return;
+    }
+    if ([query isEqualToString:_lastMentionQuery]) {
+      return;
+    }
+    _lastMentionQuery = query;
+    if (const auto *emitter = [self editorEventEmitter]) {
+      emitter->onEditorMentionChange({
+          .query = std::string(query.UTF8String ?: ""),
+          .trigger = std::string(_mentionTrigger.UTF8String ?: ""),
+      });
+    }
+    return;
+  }
+
+  // A trigger character at a word start (directly before the caret) opens
+  // a session.
+  if (caret == 0 || caret > text.length) {
+    return;
+  }
+  NSString *last = [text substringWithRange:NSMakeRange(caret - 1, 1)];
+  if (![_mentionTriggers containsObject:last]) {
+    return;
+  }
+  if (caret >= 2 && !FMDIsWordBreak([text characterAtIndex:caret - 2])) {
+    return;
+  }
+  _mentionActive = YES;
+  _mentionTrigger = last;
+  _mentionStart = caret - 1;
+  if (const auto *emitter = [self editorEventEmitter]) {
+    emitter->onEditorMentionStart(
+        {.trigger = std::string(last.UTF8String ?: "")});
+  }
+}
+
+// After a word break is typed, reports a bare URL the word forms (the app
+// decides whether to call insertLink).
+- (void)detectLinkBefore:(NSUInteger)location {
+  NSString *text = _textView.text;
+  if (location > text.length) {
+    return;
+  }
+  NSUInteger wordStart = location;
+  while (wordStart > 0 &&
+         !FMDIsWordBreak([text characterAtIndex:wordStart - 1])) {
+    wordStart--;
+  }
+  if (wordStart >= location) {
+    return;
+  }
+  NSString *word = [text substringWithRange:NSMakeRange(wordStart, location - wordStart)];
+  if (![word hasPrefix:@"http://"] && ![word hasPrefix:@"https://"]) {
+    return;
+  }
+  if ([word isEqualToString:@"http://"] || [word isEqualToString:@"https://"]) {
+    return;
+  }
+  id linked = [_textView.textStorage attribute:FMDEditorLinkAttribute
+                                       atIndex:wordStart
+                                effectiveRange:nil];
+  if (linked != nil) {
+    return;
+  }
+  if (const auto *emitter = [self editorEventEmitter]) {
+    emitter->onEditorLinkDetected({.url = std::string(word.UTF8String ?: "")});
+  }
+}
+
+- (void)applyLink:(NSString *)url atomic:(BOOL)atomic inRange:(NSRange)range {
+  NSTextStorage *storage = _textView.textStorage;
+  [storage beginEditing];
+  [storage enumerateAttributesInRange:range
+                              options:0
+                           usingBlock:^(NSDictionary *attrs, NSRange runRange, BOOL *stop) {
+                             const uint32_t flags =
+                                 FMDFlagsFromValue(attrs[FMDEditorMarksAttribute]);
+                             const uint32_t block =
+                                 FMDFlagsFromValue(attrs[FMDEditorBlockAttribute]);
+                             [storage setAttributes:[self attributesForFlags:flags
+                                                                       block:block
+                                                                        link:url
+                                                                      atomic:atomic]
+                                              range:runRange];
+                           }];
+  [storage endEditing];
+}
+
 #pragma mark - UITextViewDelegate
 
 - (BOOL)textView:(UITextView *)textView
@@ -724,6 +949,36 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   if (!_multiline && [text containsString:@"\n"]) {
     [textView resignFirstResponder];
     return NO;
+  }
+
+  // Deleting into an atomic token removes the whole token.
+  if (text.length == 0 && range.length > 0) {
+    NSRange expanded = range;
+    const NSRange headToken = [self atomicRangeAt:range.location];
+    if (headToken.location != NSNotFound) {
+      expanded = NSUnionRange(expanded, headToken);
+    }
+    if (range.length > 1) {
+      const NSRange tailToken = [self atomicRangeAt:NSMaxRange(range) - 1];
+      if (tailToken.location != NSNotFound) {
+        expanded = NSUnionRange(expanded, tailToken);
+      }
+    }
+    if (!NSEqualRanges(expanded, range)) {
+      [_textView.textStorage replaceCharactersInRange:expanded withString:@""];
+      _textView.selectedRange = NSMakeRange(expanded.location, 0);
+      [self textContentChanged];
+      return NO;
+    }
+  }
+
+  // Typing strictly inside an atomic token demotes it to plain text.
+  if (text.length > 0 && range.length == 0 && range.location > 0) {
+    const NSRange token = [self atomicRangeAt:range.location - 1];
+    if (token.location != NSNotFound && range.location > token.location &&
+        range.location < NSMaxRange(token)) {
+      [self applyLink:nil atomic:NO inRange:token];
+    }
   }
 
   if ([text isEqualToString:@"\n"] && range.length == 0) {
@@ -770,6 +1025,15 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     _typingBlock = 0;
     [self applyTypingAttributes];
   }
+  const NSRange selection = textView.selectedRange;
+  if (selection.length == 0 && selection.location > 0 &&
+      selection.location <= textView.text.length) {
+    const unichar last = [textView.text characterAtIndex:selection.location - 1];
+    if (FMDIsWordBreak(last)) {
+      [self detectLinkBefore:selection.location - 1];
+    }
+  }
+  [self updateMentionSession];
   [self textContentChanged];
 }
 
@@ -796,6 +1060,9 @@ static BOOL FMDBlockIsList(uint32_t packed) {
       _typingBlock = 0;
     }
     [self applyTypingAttributes];
+  }
+  if (moved) {
+    [self updateMentionSession];
   }
   [self emitState];
   if (const auto *emitter = [self editorEventEmitter]) {
@@ -880,6 +1147,24 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     }
   }
 
+  for (const auto &link : document.links) {
+    const NSRange range = NSMakeRange(link.start, link.end - link.start);
+    if (NSMaxRange(range) <= attributed.length && range.length > 0) {
+      [attributed enumerateAttributesInRange:range
+                                     options:0
+                                  usingBlock:^(NSDictionary *attrs, NSRange runRange, BOOL *stop) {
+                                    [attributed setAttributes:
+                                        [self attributesForFlags:FMDFlagsFromValue(
+                                                                     attrs[FMDEditorMarksAttribute])
+                                                           block:FMDFlagsFromValue(
+                                                                     attrs[FMDEditorBlockAttribute])
+                                                            link:FMDStringFromCpp(link.url)
+                                                          atomic:NO]
+                                                        range:runRange];
+                                  }];
+    }
+  }
+
   _textView.attributedText = attributed;
   _typingFlags = 0;
   _typingBlock = 0;
@@ -945,6 +1230,83 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
 - (void)toggleUnorderedList {
   [self toggleBlock:fastmarkdown::EditorBlockType::Bullet level:0];
+}
+
+- (void)insertLink:(NSString *)url label:(NSString *)label {
+  if (url.length == 0) {
+    return;
+  }
+  const NSRange selection = _textView.selectedRange;
+  if (selection.length > 0) {
+    [self applyLink:url atomic:NO inRange:selection];
+    _textView.selectedRange = NSMakeRange(NSMaxRange(selection), 0);
+  } else {
+    NSString *content = label.length > 0 ? label : url;
+    NSAttributedString *linked = [[NSAttributedString alloc]
+        initWithString:content
+            attributes:[self attributesForFlags:_typingFlags
+                                          block:_typingBlock
+                                           link:url
+                                         atomic:NO]];
+    [_textView.textStorage insertAttributedString:linked
+                                          atIndex:selection.location];
+    _textView.selectedRange = NSMakeRange(selection.location + content.length, 0);
+  }
+  [self applyTypingAttributes];
+  [self textContentChanged];
+}
+
+- (void)removeLink {
+  const NSRange selection = _textView.selectedRange;
+  NSRange target = selection;
+  if (selection.length == 0) {
+    NSTextStorage *storage = _textView.textStorage;
+    const NSUInteger probe =
+        selection.location > 0 ? selection.location - 1 : 0;
+    if (storage.length == 0 || probe >= storage.length) {
+      return;
+    }
+    NSRange effective = NSMakeRange(NSNotFound, 0);
+    id value = [storage attribute:FMDEditorLinkAttribute
+                          atIndex:probe
+            longestEffectiveRange:&effective
+                          inRange:NSMakeRange(0, storage.length)];
+    if (value == nil) {
+      return;
+    }
+    target = effective;
+  }
+  [self applyLink:nil atomic:NO inRange:target];
+  [self textContentChanged];
+}
+
+- (void)insertMention:(NSString *)trigger label:(NSString *)label url:(NSString *)url {
+  if (label.length == 0 || url.length == 0) {
+    return;
+  }
+  // Replaces the active mention query (trigger included), or inserts at
+  // the caret. A trailing space keeps typing outside the token.
+  NSRange target = _textView.selectedRange;
+  if (_mentionActive) {
+    target = NSMakeRange(_mentionStart, target.location - _mentionStart);
+  }
+  NSString *token = [NSString stringWithFormat:@"%@%@", trigger ?: @"", label];
+  NSMutableAttributedString *inserted = [[NSMutableAttributedString alloc]
+      initWithString:token
+          attributes:[self attributesForFlags:0
+                                        block:_typingBlock
+                                         link:url
+                                       atomic:YES]];
+  [inserted appendAttributedString:[[NSAttributedString alloc]
+      initWithString:@" "
+          attributes:[self attributesForFlags:0 block:_typingBlock]]];
+  [_textView.textStorage replaceCharactersInRange:target
+                             withAttributedString:inserted];
+  _textView.selectedRange = NSMakeRange(target.location + inserted.length, 0);
+  [self endMentionSession];
+  _typingFlags = 0;
+  [self applyTypingAttributes];
+  [self textContentChanged];
 }
 
 @end

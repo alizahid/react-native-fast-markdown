@@ -29,6 +29,7 @@ export function Editor() {
   const [selection, setSelection] = useState("0:0");
   const [lastMarkdown, setLastMarkdown] = useState("");
   const [state, setState] = useState<MarkdownEditorState | null>(null);
+  const [mention, setMention] = useState("");
 
   return (
     <KeyboardAvoidingView
@@ -38,8 +39,10 @@ export function Editor() {
       <ScrollView keyboardDismissMode="interactive" style={sheet.scroll}>
         <Text style={sheet.status}>
           {status} · sel {selection}
+          {mention ? ` · ${mention}` : ""}
         </Text>
         <FastMarkdownEditor
+          mentionTriggers={["@"]}
           onBlur={() => setStatus("blurred")}
           onChangeMarkdown={(markdown) => setLastMarkdown(markdown)}
           onChangeSelection={(range) =>
@@ -47,6 +50,12 @@ export function Editor() {
           }
           onChangeState={setState}
           onFocus={() => setStatus("focused")}
+          onLinkDetected={(event) => setMention(`link? ${event.url}`)}
+          onMentionChange={(event) =>
+            setMention(`mention ${event.trigger}${event.query}`)
+          }
+          onMentionEnd={() => setMention("")}
+          onMentionStart={(event) => setMention(`mention ${event.trigger}`)}
           placeholder="Write something..."
           placeholderTextColor="#9CA3AF"
           ref={editor.ref}
@@ -134,6 +143,15 @@ export function Editor() {
           active={state?.isOrderedList}
           label="1. List"
           onPress={editor.toggleOrderedList}
+        />
+        <ToolbarButton
+          label="Link"
+          onPress={() => editor.insertLink("https://example.com", "example")}
+        />
+        <ToolbarButton label="Unlink" onPress={editor.removeLink} />
+        <ToolbarButton
+          label="@ali"
+          onPress={() => editor.insertMention("@", "ali", "users://ali")}
         />
       </ScrollView>
       <ScrollView

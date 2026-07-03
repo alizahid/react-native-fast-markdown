@@ -285,6 +285,19 @@ export interface FastMarkdownEditorRef {
   focus(): void;
   /** Resolves the markdown as of the latest edit. */
   getMarkdown(): Promise<string>;
+  /**
+   * Links the selection to `url`; with a collapsed cursor, inserts `label`
+   * (or the URL itself) as linked text.
+   */
+  insertLink(url: string, label?: string): void;
+  /**
+   * Inserts an atomic mention token (`trigger + label`, e.g. `@ali`)
+   * linked to `url` (an app scheme like `users://ali`), replacing any
+   * active mention query.
+   */
+  insertMention(trigger: string, label: string, url: string): void;
+  /** Removes the link covering the selection or cursor. */
+  removeLink(): void;
   setSelection(start: number, end: number): void;
   /** Replaces the content; the value is parsed as markdown. */
   setValue(markdown: string): void;

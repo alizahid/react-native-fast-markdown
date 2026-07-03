@@ -93,7 +93,9 @@ Java_com_fastmarkdown_FastMarkdownNative_markdownFromEditorContent(
     jclass,
     jbyteArray text,
     jintArray runs,
-    jintArray lineBlocks) {
+    jintArray lineBlocks,
+    jintArray linkRanges,
+    jbyteArray linkUrls) {
   std::vector<fastmarkdown::StyledRun> styledRuns;
   if (runs != nullptr) {
     const jsize length = env->GetArrayLength(runs);
@@ -121,8 +123,28 @@ Java_com_fastmarkdown_FastMarkdownNative_markdownFromEditorContent(
            static_cast<uint8_t>(values[i + 1])});
     }
   }
+  // Link URLs cross as one newline-joined blob (URLs cannot contain '\n').
+  std::vector<fastmarkdown::LinkRun> links;
+  if (linkRanges != nullptr) {
+    const jsize length = env->GetArrayLength(linkRanges);
+    std::vector<jint> values(static_cast<size_t>(length));
+    if (length > 0) {
+      env->GetIntArrayRegion(linkRanges, 0, length, values.data());
+    }
+    const std::string urls = toStdString(env, linkUrls);
+    size_t urlStart = 0;
+    for (jsize i = 0; i + 1 < length; i += 2) {
+      const size_t urlEnd = urls.find('\n', urlStart);
+      links.push_back(
+          {static_cast<uint32_t>(values[i]),
+           static_cast<uint32_t>(values[i + 1]),
+           urls.substr(urlStart, urlEnd == std::string::npos ? std::string::npos
+                                                             : urlEnd - urlStart)});
+      urlStart = urlEnd == std::string::npos ? urls.size() : urlEnd + 1;
+    }
+  }
   const std::string result = fastmarkdown::markdownFromEditor(
-      toStdString(env, text), styledRuns, lines);
+      toStdString(env, text), styledRuns, lines, links);
   return toByteArray(
       env, reinterpret_cast<const uint8_t*>(result.data()), result.size());
 }
@@ -156,6 +178,15 @@ Java_com_fastmarkdown_FastMarkdownNative_editorFromMarkdownContent(
   for (const fastmarkdown::EditorLine& line : document.lines) {
     push32(static_cast<uint32_t>(line.type));
     push32(line.level);
+  }
+  push32(static_cast<uint32_t>(document.links.size()));
+  for (const fastmarkdown::LinkRun& link : document.links) {
+    push32(link.start);
+    push32(link.end);
+    push32(static_cast<uint32_t>(link.url.size()));
+  }
+  for (const fastmarkdown::LinkRun& link : document.links) {
+    bytes.insert(bytes.end(), link.url.begin(), link.url.end());
   }
   bytes.insert(bytes.end(), document.text.begin(), document.text.end());
   return toByteArray(env, bytes.data(), bytes.size());

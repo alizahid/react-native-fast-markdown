@@ -29,6 +29,9 @@ export function FastMarkdownEditor({
       blur: () => inputRef.current?.blur(),
       focus: () => inputRef.current?.focus(),
       getMarkdown: () => Promise.resolve(textRef.current),
+      insertLink: () => undefined,
+      insertMention: () => undefined,
+      removeLink: () => undefined,
       setSelection: () => {
         // Not supported in the web fallback.
       },

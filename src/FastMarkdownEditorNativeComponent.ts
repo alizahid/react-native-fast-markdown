@@ -96,6 +96,18 @@ type EditorComponentType = HostComponent<NativeProps>;
 interface NativeCommands {
   blur: (viewRef: React.ElementRef<EditorComponentType>) => void;
   focus: (viewRef: React.ElementRef<EditorComponentType>) => void;
+  insertLink: (
+    viewRef: React.ElementRef<EditorComponentType>,
+    url: string,
+    label: string
+  ) => void;
+  insertMention: (
+    viewRef: React.ElementRef<EditorComponentType>,
+    trigger: string,
+    label: string,
+    url: string
+  ) => void;
+  removeLink: (viewRef: React.ElementRef<EditorComponentType>) => void;
   setSelection: (
     viewRef: React.ElementRef<EditorComponentType>,
     start: CodegenTypes.Int32,
@@ -126,6 +138,9 @@ export const Commands = codegenNativeCommands<NativeCommands>({
   supportedCommands: [
     "blur",
     "focus",
+    "insertLink",
+    "insertMention",
+    "removeLink",
     "setSelection",
     "setValue",
     "toggleBlockQuote",

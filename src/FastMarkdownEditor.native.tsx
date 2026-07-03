@@ -88,6 +88,21 @@ export function FastMarkdownEditor({
       },
       getMarkdown: () =>
         Promise.resolve(markdownRef.current ?? textRef.current),
+      insertLink: (url: string, label?: string) => {
+        if (nativeRef.current) {
+          Commands.insertLink(nativeRef.current, url, label ?? "");
+        }
+      },
+      insertMention: (trigger: string, label: string, url: string) => {
+        if (nativeRef.current) {
+          Commands.insertMention(nativeRef.current, trigger, label, url);
+        }
+      },
+      removeLink: () => {
+        if (nativeRef.current) {
+          Commands.removeLink(nativeRef.current);
+        }
+      },
       setSelection: (start: number, end: number) => {
         if (nativeRef.current) {
           Commands.setSelection(nativeRef.current, start, end);

@@ -21,7 +21,12 @@ export function useFastMarkdownEditor() {
       focus: () => ref.current?.focus(),
       getMarkdown: (): Promise<string> =>
         ref.current?.getMarkdown() ?? Promise.resolve(""),
+      insertLink: (url: string, label?: string) =>
+        ref.current?.insertLink(url, label),
+      insertMention: (trigger: string, label: string, url: string) =>
+        ref.current?.insertMention(trigger, label, url),
       ref,
+      removeLink: () => ref.current?.removeLink(),
       setSelection: (start: number, end: number) =>
         ref.current?.setSelection(start, end),
       setValue: (markdown: string) => ref.current?.setValue(markdown),

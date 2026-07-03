@@ -42,6 +42,14 @@ struct EditorLine {
   uint8_t level = 0;
 };
 
+// A linked range (mentions are links whose URL carries an app scheme, e.g.
+// users://ali). Links never overlap; offsets are UTF-16 code units.
+struct LinkRun {
+  uint32_t start = 0;
+  uint32_t end = 0;
+  std::string url;
+};
+
 struct StyledText {
   std::string text;
   std::vector<StyledRun> runs;
@@ -53,6 +61,7 @@ struct EditorDocument {
   // One entry per text line (newline-separated); missing entries mean
   // Paragraph.
   std::vector<EditorLine> lines;
+  std::vector<LinkRun> links;
 };
 
 // Serializes the editor's content to markdown. Every newline in `text` is a
@@ -64,7 +73,8 @@ struct EditorDocument {
 std::string markdownFromEditor(
     const std::string& text,
     const std::vector<StyledRun>& runs,
-    const std::vector<EditorLine>& lines);
+    const std::vector<EditorLine>& lines,
+    const std::vector<LinkRun>& links = {});
 
 // Parses markdown and flattens it to editor text + mark runs + line blocks
 // (the inverse of markdownFromEditor for the editor's subset; unsupported

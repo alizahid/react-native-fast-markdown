@@ -112,6 +112,10 @@ std::string dumpEditor(const fastmarkdown::EditorDocument& document) {
       out += "." + std::to_string(line.level);
     }
   }
+  for (const auto& link : document.links) {
+    out += " [" + std::to_string(link.start) + ":" + std::to_string(link.end) +
+        " " + link.url + "]";
+  }
   return out;
 }
 
@@ -125,7 +129,7 @@ void expectEditorRoundTrip(
   g_total++;
   const std::string markdown = fastmarkdown::markdownFromEditor(text, runs, lines);
   const auto extracted = fastmarkdown::editorFromMarkdown(markdown);
-  const std::string expected = dumpEditor({text, runs, lines});
+  const std::string expected = dumpEditor({text, runs, lines, {}});
   const std::string actual = dumpEditor(extracted);
   if (actual != expected) {
     g_failures++;
@@ -543,6 +547,44 @@ int main() {
       dumpEditor(fastmarkdown::editorFromMarkdown(
           "# Title\n\n- a\n- **b**\n\n> q\n\n```\nx\n```")),
       "\"Title\na\nb\nq\nx\" 8:9:1 | 1.1 4 4 2 3");
+
+  // --- Editor links + mentions (E4) ---
+  expectString(
+      "editor link run serializes",
+      fastmarkdown::markdownFromEditor(
+          "visit the docs now", {}, {}, {{6, 14, "https://x.dev"}}),
+      "visit [the docs](https://x.dev) now\n");
+  expectString(
+      "editor mention link",
+      fastmarkdown::markdownFromEditor(
+          "ping @ali ok", {}, {}, {{5, 9, "users://ali"}}),
+      "ping [@ali](users://ali) ok\n");
+  expectString(
+      "editor marked link label",
+      fastmarkdown::markdownFromEditor(
+          "see docs here",
+          {{4, 8, fastmarkdown::MarkBold}},
+          {},
+          {{4, 8, "https://x.dev"}}),
+      "see [**docs**](https://x.dev) here\n");
+  expectString(
+      "editor link extraction",
+      dumpEditor(fastmarkdown::editorFromMarkdown(
+          "visit [the docs](https://x.dev) and [@ali](users://ali)")),
+      "\"visit the docs and @ali\" | 0 [6:14 https://x.dev] [19:23 users://ali]");
+  expectString(
+      "editor autolink extraction",
+      dumpEditor(fastmarkdown::editorFromMarkdown("see https://x.dev now")),
+      "\"see https://x.dev now\" | 0 [4:17 https://x.dev]");
+  expectString(
+      "editor link in list item",
+      fastmarkdown::markdownFromEditor(
+          "docs\nother",
+          {},
+          {{fastmarkdown::EditorBlockType::Bullet, 0},
+           {fastmarkdown::EditorBlockType::Bullet, 0}},
+          {{0, 4, "https://x.dev"}}),
+      "- [docs](https://x.dev)\n- other\n");
 
   std::printf("%d/%d passed\n", g_total - g_failures, g_total);
   return g_failures == 0 ? 0 : 1;

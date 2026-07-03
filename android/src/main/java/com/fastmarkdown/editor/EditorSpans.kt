@@ -51,6 +51,22 @@ interface EditorDerivedSpan
  */
 class EditorMarkSpan(val mark: Int)
 
+/**
+ * Data-only linked range. Mentions carry an app-scheme URL and `atomic`
+ * (the token edits as one unit).
+ */
+class LinkDataSpan(val url: String, val atomic: Boolean)
+
+/** Derived link appearance. */
+class LinkDisplaySpan(private val color: Int) :
+  android.text.style.CharacterStyle(),
+  EditorDerivedSpan {
+  override fun updateDrawState(paint: TextPaint) {
+    paint.color = color
+    paint.isUnderlineText = true
+  }
+}
+
 /** Derived visual styling for the combined mark flags of a range. */
 class EditorDisplaySpan(private val flags: Int) : MetricAffectingSpan(), EditorDerivedSpan {
   override fun updateMeasureState(paint: TextPaint) {

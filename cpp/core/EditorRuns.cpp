@@ -117,6 +117,8 @@ size_t utf16Length(const char* data, size_t size) {
 struct Segment {
   std::string text;
   uint32_t flags = 0;
+  // Index into the links vector, or -1 when the piece is not linked.
+  int link = -1;
 };
 
 // Builds inline nodes for a line's segments. The mark whose run extends
@@ -197,6 +199,32 @@ struct EditorLineContent {
   }
 };
 
+// Builds a line's inline nodes: consecutive same-link segments wrap in a
+// Link node (links are outermost — markdown formats inside the label).
+void buildLineNodes(
+    MarkdownDocument& document,
+    Node* parent,
+    const std::vector<Segment>& segments,
+    const std::vector<LinkRun>& links) {
+  size_t i = 0;
+  while (i < segments.size()) {
+    const int link = segments[i].link;
+    size_t j = i;
+    while (j < segments.size() && segments[j].link == link) {
+      j++;
+    }
+    if (link >= 0 && static_cast<size_t>(link) < links.size()) {
+      Node* node = document.arena.alloc(NodeType::Link);
+      node->url = links[static_cast<size_t>(link)].url;
+      parent->children.push_back(node);
+      buildInlineNodes(document, node, segments, i, j, 0);
+    } else {
+      buildInlineNodes(document, parent, segments, i, j, 0);
+    }
+    i = j;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Markdown extraction (parse -> editor document)
 // ---------------------------------------------------------------------------
@@ -263,6 +291,17 @@ struct EditorCollector {
       case NodeType::InlineCode:
         appendMarkedText(out, node->text, activeFlags | MarkInlineCode);
         break;
+      case NodeType::Link: {
+        const auto start = static_cast<uint32_t>(
+            utf16Length(out.text.data(), out.text.size()));
+        collectChildren(node, activeFlags, context);
+        const auto end = static_cast<uint32_t>(
+            utf16Length(out.text.data(), out.text.size()));
+        if (end > start) {
+          out.links.push_back({start, end, node->url});
+        }
+        break;
+      }
       case NodeType::Image:
         appendMarkedText(out, node->text, activeFlags);
         break;
@@ -341,7 +380,8 @@ struct EditorCollector {
 std::string markdownFromEditor(
     const std::string& text,
     const std::vector<StyledRun>& runs,
-    const std::vector<EditorLine>& lines) {
+    const std::vector<EditorLine>& lines,
+    const std::vector<LinkRun>& links) {
   const std::vector<size_t> toByte = utf16ToByteTable(text);
   const auto utf16Size = static_cast<uint32_t>(toByte.size() - 1);
 
@@ -371,11 +411,16 @@ std::string markdownFromEditor(
     }
   }
 
-  // Split at every run edge and newline so each piece has constant flags.
+  // Split at every run/link edge and newline so each piece has constant
+  // flags and link membership.
   std::set<uint32_t> cuts = {0, utf16Size};
   for (const StyledRun& run : trimmed) {
     cuts.insert(run.start);
     cuts.insert(run.end);
+  }
+  for (const LinkRun& link : links) {
+    cuts.insert(std::min(link.start, utf16Size));
+    cuts.insert(std::min(link.end, utf16Size));
   }
   for (uint32_t u = 0; u < utf16Size; u++) {
     if (text[toByte[u]] == '\n') {
@@ -410,7 +455,14 @@ std::string markdownFromEditor(
           flags |= run.flags;
         }
       }
-      collected.back().segments.push_back({piece, flags});
+      int linkIndex = -1;
+      for (size_t l = 0; l < links.size(); l++) {
+        if (links[l].start <= prev && next <= links[l].end) {
+          linkIndex = static_cast<int>(l);
+          break;
+        }
+      }
+      collected.back().segments.push_back({piece, flags, linkIndex});
     }
     prev = next;
   }
@@ -429,7 +481,7 @@ std::string markdownFromEditor(
           Node* heading = document.arena.alloc(NodeType::Heading);
           heading->level = std::clamp<uint8_t>(line.block.level, 1, 6);
           root->children.push_back(heading);
-          buildInlineNodes(document, heading, line.segments, 0, line.segments.size(), 0);
+          buildLineNodes(document, heading, line.segments, links);
         }
         i++;
         break;
@@ -442,9 +494,7 @@ std::string markdownFromEditor(
           if (!collected[i].empty()) {
             Node* paragraph = document.arena.alloc(NodeType::Paragraph);
             quote->children.push_back(paragraph);
-            buildInlineNodes(
-                document, paragraph, collected[i].segments, 0,
-                collected[i].segments.size(), 0);
+            buildLineNodes(document, paragraph, collected[i].segments, links);
             any = true;
           }
           i++;
@@ -486,9 +536,7 @@ std::string markdownFromEditor(
           if (!collected[i].empty()) {
             Node* item = document.arena.alloc(NodeType::ListItem);
             list->children.push_back(item);
-            buildInlineNodes(
-                document, item, collected[i].segments, 0,
-                collected[i].segments.size(), 0);
+            buildLineNodes(document, item, collected[i].segments, links);
             any = true;
           }
           i++;
@@ -503,8 +551,7 @@ std::string markdownFromEditor(
         if (!line.empty()) {
           Node* paragraph = document.arena.alloc(NodeType::Paragraph);
           root->children.push_back(paragraph);
-          buildInlineNodes(
-              document, paragraph, line.segments, 0, line.segments.size(), 0);
+          buildLineNodes(document, paragraph, line.segments, links);
         }
         i++;
         break;

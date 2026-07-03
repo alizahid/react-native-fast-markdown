@@ -62,7 +62,16 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
 
   @ReactProp(name = "mentionTriggers")
   override fun setMentionTriggers(view: FastMarkdownEditorView?, value: ReadableArray?) {
-    // Wired in E4.
+    val triggers = ArrayList<String>()
+    if (value != null) {
+      for (index in 0 until value.size()) {
+        val trigger = value.getString(index)
+        if (!trigger.isNullOrEmpty()) {
+          triggers.add(trigger.substring(0, 1))
+        }
+      }
+    }
+    view?.mentionTriggers = triggers
   }
 
   @ReactProp(name = "multiline")
@@ -109,6 +118,23 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
 
   override fun setValue(view: FastMarkdownEditorView?, value: String?) {
     view?.setMarkdownValue(value ?: "")
+  }
+
+  override fun insertLink(view: FastMarkdownEditorView?, url: String?, label: String?) {
+    view?.insertLink(url ?: "", label ?: "")
+  }
+
+  override fun insertMention(
+    view: FastMarkdownEditorView?,
+    trigger: String?,
+    label: String?,
+    url: String?,
+  ) {
+    view?.insertMention(trigger ?: "", label ?: "", url ?: "")
+  }
+
+  override fun removeLink(view: FastMarkdownEditorView?) {
+    view?.removeLink()
   }
 
   override fun toggleBlockQuote(view: FastMarkdownEditorView?) {

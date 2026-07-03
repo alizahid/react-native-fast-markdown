@@ -63,6 +63,14 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   private var removedNewlines = 0
   private var insertedNewlines = 0
 
+  // Mention trigger session.
+  var mentionTriggers: List<String> = emptyList()
+  private var mentionActive = false
+  private var mentionTrigger = ""
+  private var mentionStart = 0
+  private var lastMentionQuery: String? = null
+  private var linkColor = -0xbd5a0b // #4285F5-ish default; styles override
+
   // Drawn manually: Fabric never drives onMeasure, and TextView's native
   // hint rendering depends on measure-time layout construction.
   private var placeholderText: String? = null
@@ -141,8 +149,22 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
             }
           }
         }
+        // Typing strictly inside an atomic token demotes it to plain text.
+        if (changeInserted > 0) {
+          for (span in s.getSpans(changeStart, changeStart, LinkDataSpan::class.java)) {
+            if (span.atomic && s.getSpanStart(span) < changeStart &&
+              s.getSpanEnd(span) > changeStart + changeInserted
+            ) {
+              s.removeSpan(span)
+            }
+          }
+        }
         refreshDisplaySpans(text)
         emitContentChanged()
+        if (changeInserted == 1 && changeStart < s.length && isWordBreak(s[changeStart])) {
+          detectLinkBefore(changeStart)
+        }
+        updateMentionSession()
         emitState()
       }
     })
@@ -172,6 +194,7 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize * density)
     setTextColor(color)
     typeface = fontFamily?.let { Typeface.create(it, Typeface.NORMAL) } ?: Typeface.DEFAULT
+    styles.textStyleFor("link")?.color?.let { linkColor = it }
 
     setPadding(
       (styles.paddingLeft * density).toInt(),
@@ -233,6 +256,18 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     suppressWatcher = false
     val editable = text
     applyRuns(editable, decoded.runs)
+    for ((index, url) in decoded.linkUrls.withIndex()) {
+      val start = decoded.linkRanges[index * 2].coerceIn(0, editable.length)
+      val end = decoded.linkRanges[index * 2 + 1].coerceIn(start, editable.length)
+      if (end > start) {
+        editable.setSpan(
+          LinkDataSpan(url, atomic = false),
+          start,
+          end,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+      }
+    }
     lineBlocks.clear()
     var index = 0
     while (index + 2 <= decoded.lineBlocks.size) {
@@ -380,10 +415,24 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
 
   private fun interceptBackspace(): Boolean {
     val start = selectionStart
-    if (start != selectionEnd || start < 0) {
+    if (start != selectionEnd || start <= 0) {
       return false
     }
-    if (start > 0 && text[start - 1] != '\n') {
+    // Backspacing into an atomic token removes the whole token.
+    val editable = text
+    for (span in editable.getSpans(start - 1, start, LinkDataSpan::class.java)) {
+      if (!span.atomic) {
+        continue
+      }
+      val spanStart = editable.getSpanStart(span)
+      val spanEnd = editable.getSpanEnd(span)
+      if (start - 1 in spanStart until spanEnd) {
+        editable.removeSpan(span)
+        editable.delete(spanStart, spanEnd)
+        return true
+      }
+    }
+    if (text[start - 1] != '\n') {
       return false
     }
     val line = lineIndexAt(start)
@@ -395,6 +444,177 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     emitContentChanged()
     emitState()
     return true
+  }
+
+  /** Links the selection, or inserts a linked label at the caret. */
+  fun insertLink(url: String, label: String) {
+    if (url.isEmpty()) {
+      return
+    }
+    val start = selectionStart.coerceAtLeast(0)
+    val end = selectionEnd.coerceAtLeast(start)
+    val editable = text
+    if (start == end) {
+      val content = label.ifEmpty { url }
+      suppressWatcher = true
+      editable.insert(start, content)
+      suppressWatcher = false
+      ensureLineBlocks()
+      editable.setSpan(
+        LinkDataSpan(url, atomic = false),
+        start,
+        start + content.length,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+      setSelection(start + content.length)
+    } else {
+      editable.setSpan(
+        LinkDataSpan(url, atomic = false),
+        start,
+        end,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+      setSelection(end)
+    }
+    refreshDisplaySpans(editable)
+    emitContentChanged()
+  }
+
+  /** Removes the link covering the selection or the caret. */
+  fun removeLink() {
+    val start = selectionStart.coerceAtLeast(0)
+    val end = selectionEnd.coerceAtLeast(start)
+    val editable = text
+    val probeStart = if (start == end) (start - 1).coerceAtLeast(0) else start
+    var removed = false
+    for (span in editable.getSpans(probeStart, end, LinkDataSpan::class.java)) {
+      editable.removeSpan(span)
+      removed = true
+    }
+    if (removed) {
+      refreshDisplaySpans(editable)
+      emitContentChanged()
+    }
+  }
+
+  /** Inserts an atomic mention token, replacing any active query. */
+  fun insertMention(trigger: String, label: String, url: String) {
+    if (label.isEmpty() || url.isEmpty()) {
+      return
+    }
+    val editable = text
+    val caret = selectionStart.coerceAtLeast(0)
+    val start = if (mentionActive) mentionStart else caret
+    val end = caret.coerceAtLeast(start)
+    val token = trigger + label
+    suppressWatcher = true
+    editable.replace(start, end, "$token ")
+    suppressWatcher = false
+    ensureLineBlocks()
+    editable.setSpan(
+      LinkDataSpan(url, atomic = true),
+      start,
+      start + token.length,
+      Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+    )
+    endMentionSession()
+    setSelection(start + token.length + 1)
+    refreshDisplaySpans(editable)
+    emitContentChanged()
+  }
+
+  private fun endMentionSession() {
+    if (!mentionActive) {
+      return
+    }
+    mentionActive = false
+    lastMentionQuery = null
+    emitEvent("topEditorMentionEnd") { putString("trigger", mentionTrigger) }
+  }
+
+  private fun isWordBreak(c: Char): Boolean = c == ' ' || c == '\t' || c == '\n'
+
+  // Starts, updates, or ends the mention session from the text between the
+  // trigger and the caret.
+  private fun updateMentionSession() {
+    if (mentionTriggers.isEmpty()) {
+      return
+    }
+    val editable = text
+    val start = selectionStart
+    val end = selectionEnd
+    if (start != end || start < 0) {
+      endMentionSession()
+      return
+    }
+
+    if (mentionActive) {
+      var valid = mentionStart < editable.length && start > mentionStart
+      if (valid && mentionTrigger != editable[mentionStart].toString()) {
+        valid = false
+      }
+      var query = ""
+      if (valid) {
+        query = editable.substring(mentionStart + 1, start)
+        if (query.any { isWordBreak(it) }) {
+          valid = false
+        }
+      }
+      if (!valid) {
+        endMentionSession()
+        return
+      }
+      if (query == lastMentionQuery) {
+        return
+      }
+      lastMentionQuery = query
+      emitEvent("topEditorMentionChange") {
+        putString("query", query)
+        putString("trigger", mentionTrigger)
+      }
+      return
+    }
+
+    if (start == 0) {
+      return
+    }
+    val last = editable[start - 1].toString()
+    if (last !in mentionTriggers) {
+      return
+    }
+    if (start >= 2 && !isWordBreak(editable[start - 2])) {
+      return
+    }
+    mentionActive = true
+    mentionTrigger = last
+    mentionStart = start - 1
+    emitEvent("topEditorMentionStart") { putString("trigger", last) }
+  }
+
+  // After a word break lands, reports a bare URL the completed word forms.
+  private fun detectLinkBefore(position: Int) {
+    val editable = text
+    if (position > editable.length) {
+      return
+    }
+    var wordStart = position
+    while (wordStart > 0 && !isWordBreak(editable[wordStart - 1])) {
+      wordStart--
+    }
+    if (wordStart >= position) {
+      return
+    }
+    val word = editable.substring(wordStart, position)
+    if (!word.startsWith("http://") && !word.startsWith("https://")) {
+      return
+    }
+    if (word == "http://" || word == "https://") {
+      return
+    }
+    if (editable.getSpans(wordStart, position, LinkDataSpan::class.java).isNotEmpty()) {
+      return
+    }
+    emitEvent("topEditorLinkDetected") { putString("url", word) }
   }
 
   /** Toggles a mark over the selection, or arms it for typed text. */
@@ -510,6 +730,19 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       editable.removeSpan(span)
     }
 
+    for (span in editable.getSpans(0, editable.length, LinkDataSpan::class.java)) {
+      val start = editable.getSpanStart(span)
+      val end = editable.getSpanEnd(span)
+      if (end > start) {
+        editable.setSpan(
+          LinkDisplaySpan(linkColor),
+          start,
+          end,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+      }
+    }
+
     val marks = editable.getSpans(0, editable.length, EditorMarkSpan::class.java)
     if (marks.isNotEmpty()) {
       val cuts = sortedSetOf(0, editable.length)
@@ -587,7 +820,22 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       blocks[index * 2] = EditorBlocks.type(block)
       blocks[index * 2 + 1] = EditorBlocks.level(block)
     }
-    return FastMarkdownNative.markdownFromEditor(editable.toString(), runs, blocks)
+    val links = editable.getSpans(0, editable.length, LinkDataSpan::class.java)
+      .sortedBy { editable.getSpanStart(it) }
+    val linkRanges = IntArray(links.size * 2)
+    val linkUrls = ArrayList<String>(links.size)
+    for ((index, span) in links.withIndex()) {
+      linkRanges[index * 2] = editable.getSpanStart(span)
+      linkRanges[index * 2 + 1] = editable.getSpanEnd(span)
+      linkUrls.add(span.url)
+    }
+    return FastMarkdownNative.markdownFromEditor(
+      editable.toString(),
+      runs,
+      blocks,
+      linkRanges,
+      linkUrls,
+    )
   }
 
   private fun emitContentChanged() {
@@ -727,6 +975,8 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     pendingMarks = 0
     lastStateKey = -1L
     lineBlocks.clear()
+    mentionActive = false
+    lastMentionQuery = null
     stateWrapper = null
     applyTextStyles()
   }
@@ -749,6 +999,9 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     // marks to the inserted text yet, so reading here would clear them.
     if (!editInProgress && selStart == selEnd && text != null) {
       pendingMarks = marksAt(text, selStart - 1)
+    }
+    if (!editInProgress) {
+      updateMentionSession()
     }
     emitState()
     emitEvent("topEditorChangeSelection") {
