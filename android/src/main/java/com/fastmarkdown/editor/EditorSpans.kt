@@ -6,7 +6,7 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.TextPaint
 import android.text.style.LeadingMarginSpan
-import android.text.style.LineBackgroundSpan
+import android.text.style.LineHeightSpan
 import android.text.style.MetricAffectingSpan
 
 /** Inline mark bits; mirrors fastmarkdown::EditorMark in cpp/core/EditorRuns.h. */
@@ -40,6 +40,18 @@ object EditorBlocks {
   fun level(packed: Int): Int = packed and 0xFF
 
   fun isList(packed: Int): Boolean = type(packed) == BULLET || type(packed) == ORDERED
+
+  /**
+   * Same-type quote/code/list lines read as ONE block; the styles gap only
+   * separates different blocks (matching the viewer's block spacing).
+   */
+  fun sameGroup(a: Int, b: Int): Boolean {
+    val typeA = type(a)
+    if (typeA != type(b)) {
+      return false
+    }
+    return typeA == QUOTE || typeA == CODE || typeA == BULLET || typeA == ORDERED
+  }
 }
 
 /** Marker for every derived visual span; removed wholesale on rebuild. */
@@ -171,6 +183,47 @@ class QuoteDisplaySpan(private val density: Float) : LeadingMarginSpan, EditorDe
     canvas.drawRect(barLeft, top.toFloat(), barLeft + dir * width, bottom.toFloat(), paint)
     paint.color = previous
   }
+}
+
+/**
+ * Extra space below the last display line of a block-ending paragraph.
+ * Extends MetricAffectingSpan (a no-op there) because plain LineHeightSpan
+ * is not an UpdateLayout span — DynamicLayout would never reflow when the
+ * span is added during a display refresh.
+ */
+class ParagraphGapSpan(private val extra: Int) :
+  MetricAffectingSpan(),
+  LineHeightSpan,
+  EditorDerivedSpan {
+  override fun updateMeasureState(paint: TextPaint) = Unit
+
+  override fun updateDrawState(paint: TextPaint) = Unit
+
+  override fun chooseHeight(
+    text: CharSequence,
+    start: Int,
+    end: Int,
+    spanstartv: Int,
+    lineHeight: Int,
+    fm: Paint.FontMetricsInt,
+  ) {
+    // Only the display line holding the paragraph's newline gets the gap.
+    if (end > start && text[end - 1] == '\n') {
+      fm.descent += extra
+      fm.bottom += extra
+    }
+  }
+}
+
+/**
+ * No-op run splitter for a heading's newline: keeps it out of the
+ * heading's font run so the trailing empty line's caret doesn't inherit
+ * heading metrics.
+ */
+class NewlineResetSpan : MetricAffectingSpan(), EditorDerivedSpan {
+  override fun updateMeasureState(paint: TextPaint) = Unit
+
+  override fun updateDrawState(paint: TextPaint) = Unit
 }
 
 /** List lines: leading margin drawing the bullet or the item number. */

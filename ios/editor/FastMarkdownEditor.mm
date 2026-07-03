@@ -187,6 +187,9 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   CGFloat _lastPublishedHeight;
   UIFont *_baseFont;
   UIColor *_baseColor;
+  // Block gap from the styles cascade, rendered as paragraph spacing at
+  // block boundaries (never inside a quote/code/list group).
+  CGFloat _gap;
   // Marks armed for text typed at the collapsed cursor. Explicit while the
   // user has toggled at this caret position; re-derived from the character
   // before the caret whenever the selection moves.
@@ -291,6 +294,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
   _baseFont = font;
   _baseColor = color;
+  _gap = styles.gap;
   _linkColor = [styles textStyleFor:@"link"].color ?: UIColor.systemBlueColor;
   _textView.font = font;
   _textView.textColor = color;
@@ -299,6 +303,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   self.backgroundColor = styles.backgroundColor ?: UIColor.clearColor;
 
   [self refreshDisplayAttributesInRange:NSMakeRange(0, _textView.textStorage.length)];
+  [self refreshParagraphSpacing];
   [self applyTypingAttributes];
 
   _placeholderLabel.font = font;
@@ -376,13 +381,8 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     attributes[NSBaselineOffsetAttributeName] = @(-_baseFont.pointSize * 0.15);
   }
 
-  if (blockType == fastmarkdown::EditorBlockType::Quote ||
-      FMDBlockIsList(block)) {
-    NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
-    const CGFloat indent =
-        blockType == fastmarkdown::EditorBlockType::Quote ? 16 : 28;
-    paragraph.firstLineHeadIndent = indent;
-    paragraph.headIndent = indent;
+  NSMutableParagraphStyle *paragraph = [self paragraphStyleForBlock:block];
+  if (paragraph != nil) {
     attributes[NSParagraphStyleAttributeName] = paragraph;
   }
 
@@ -401,6 +401,75 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     attributes[FMDEditorBlockAttribute] = @(block);
   }
   return attributes;
+}
+
+- (NSMutableParagraphStyle *)paragraphStyleForBlock:(uint32_t)block {
+  const auto blockType = FMDBlockType(block);
+  if (blockType != fastmarkdown::EditorBlockType::Quote && !FMDBlockIsList(block)) {
+    return nil;
+  }
+  NSMutableParagraphStyle *paragraph = [[NSMutableParagraphStyle alloc] init];
+  const CGFloat indent =
+      blockType == fastmarkdown::EditorBlockType::Quote ? 16 : 28;
+  paragraph.firstLineHeadIndent = indent;
+  paragraph.headIndent = indent;
+  return paragraph;
+}
+
+// Quote/code/list lines of the same type read as ONE block; the gap only
+// separates different blocks (matching the viewer's block spacing).
+static BOOL FMDSameBlockGroup(uint32_t a, uint32_t b) {
+  const auto typeA = FMDBlockType(a);
+  if (typeA != FMDBlockType(b)) {
+    return NO;
+  }
+  return typeA == fastmarkdown::EditorBlockType::Quote ||
+      typeA == fastmarkdown::EditorBlockType::Code || FMDBlockIsList(a);
+}
+
+// Applies the styles-cascade gap as paragraph spacing after every line
+// that ends a block.
+- (void)refreshParagraphSpacing {
+  NSString *text = _textView.text;
+  if (text.length == 0) {
+    return;
+  }
+  NSTextStorage *storage = _textView.textStorage;
+  [storage beginEditing];
+  NSUInteger location = 0;
+  while (location <= text.length) {
+    const NSRange content = [self contentRangeOfLineAt:location];
+    const uint32_t block =
+        content.length > 0 ? [self blockOfLineAt:content.location] : 0;
+    const BOOL hasNext = NSMaxRange(content) < text.length;
+
+    CGFloat spacing = 0;
+    if (hasNext && _gap > 0) {
+      const NSUInteger nextStart = NSMaxRange(content) + 1;
+      const NSRange nextContent = [self contentRangeOfLineAt:nextStart];
+      const uint32_t nextBlock =
+          nextContent.length > 0 ? [self blockOfLineAt:nextContent.location] : 0;
+      spacing = FMDSameBlockGroup(block, nextBlock) ? 0 : _gap;
+    }
+
+    const NSUInteger lineEnd =
+        hasNext ? NSMaxRange(content) + 1 : NSMaxRange(content);
+    if (lineEnd > content.location) {
+      NSMutableParagraphStyle *paragraph =
+          [self paragraphStyleForBlock:block]
+              ?: [[NSMutableParagraphStyle alloc] init];
+      paragraph.paragraphSpacing = spacing;
+      [storage addAttribute:NSParagraphStyleAttributeName
+                      value:paragraph
+                      range:NSMakeRange(content.location, lineEnd - content.location)];
+    }
+
+    if (!hasNext) {
+      break;
+    }
+    location = NSMaxRange(content) + 1;
+  }
+  [storage endEditing];
 }
 
 // Full attributes for a run described by an existing attribute dictionary.
@@ -965,6 +1034,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
 - (void)textContentChanged {
   [self refreshPlaceholderVisibility];
+  [self refreshParagraphSpacing];
   [self publishHeight];
   [self invalidateDecorations];
   if (const auto *emitter = [self editorEventEmitter]) {
@@ -1253,6 +1323,30 @@ static BOOL FMDIsWordBreak(unichar c) {
     _typingBlock = 0;
     [self applyTypingAttributes];
   }
+
+  // A typed newline inherits the previous line's attributes, and TextKit
+  // sizes the trailing empty line fragment from them — after a heading the
+  // caret would stay heading-sized. Normalize the newline: base font and
+  // no marks, keeping the block attr for list/quote continuation (headings
+  // never continue, so theirs is dropped).
+  {
+    const NSRange caret = textView.selectedRange;
+    if (caret.length == 0 && caret.location > 0 &&
+        caret.location <= textView.text.length &&
+        [textView.text characterAtIndex:caret.location - 1] == '\n') {
+      NSTextStorage *storage = textView.textStorage;
+      const NSRange newline = NSMakeRange(caret.location - 1, 1);
+      NSDictionary *attrs = [storage attributesAtIndex:newline.location
+                                        effectiveRange:nil];
+      uint32_t block = FMDFlagsFromValue(attrs[FMDEditorBlockAttribute]);
+      if (FMDBlockType(block) == fastmarkdown::EditorBlockType::Heading) {
+        block = 0;
+      }
+      [storage setAttributes:[self attributesForFlags:0 block:block]
+                       range:newline];
+    }
+  }
+
   const NSRange selection = textView.selectedRange;
   if (selection.length == 0 && selection.location > 0 &&
       selection.location <= textView.text.length) {
