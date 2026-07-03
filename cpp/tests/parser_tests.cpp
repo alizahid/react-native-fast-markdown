@@ -5,6 +5,8 @@
 #include <string>
 
 #include "../core/AstJson.h"
+#include "../core/AstToMarkdown.h"
+#include "../core/EditorText.h"
 #include "../core/Parser.h"
 
 namespace {
@@ -42,6 +44,33 @@ void expectNotContains(const char* name, const std::string& markdown, const std:
     g_failures++;
     std::printf("FAIL %s\n  input:    %s\n  found unexpected: %s\n  actual:   %s\n",
                 name, markdown.c_str(), fragment.c_str(), actual.c_str());
+  }
+}
+
+// The round-trip law: parsing the serialized output must reproduce the
+// original AST exactly, even when the spelling normalizes.
+void expectRoundTrip(const char* name, const std::string& markdown) {
+  g_total++;
+  auto doc = fastmarkdown::parseMarkdown(markdown);
+  const std::string original = fastmarkdown::astToJson(doc->root);
+  const std::string serialized = fastmarkdown::astToMarkdown(doc->root);
+  auto reparsed = fastmarkdown::parseMarkdown(serialized);
+  const std::string actual = fastmarkdown::astToJson(reparsed->root);
+  if (actual != original) {
+    g_failures++;
+    std::printf(
+        "FAIL roundtrip %s\n  input:      %s\n  serialized: %s\n  expected:   %s\n  actual:     %s\n",
+        name, markdown.c_str(), serialized.c_str(), original.c_str(), actual.c_str());
+  }
+}
+
+void expectString(
+    const char* name, const std::string& actual, const std::string& expected) {
+  g_total++;
+  if (actual != expected) {
+    g_failures++;
+    std::printf("FAIL %s\n  expected: %s\n  actual:   %s\n",
+                name, expected.c_str(), actual.c_str());
   }
 }
 
@@ -223,6 +252,69 @@ int main() {
       "nested list structure",
       "- a\n  - b",
       R"("type":"list")");
+
+  // --- Serializer round trips (AstToMarkdown) ---
+  expectRoundTrip("rt paragraph", "hello world");
+  expectRoundTrip("rt two paragraphs", "one\n\ntwo");
+  expectRoundTrip("rt soft break", "line one\nline two");
+  expectRoundTrip("rt hard break", "line one\\\nline two");
+  expectRoundTrip("rt headings", "# H1\n\n## H2\n\n###### H6");
+  expectRoundTrip("rt bold italic", "**bold** and _italic_ and **bold _nested_**");
+  expectRoundTrip("rt strikethrough", "~~gone~~ stays");
+  expectRoundTrip("rt spoiler", "both ||secret|| kinds >!hidden!< here");
+  expectRoundTrip("rt sup sub", "x^2^ and H~2~O and reddit ^word too");
+  expectRoundTrip("rt sup multiword", "reddit ^(multi word) form");
+  expectRoundTrip("rt inline code", "run `npm install` now");
+  expectRoundTrip("rt inline code with backticks", "a ``code `with` ticks`` b");
+  expectRoundTrip("rt link", "see [the docs](https://example.com) now");
+  expectRoundTrip("rt link with parens", "see [x](https://en.wikipedia.org/wiki/Bracket_(disambiguation))");
+  expectRoundTrip("rt mention", "ping [@ali](users://ali) in [#general](channels://general)");
+  expectRoundTrip("rt autolink", "visit https://example.com today");
+  expectRoundTrip("rt image", "![alt text](https://example.com/img.png)");
+  expectRoundTrip("rt quote", "> quoted **bold**\n>\n> second paragraph");
+  expectRoundTrip("rt nested quote content", "> outer\n>\n> - a\n> - b");
+  expectRoundTrip("rt code block", "```ts\nconst x = 1;\nconst y = \"two\";\n```");
+  expectRoundTrip("rt code block with backticks", "````\na ``` fence inside\n````");
+  expectRoundTrip("rt unordered list", "- one\n- two\n- three");
+  expectRoundTrip("rt ordered list", "1. first\n2. second");
+  expectRoundTrip("rt ordered list start", "5. five\n6. six");
+  expectRoundTrip("rt nested list", "- a\n  - a1\n  - a2\n- b");
+  expectRoundTrip("rt list with paragraphs", "- first para\n\n  second para\n- next item");
+  expectRoundTrip("rt table", "| A | B |\n|---|---|\n| 1 | 2 |");
+  expectRoundTrip("rt table alignment", "| L | C | R |\n|:--|:-:|--:|\n| a | b | c |");
+  expectRoundTrip("rt thematic break", "one\n\n---\n\ntwo");
+  expectRoundTrip("rt literal specials", "not *bold* stays\\* literal \\_x\\_ and \\`tick\\`");
+  expectRoundTrip("rt literal hash", "\\# not a heading");
+  expectRoundTrip("rt literal list", "1\\. not a list");
+  expectRoundTrip("rt literal pipe", "a \\| b");
+  expectRoundTrip("rt exclamation", "wow! and ![not image");
+  expectRoundTrip("rt mixed document",
+      "# Title\n\nIntro with **bold**, `code`, and [a link](https://x.dev).\n\n"
+      "> A quote\n\n- item one\n- item two\n\n```js\nconsole.log(1);\n```\n\n"
+      "| K | V |\n|---|---|\n| a | 1 |\n\n---\n\nThe ||end|| ^fin^");
+
+  // --- Editor plain-text bridge (E1) ---
+  expectString(
+      "editor markdown from text",
+      fastmarkdown::markdownFromPlainText("hello\nworld"),
+      "hello\n\nworld\n");
+  expectString(
+      "editor text escapes literals",
+      fastmarkdown::markdownFromPlainText("**not bold** #tag"),
+      "\\*\\*not bold\\*\\* #tag\n");
+  expectString(
+      "editor text escapes line starts",
+      fastmarkdown::markdownFromPlainText("# not a heading\n1. not a list"),
+      "\\# not a heading\n\n1\\. not a list\n");
+  expectString(
+      "editor text stable round trip",
+      fastmarkdown::plainTextFromMarkdown(
+          fastmarkdown::markdownFromPlainText("line one\nline two")),
+      "line one\nline two");
+  expectString(
+      "editor setValue flattens structure",
+      fastmarkdown::plainTextFromMarkdown("# Title\n\nbody with **bold**\n\n- a\n- b"),
+      "Title\nbody with bold\na\nb");
 
   std::printf("%d/%d passed\n", g_total - g_failures, g_total);
   return g_failures == 0 ? 0 : 1;

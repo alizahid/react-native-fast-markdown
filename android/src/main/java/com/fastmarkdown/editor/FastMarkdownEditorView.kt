@@ -22,6 +22,7 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.uimanager.StateWrapper
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.events.Event
+import com.fastmarkdown.FastMarkdownNative
 import com.fastmarkdown.style.StyleConfig
 
 /**
@@ -81,7 +82,11 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
 
       override fun afterTextChanged(s: Editable?) {
         publishHeight()
-        emitEvent("topEditorChangeText") { putString("text", s?.toString() ?: "") }
+        val content = s?.toString() ?: ""
+        emitEvent("topEditorChangeText") { putString("text", content) }
+        emitEvent("topEditorChangeMarkdown") {
+          putString("markdown", FastMarkdownNative.markdownFromText(content))
+        }
       }
     })
 
@@ -156,11 +161,15 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     if (!defaultValueApplied) {
       defaultValueApplied = true
       if (!value.isNullOrEmpty()) {
-        // E0: plain text; E1 parses markdown into formatted content.
-        setText(value)
-        setSelection(text.length)
+        setMarkdownValue(value)
       }
     }
+  }
+
+  /** Parsed as markdown, flattened to the editor's plain-text model. */
+  fun setMarkdownValue(markdown: String) {
+    setText(FastMarkdownNative.textFromMarkdown(markdown))
+    setSelection(text.length)
   }
 
   fun setMultiline(value: Boolean) {

@@ -6,6 +6,7 @@
 #import <react/renderer/components/FastMarkdownViewSpec/RCTComponentViewHelpers.h>
 #import <react/renderer/core/ConcreteComponentDescriptor.h>
 
+#import "../../cpp/core/EditorText.h"
 #import "../../cpp/react/FastMarkdownEditorShadowNode.h"
 #import "../style/FMDStyleConfig.h"
 #import "../style/FMDTextStyle.h"
@@ -128,10 +129,11 @@ static NSString *FMDStringFromCpp(const std::string &value) {
 
   if (!_defaultValueApplied) {
     _defaultValueApplied = YES;
-    NSString *defaultValue = FMDStringFromCpp(newProps.defaultValue);
-    if (defaultValue.length > 0) {
-      // E0: plain text; E1 parses markdown into formatted content.
-      _textView.text = defaultValue;
+    if (!newProps.defaultValue.empty()) {
+      // Parsed as markdown, flattened to the editor's plain-text model
+      // (marks attach in E2/E3).
+      _textView.text = FMDStringFromCpp(
+          fastmarkdown::plainTextFromMarkdown(newProps.defaultValue));
       [self textContentChanged];
     }
   }
@@ -244,8 +246,10 @@ static NSString *FMDStringFromCpp(const std::string &value) {
   [self refreshPlaceholderVisibility];
   [self publishHeight];
   if (const auto *emitter = [self editorEventEmitter]) {
-    emitter->onEditorChangeText(
-        {.text = std::string(_textView.text.UTF8String ?: "")});
+    const std::string text(_textView.text.UTF8String ?: "");
+    emitter->onEditorChangeText({.text = text});
+    emitter->onEditorChangeMarkdown(
+        {.markdown = fastmarkdown::markdownFromPlainText(text)});
   }
 }
 
@@ -306,8 +310,10 @@ static NSString *FMDStringFromCpp(const std::string &value) {
 }
 
 - (void)setValue:(NSString *)value {
-  // E0: plain text; E1 parses markdown into formatted content.
-  _textView.text = value;
+  // Parsed as markdown, flattened to the editor's plain-text model (marks
+  // attach in E2/E3).
+  const std::string markdown(value.UTF8String ?: "");
+  _textView.text = FMDStringFromCpp(fastmarkdown::plainTextFromMarkdown(markdown));
   [self textContentChanged];
 }
 

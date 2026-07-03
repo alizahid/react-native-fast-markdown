@@ -28,7 +28,23 @@ object FastMarkdownNative {
     return AstDecoder.decode(parse(markdown.toByteArray(Charsets.UTF_8)))
   }
 
+  /** Editor: escaped markdown from the editor's plain-text content. */
+  fun markdownFromText(text: String): String {
+    return markdownFromPlainText(text.toByteArray(Charsets.UTF_8))
+      .toString(Charsets.UTF_8)
+  }
+
+  /** Editor: markdown flattened to the editor's plain-text model. */
+  fun textFromMarkdown(markdown: String): String {
+    return plainTextFromMarkdown(markdown.toByteArray(Charsets.UTF_8))
+      .toString(Charsets.UTF_8)
+  }
+
   @JvmStatic private external fun parse(markdown: ByteArray): ByteArray
+
+  @JvmStatic private external fun markdownFromPlainText(text: ByteArray): ByteArray
+
+  @JvmStatic private external fun plainTextFromMarkdown(markdown: ByteArray): ByteArray
 
   @JvmStatic private external fun installMeasurer(measurer: MarkdownMeasurer)
 }

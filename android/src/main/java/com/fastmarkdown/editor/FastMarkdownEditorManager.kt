@@ -108,9 +108,7 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
   }
 
   override fun setValue(view: FastMarkdownEditorView?, value: String?) {
-    // E0: plain text; E1 parses markdown into formatted content.
-    view?.setText(value ?: "")
-    view?.setSelection(view.text.length)
+    view?.setMarkdownValue(value ?: "")
   }
 
   override fun prepareToRecycleView(

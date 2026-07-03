@@ -39,10 +39,10 @@ export function Editor() {
         </Text>
         <FastMarkdownEditor
           onBlur={() => setStatus("blurred")}
+          onChangeMarkdown={(markdown) => setLastMarkdown(markdown)}
           onChangeSelection={(range) =>
             setSelection(`${range.start}:${range.end}`)
           }
-          onChangeText={(text) => setLastMarkdown(text)}
           onFocus={() => setStatus("focused")}
           placeholder="Write something..."
           placeholderTextColor="#9CA3AF"

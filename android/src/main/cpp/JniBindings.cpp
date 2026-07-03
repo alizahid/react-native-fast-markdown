@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/AstSerializer.h"
+#include "core/EditorText.h"
 #include "core/Parser.h"
 #include "react/FastMarkdownMeasurer.h"
 
@@ -65,6 +66,24 @@ Java_com_fastmarkdown_FastMarkdownNative_parse(JNIEnv* env, jclass, jbyteArray m
   const auto document = fastmarkdown::parseMarkdown(input);
   const std::vector<uint8_t> bytes = fastmarkdown::serializeAst(document->root);
   return toByteArray(env, bytes.data(), bytes.size());
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_fastmarkdown_FastMarkdownNative_markdownFromPlainText(
+    JNIEnv* env,
+    jclass,
+    jbyteArray text) {
+  const std::string result = fastmarkdown::markdownFromPlainText(toStdString(env, text));
+  return toByteArray(env, reinterpret_cast<const uint8_t*>(result.data()), result.size());
+}
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_fastmarkdown_FastMarkdownNative_plainTextFromMarkdown(
+    JNIEnv* env,
+    jclass,
+    jbyteArray markdown) {
+  const std::string result = fastmarkdown::plainTextFromMarkdown(toStdString(env, markdown));
+  return toByteArray(env, reinterpret_cast<const uint8_t*>(result.data()), result.size());
 }
 
 extern "C" JNIEXPORT void JNICALL
