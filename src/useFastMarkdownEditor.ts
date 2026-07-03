@@ -23,6 +23,8 @@ export function useFastMarkdownEditor() {
         ref.current?.getMarkdown() ?? Promise.resolve(""),
       insertLink: (url: string, label?: string) =>
         ref.current?.insertLink(url, label),
+      insertMarkdown: (markdown: string) =>
+        ref.current?.insertMarkdown(markdown),
       insertMention: (trigger: string, label: string, url: string) =>
         ref.current?.insertMention(trigger, label, url),
       ref,

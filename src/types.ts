@@ -290,6 +290,8 @@ export interface FastMarkdownEditorRef {
    * (or the URL itself) as linked text.
    */
   insertLink(url: string, label?: string): void;
+  /** Parses `markdown` and inserts it at the cursor (or over the selection). */
+  insertMarkdown(markdown: string): void;
   /**
    * Inserts an atomic mention token (`trigger + label`, e.g. `@ali`)
    * linked to `url` (an app scheme like `users://ali`), replacing any

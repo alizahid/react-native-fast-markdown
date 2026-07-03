@@ -446,6 +446,137 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     return true
   }
 
+  // Paste never inserts directly: the clipboard is reported to JS, which
+  // owns the default insertion (via insertMarkdown) unless prevented.
+  override fun onTextContextMenuItem(id: Int): Boolean {
+    if (id == android.R.id.paste || id == android.R.id.pasteAsPlainText) {
+      reportPaste()
+      return true
+    }
+    return super.onTextContextMenuItem(id)
+  }
+
+  private fun reportPaste() {
+    val clipboard =
+      context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+    val clip = clipboard?.primaryClip ?: return
+    var textContent = ""
+    val images = Arguments.createArray()
+    for (index in 0 until clip.itemCount) {
+      val item = clip.getItemAt(index)
+      val uri = item.uri
+      if (uri != null) {
+        val options = android.graphics.BitmapFactory.Options().apply {
+          inJustDecodeBounds = true
+        }
+        runCatching {
+          context.contentResolver.openInputStream(uri)?.use { stream ->
+            android.graphics.BitmapFactory.decodeStream(stream, null, options)
+          }
+        }
+        if (options.outWidth > 0) {
+          images.pushMap(
+            Arguments.createMap().apply {
+              putString("url", uri.toString())
+              putDouble("width", options.outWidth.toDouble())
+              putDouble("height", options.outHeight.toDouble())
+            },
+          )
+          continue
+        }
+      }
+      if (textContent.isEmpty()) {
+        textContent = item.coerceToText(context)?.toString() ?: ""
+      }
+    }
+    emitEvent("topEditorPaste") {
+      putString("text", textContent)
+      putArray("images", images)
+    }
+  }
+
+  /** Parses markdown and inserts it at the cursor / over the selection. */
+  fun insertMarkdownAt(markdown: String) {
+    if (markdown.isEmpty()) {
+      return
+    }
+    val decoded = FastMarkdownNative.editorFromMarkdown(markdown)
+    val start = selectionStart.coerceAtLeast(0)
+    val end = selectionEnd.coerceAtLeast(start)
+    val startLine = lineIndexAt(start)
+    val editable = text
+    suppressWatcher = true
+    editable.replace(start, end, decoded.text)
+    suppressWatcher = false
+    ensureLineBlocks()
+
+    var runIndex = 0
+    while (runIndex + 3 <= decoded.runs.size) {
+      val runStart = (decoded.runs[runIndex] + start).coerceIn(0, editable.length)
+      val runEnd = (decoded.runs[runIndex + 1] + start).coerceIn(runStart, editable.length)
+      val flags = decoded.runs[runIndex + 2]
+      if (runEnd > runStart) {
+        for (mark in EditorMarks.ALL) {
+          if (flags and mark != 0) {
+            editable.setSpan(
+              EditorMarkSpan(mark),
+              runStart,
+              runEnd,
+              Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+          }
+        }
+      }
+      runIndex += 3
+    }
+    for ((index, url) in decoded.linkUrls.withIndex()) {
+      val linkStart = (decoded.linkRanges[index * 2] + start).coerceIn(0, editable.length)
+      val linkEnd =
+        (decoded.linkRanges[index * 2 + 1] + start).coerceIn(linkStart, editable.length)
+      if (linkEnd > linkStart) {
+        editable.setSpan(
+          LinkDataSpan(url, atomic = false),
+          linkStart,
+          linkEnd,
+          Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+        )
+      }
+    }
+    val decodedLineCount = decoded.lineBlocks.size / 2
+    for (k in 0 until decodedLineCount) {
+      val lineIndex = startLine + k
+      if (lineIndex >= lineBlocks.size) {
+        break
+      }
+      val block = EditorBlocks.pack(decoded.lineBlocks[k * 2], decoded.lineBlocks[k * 2 + 1])
+      // The first pasted line joins the current line; its existing block
+      // wins unless it is a plain paragraph.
+      if (k > 0 || lineBlocks[lineIndex] == 0) {
+        lineBlocks[lineIndex] = block
+      }
+    }
+
+    refreshDisplaySpans(editable)
+    setSelection((start + decoded.text.length).coerceAtMost(editable.length))
+    emitContentChanged()
+    emitState()
+  }
+
+  // Hardware keyboard formatting shortcuts (Ctrl+B / Ctrl+I).
+  override fun onKeyShortcut(keyCode: Int, event: android.view.KeyEvent): Boolean {
+    when (keyCode) {
+      android.view.KeyEvent.KEYCODE_B -> {
+        toggleMark(EditorMarks.BOLD)
+        return true
+      }
+      android.view.KeyEvent.KEYCODE_I -> {
+        toggleMark(EditorMarks.ITALIC)
+        return true
+      }
+      else -> return super.onKeyShortcut(keyCode, event)
+    }
+  }
+
   /** Links the selection, or inserts a linked label at the caret. */
   fun insertLink(url: String, label: String) {
     if (url.isEmpty()) {

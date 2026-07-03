@@ -124,6 +124,10 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     view?.insertLink(url ?: "", label ?: "")
   }
 
+  override fun insertMarkdown(view: FastMarkdownEditorView?, value: String?) {
+    view?.insertMarkdownAt(value ?: "")
+  }
+
   override fun insertMention(
     view: FastMarkdownEditorView?,
     trigger: String?,

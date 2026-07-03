@@ -67,7 +67,59 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 @property (nonatomic, weak) FastMarkdownEditor *editor;
 @end
 
-@interface FastMarkdownEditor () <UITextViewDelegate, RCTFastMarkdownEditorViewProtocol>
+@protocol FMDEditorTextViewActions <NSObject>
+- (void)editorTextViewDidPaste;
+- (void)editorTextViewShortcut:(uint32_t)mark;
+@end
+
+// Intercepts paste (the clipboard is reported to JS, which owns the
+// default insertion) and adds hardware keyboard formatting shortcuts.
+@interface FMDEditorTextView : UITextView
+@property (nonatomic, weak) id<FMDEditorTextViewActions> actionDelegate;
+@end
+
+@implementation FMDEditorTextView
+
+- (void)paste:(id)sender {
+  [self.actionDelegate editorTextViewDidPaste];
+}
+
+- (NSArray<UIKeyCommand *> *)keyCommands {
+  UIKeyCommand *bold = [UIKeyCommand keyCommandWithInput:@"b"
+                                           modifierFlags:UIKeyModifierCommand
+                                                  action:@selector(fmdToggleBold:)];
+  UIKeyCommand *italic = [UIKeyCommand keyCommandWithInput:@"i"
+                                             modifierFlags:UIKeyModifierCommand
+                                                    action:@selector(fmdToggleItalic:)];
+  UIKeyCommand *strike = [UIKeyCommand
+      keyCommandWithInput:@"x"
+            modifierFlags:UIKeyModifierCommand | UIKeyModifierShift
+                   action:@selector(fmdToggleStrikethrough:)];
+  if (@available(iOS 15.0, *)) {
+    bold.wantsPriorityOverSystemBehavior = YES;
+    italic.wantsPriorityOverSystemBehavior = YES;
+    strike.wantsPriorityOverSystemBehavior = YES;
+  }
+  return @[ bold, italic, strike ];
+}
+
+- (void)fmdToggleBold:(UIKeyCommand *)command {
+  [self.actionDelegate editorTextViewShortcut:fastmarkdown::MarkBold];
+}
+
+- (void)fmdToggleItalic:(UIKeyCommand *)command {
+  [self.actionDelegate editorTextViewShortcut:fastmarkdown::MarkItalic];
+}
+
+- (void)fmdToggleStrikethrough:(UIKeyCommand *)command {
+  [self.actionDelegate editorTextViewShortcut:fastmarkdown::MarkStrikethrough];
+}
+
+@end
+
+@interface FastMarkdownEditor () <UITextViewDelegate,
+                                  FMDEditorTextViewActions,
+                                  RCTFastMarkdownEditorViewProtocol>
 - (void)drawMarkersInContext:(CGContextRef)context view:(FMDEditorMarkerView *)view;
 @end
 
@@ -89,7 +141,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 @end
 
 @implementation FastMarkdownEditor {
-  UITextView *_textView;
+  FMDEditorTextView *_textView;
   UILabel *_placeholderLabel;
   FMDEditorMarkerView *_markerView;
   NSString *_stylesJson;
@@ -138,7 +190,8 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     _mentionTriggers = @[];
     _lastSelection = NSMakeRange(0, 0);
 
-    _textView = [[UITextView alloc] initWithFrame:CGRectZero];
+    _textView = [[FMDEditorTextView alloc] initWithFrame:CGRectZero];
+    _textView.actionDelegate = self;
     _textView.backgroundColor = UIColor.clearColor;
     _textView.delegate = self;
     _textView.scrollEnabled = NO;
@@ -1099,7 +1152,7 @@ static BOOL FMDIsWordBreak(unichar c) {
   [_textView resignFirstResponder];
 }
 
-- (void)applyMarkdownValue:(const std::string &)markdown {
+- (NSMutableAttributedString *)attributedContentFromMarkdown:(const std::string &)markdown {
   const auto document = fastmarkdown::editorFromMarkdown(markdown);
   NSString *text = FMDStringFromCpp(document.text);
   NSMutableAttributedString *attributed = [[NSMutableAttributedString alloc]
@@ -1165,7 +1218,11 @@ static BOOL FMDIsWordBreak(unichar c) {
     }
   }
 
-  _textView.attributedText = attributed;
+  return attributed;
+}
+
+- (void)applyMarkdownValue:(const std::string &)markdown {
+  _textView.attributedText = [self attributedContentFromMarkdown:markdown];
   _typingFlags = 0;
   _typingBlock = 0;
   [self applyTypingAttributes];
@@ -1174,6 +1231,56 @@ static BOOL FMDIsWordBreak(unichar c) {
 
 - (void)setValue:(NSString *)value {
   [self applyMarkdownValue:std::string(value.UTF8String ?: "")];
+}
+
+- (void)insertMarkdown:(NSString *)value {
+  const std::string markdown(value.UTF8String ?: "");
+  if (markdown.empty()) {
+    return;
+  }
+  NSAttributedString *content = [self attributedContentFromMarkdown:markdown];
+  const NSRange selection = _textView.selectedRange;
+  [_textView.textStorage replaceCharactersInRange:selection
+                             withAttributedString:content];
+  _textView.selectedRange = NSMakeRange(selection.location + content.length, 0);
+  [self textContentChanged];
+  [self emitState];
+}
+
+#pragma mark - FMDEditorTextViewActions
+
+- (void)editorTextViewDidPaste {
+  UIPasteboard *pasteboard = UIPasteboard.generalPasteboard;
+  const std::string text(pasteboard.string.UTF8String ?: "");
+
+  std::vector<FastMarkdownEditorEventEmitter::OnEditorPasteImages> images;
+  if (pasteboard.hasImages) {
+    for (UIImage *image in pasteboard.images) {
+      NSData *data = UIImagePNGRepresentation(image);
+      if (data == nil) {
+        continue;
+      }
+      NSString *path = [NSTemporaryDirectory()
+          stringByAppendingPathComponent:
+              [NSString stringWithFormat:@"fmd-paste-%@.png", NSUUID.UUID.UUIDString]];
+      if (![data writeToFile:path atomically:YES]) {
+        continue;
+      }
+      images.push_back({
+          .height = image.size.height,
+          .url = std::string([NSString stringWithFormat:@"file://%@", path].UTF8String),
+          .width = image.size.width,
+      });
+    }
+  }
+
+  if (const auto *emitter = [self editorEventEmitter]) {
+    emitter->onEditorPaste({.images = std::move(images), .text = text});
+  }
+}
+
+- (void)editorTextViewShortcut:(uint32_t)mark {
+  [self toggleMark:mark];
 }
 
 - (void)setSelection:(NSInteger)start end:(NSInteger)end {

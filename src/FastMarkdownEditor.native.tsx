@@ -93,6 +93,11 @@ export function FastMarkdownEditor({
           Commands.insertLink(nativeRef.current, url, label ?? "");
         }
       },
+      insertMarkdown: (markdown: string) => {
+        if (nativeRef.current) {
+          Commands.insertMarkdown(nativeRef.current, markdown);
+        }
+      },
       insertMention: (trigger: string, label: string, url: string) => {
         if (nativeRef.current) {
           Commands.insertMention(nativeRef.current, trigger, label, url);
@@ -179,6 +184,9 @@ export function FastMarkdownEditor({
     []
   );
 
+  // The native side never inserts pasted content itself: it reports the
+  // clipboard here, and unless the app's onPaste calls preventDefault()
+  // synchronously, the default insertion happens via insertMarkdown.
   const handlePaste = useCallback(
     (
       event: NativeSyntheticEvent<{
@@ -186,17 +194,18 @@ export function FastMarkdownEditor({
         text: string;
       }>
     ) => {
-      if (!onPaste) {
-        return;
-      }
       const { images, text } = event.nativeEvent;
-      onPaste({
+      let prevented = false;
+      onPaste?.({
         images: images.length > 0 ? [...images] : undefined,
         preventDefault: () => {
-          // E5: suppresses the native default insertion.
+          prevented = true;
         },
         text: text.length > 0 ? text : undefined,
       });
+      if (!prevented && text.length > 0 && nativeRef.current) {
+        Commands.insertMarkdown(nativeRef.current, text);
+      }
     },
     [onPaste]
   );
@@ -254,7 +263,7 @@ export function FastMarkdownEditor({
           ? (event) => onMentionStart(event.nativeEvent)
           : undefined
       }
-      onEditorPaste={onPaste ? handlePaste : undefined}
+      onEditorPaste={handlePaste}
       placeholder={placeholder}
       placeholderTextColor={processedColor(placeholderTextColor)}
       ref={nativeRef}

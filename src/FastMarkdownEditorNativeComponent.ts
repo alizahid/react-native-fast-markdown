@@ -101,6 +101,10 @@ interface NativeCommands {
     url: string,
     label: string
   ) => void;
+  insertMarkdown: (
+    viewRef: React.ElementRef<EditorComponentType>,
+    value: string
+  ) => void;
   insertMention: (
     viewRef: React.ElementRef<EditorComponentType>,
     trigger: string,
@@ -139,6 +143,7 @@ export const Commands = codegenNativeCommands<NativeCommands>({
     "blur",
     "focus",
     "insertLink",
+    "insertMarkdown",
     "insertMention",
     "removeLink",
     "setSelection",

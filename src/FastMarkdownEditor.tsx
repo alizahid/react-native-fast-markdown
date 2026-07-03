@@ -30,6 +30,7 @@ export function FastMarkdownEditor({
       focus: () => inputRef.current?.focus(),
       getMarkdown: () => Promise.resolve(textRef.current),
       insertLink: () => undefined,
+      insertMarkdown: () => undefined,
       insertMention: () => undefined,
       removeLink: () => undefined,
       setSelection: () => {
