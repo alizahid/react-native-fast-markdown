@@ -51,7 +51,7 @@ const styles: MarkdownStyles = {
 | Prop | Type | Description |
 | --- | --- | --- |
 | `markdown` | `string` | The markdown source. |
-| `style` | `ViewStyle` | Main container style. `backgroundColor`, `padding*`, and `gap` (spacing between blocks) apply to the markdown content natively; all other view styles pass through. |
+| `style` | `MarkdownContainerStyle` | Main container style: `backgroundColor`, `padding`/`padding{Left,Right,Top,Bottom}`, `gap` (spacing between blocks), plus base text styles (`fontSize`, `fontWeight`, `fontFamily`, `color`, `fontVariant`, `textDecoration*`) that cascade into every text element unless overridden per-element via `styles`. Element builtins survive the cascade: heading sizes/weight stay unless `headings.hN` overrides, and code blocks keep their monospace font unless `codeBlock` overrides. For outer layout (margin, width, flex), wrap the viewer in a `View`. |
 | `styles` | `MarkdownStyles` | Per-element styles (below). Hoist to module scope or memoize. |
 | `images` | `{ url, width, height }[]` | Pre-sizing data. Listed images lay out at their final size immediately — zero layout shift. Unlisted images render a styled 100×100 placeholder, then grow when loaded. |
 | `onLinkPress` | `({ url }) => void` | Link or mention tapped. Mentions arrive with their scheme (e.g. `users://ali`). |

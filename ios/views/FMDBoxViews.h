@@ -5,6 +5,12 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// Horizontal scroller for code blocks and tables. Cancels React's surface
+/// touch handler when a drag begins so a wrapping Pressable's press dies,
+/// exactly like React Native's own scroll views.
+@interface FMDNestedScrollView : UIScrollView <UIScrollViewDelegate>
+@end
+
 /// Block quote: paints its box style, hosts a nested stack inside padding.
 @interface FMDQuoteView : UIView
 - (void)bind:(FMDMeasuredBlock *)measured

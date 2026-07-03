@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.view.View
 import android.view.ViewGroup
-import android.widget.HorizontalScrollView
 import com.fastmarkdown.render.Block
 import com.fastmarkdown.render.MeasuredBlock
 
@@ -150,7 +149,7 @@ class QuoteView(context: Context) : ViewGroup(context) {
 class CodeBlockView(context: Context) : ViewGroup(context) {
   private var measured: MeasuredBlock? = null
   private var block: Block.Code? = null
-  private val scroller = HorizontalScrollView(context).apply {
+  private val scroller = NestedHorizontalScrollView(context).apply {
     isHorizontalScrollBarEnabled = false
     overScrollMode = OVER_SCROLL_NEVER
     clipToPadding = false

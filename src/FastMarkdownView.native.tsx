@@ -13,6 +13,15 @@ const MAIN_STYLE_KEYS = [
   'paddingTop',
   'paddingBottom',
   'gap',
+  // Base text styles: cascade into every text element via stylesJson.
+  'fontSize',
+  'fontWeight',
+  'fontFamily',
+  'color',
+  'fontVariant',
+  'textDecorationColor',
+  'textDecorationLine',
+  'textDecorationStyle',
 ] as const;
 
 export function FastMarkdownView({

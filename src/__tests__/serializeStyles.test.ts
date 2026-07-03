@@ -105,6 +105,26 @@ describe('serializeStyles', () => {
     expect(out.blockQuote.borderTopColor).toBe(0xffff0000 | 0);
   });
 
+  test('main text keys become the base section, layout keys stay in main', () => {
+    const out = parse(
+      serializeStyles(undefined, {
+        padding: 16,
+        gap: 8,
+        fontFamily: 'Georgia',
+        fontSize: 17,
+        color: 'red',
+      })
+    );
+    expect(out.main.paddingLeft).toBe(16);
+    expect(out.main.gap).toBe(8);
+    expect(out.main.fontFamily).toBeUndefined();
+    expect(out.base).toEqual({
+      fontSize: 17,
+      fontFamily: 'Georgia',
+      color: 0xffff0000 | 0,
+    });
+  });
+
   test('output is stable for identical input', () => {
     const styles = { paragraph: { fontSize: 15 }, bold: { color: 'red' } };
     expect(serializeStyles(styles, { gap: 4 })).toBe(serializeStyles(styles, { gap: 4 }));

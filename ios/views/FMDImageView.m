@@ -34,6 +34,11 @@
   NSString *url = block.imageUrl ?: @"";
   UIImage *cached = [FMDImageLoader cachedImageForUrl:url];
   _imageView.image = cached;
+  if (cached != nil) {
+    // Report even for cache hits so a fresh view (relaunch with a warm disk
+    // cache, recycling) still resizes un-presized images.
+    [self.host imageIntrinsicSize:cached.size forUrl:url];
+  }
   if (cached == nil && url.length > 0) {
     __weak FMDImageView *weakSelf = self;
     [FMDImageLoader loadUrl:url

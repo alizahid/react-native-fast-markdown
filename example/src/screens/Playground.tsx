@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from "react";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   FastMarkdownView,
+  type MarkdownContainerStyle,
   type MarkdownStyles,
-} from 'react-native-fast-markdown';
+} from "react-native-fast-markdown";
 
 const MARKDOWN = `# Theme playground
 
@@ -14,43 +15,58 @@ A paragraph with **bold**, _italic_, \`inline code\`, a [link](https://example.c
 - alpha
 - beta
 
-||A spoiler to reveal||`;
+||A spoiler to reveal||
 
-const THEMES: Record<string, MarkdownStyles> = {
-  Default: {},
+Lorem ipsum dolor sit amet, >!consectetur adipiscing elit. Mauris eget felis ut mi vehicula condimentum!<. Donec molestie erat sodales nisi viverra varius`;
+
+interface Theme {
+  /** Base text styles: cascade into every text element from the style prop. */
+  container?: MarkdownContainerStyle;
+  styles: MarkdownStyles;
+}
+
+const THEMES: Record<string, Theme> = {
+  Default: { styles: {} },
   Serif: {
-    headings: {
-      h1: { fontFamily: 'Georgia', color: '#7C2D12' },
+    // fontFamily/fontSize/color cascade into paragraphs, lists, quotes,
+    // and headings — only deviations live in `styles`.
+    container: { fontFamily: "Georgia", fontSize: 17, color: "#44403C" },
+    styles: {
+      headings: {
+        h1: { color: "#7C2D12" },
+      },
+      blockQuote: {
+        color: "#78716C",
+        borderLeftColor: "#EA580C",
+        borderLeftWidth: 4,
+        backgroundColor: "#FFF7ED",
+        padding: 12,
+        borderRadius: 8,
+      },
+      link: { color: "#C2410C", textDecorationLine: "underline" },
+      mention: { color: "#9333EA", fontWeight: "700" },
+      spoiler: { backgroundColor: "#7C2D12", borderRadius: 8 },
     },
-    paragraph: { fontFamily: 'Georgia', fontSize: 17, color: '#44403C' },
-    listItem: { fontFamily: 'Georgia', color: '#44403C' },
-    blockQuote: {
-      fontFamily: 'Georgia',
-      color: '#78716C',
-      borderLeftColor: '#EA580C',
-      borderLeftWidth: 4,
-      backgroundColor: '#FFF7ED',
-      padding: 12,
-      borderRadius: 8,
-    },
-    link: { color: '#C2410C', textDecorationLine: 'underline' },
-    mention: { color: '#9333EA', fontWeight: '700' },
-    spoiler: { backgroundColor: '#7C2D12', borderRadius: 8 },
   },
   Compact: {
-    headings: { h1: { fontSize: 22 } },
-    paragraph: { fontSize: 13, color: '#111' },
-    listItem: { fontSize: 13 },
-    blockQuote: { fontSize: 13, color: '#666' },
-    inlineCode: { fontSize: 12, backgroundColor: '#EEF2FF', color: '#4338CA' },
-    spoiler: { backgroundColor: '#111827', borderRadius: 2 },
+    container: { fontSize: 13, color: "#111" },
+    styles: {
+      headings: { h1: { fontSize: 22 } },
+      blockQuote: { color: "#666" },
+      inlineCode: {
+        fontSize: 12,
+        backgroundColor: "#EEF2FF",
+        color: "#4338CA",
+      },
+      spoiler: { backgroundColor: "#111827", borderRadius: 2 },
+    },
   },
 };
 
 const GAPS = [6, 12, 20];
 
 export function Playground() {
-  const [theme, setTheme] = useState<keyof typeof THEMES>('Default');
+  const [theme, setTheme] = useState<keyof typeof THEMES>("Default");
   const [gapIndex, setGapIndex] = useState(1);
 
   return (
@@ -62,7 +78,9 @@ export function Playground() {
             style={[sheet.chip, theme === name && sheet.chipActive]}
             onPress={() => setTheme(name as keyof typeof THEMES)}
           >
-            <Text style={theme === name ? sheet.chipTextActive : sheet.chipText}>
+            <Text
+              style={theme === name ? sheet.chipTextActive : sheet.chipText}
+            >
               {name}
             </Text>
           </Pressable>
@@ -77,8 +95,11 @@ export function Playground() {
       <ScrollView>
         <FastMarkdownView
           markdown={MARKDOWN}
-          styles={THEMES[theme]}
-          style={[sheet.markdown, { gap: GAPS[gapIndex] }]}
+          styles={THEMES[theme]?.styles}
+          style={[
+            { padding: 16, gap: GAPS[gapIndex] },
+            THEMES[theme]?.container,
+          ]}
         />
       </ScrollView>
     </View>
@@ -90,27 +111,24 @@ const sheet = StyleSheet.create({
     flex: 1,
   },
   controls: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     padding: 12,
   },
   chip: {
     borderRadius: 16,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: "#F3F4F6",
     paddingHorizontal: 12,
     paddingVertical: 6,
   },
   chipActive: {
-    backgroundColor: '#2563EB',
+    backgroundColor: "#2563EB",
   },
   chipText: {
-    color: '#374151',
+    color: "#374151",
   },
   chipTextActive: {
-    color: 'white',
-  },
-  markdown: {
-    padding: 16,
+    color: "white",
   },
 });

@@ -4,6 +4,36 @@
 #import "FMDBlockStackView.h"
 #import "FMDBlockTextView.h"
 
+@implementation FMDNestedScrollView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+  if (self = [super initWithFrame:frame]) {
+    self.delegate = self;
+  }
+  return self;
+}
+
+// This scroller is not a React view, so nothing cancels the JS responder
+// (an RN Pressable wrapping the markdown view) when a drag starts here —
+// React only cancels for its own scroll views. Kill the surface touch
+// handler's active touches the way RCTTouchHandler itself cancels: an
+// enabled toggle.
+- (void)scrollViewWillBeginDragging:(UIScrollView *)scrollView {
+  UIView *view = self.superview;
+  while (view != nil) {
+    for (UIGestureRecognizer *recognizer in view.gestureRecognizers) {
+      if ([NSStringFromClass(recognizer.class) containsString:@"TouchHandler"]) {
+        recognizer.enabled = NO;
+        recognizer.enabled = YES;
+        return;
+      }
+    }
+    view = view.superview;
+  }
+}
+
+@end
+
 // Shared background + border painting on a host view's layer tree.
 static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
   view.backgroundColor = style.backgroundColor ?: UIColor.clearColor;
@@ -123,7 +153,7 @@ static void FMDApplyBox(UIView *view, FMDLayoutStyle *style) {
 - (void)bind:(FMDMeasuredBlock *)measured {
   _measured = measured;
   if (_scroller == nil) {
-    _scroller = [[UIScrollView alloc] initWithFrame:CGRectZero];
+    _scroller = [[FMDNestedScrollView alloc] initWithFrame:CGRectZero];
     _scroller.showsHorizontalScrollIndicator = NO;
     _scroller.showsVerticalScrollIndicator = NO;
     _scroller.alwaysBounceHorizontal = YES;

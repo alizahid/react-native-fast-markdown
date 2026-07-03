@@ -305,9 +305,14 @@ class BlockBuilder {
             [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"codeBlock"] defaults:defaults];
 
         ResolvedAttrs attrs;
+        // Base color cascades into code; the monospace family and size are
+        // element builtins that only styles.codeBlock overrides.
+        applyStyle(attrs, [styles_ textStyleFor:@"base"], fontScale_);
         attrs.fontSize = 14 * fontScale_;
         attrs.family = @"Menlo";
-        attrs.color = UIColor.blackColor;
+        if (attrs.color == nil) {
+          attrs.color = UIColor.blackColor;
+        }
         for (FMDTextStyle *style in inherited) {
           applyStyle(attrs, style, fontScale_);
         }
@@ -434,6 +439,7 @@ class BlockBuilder {
     ResolvedAttrs markerAttrs;
     markerAttrs.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
     markerAttrs.color = UIColor.blackColor;
+    applyStyle(markerAttrs, [styles_ textStyleFor:@"base"], fontScale_);
     applyStyle(markerAttrs, [styles_ textStyleFor:@"paragraph"], fontScale_);
     for (FMDTextStyle *style in itemInherited) {
       applyStyle(markerAttrs, style, fontScale_);
@@ -487,6 +493,7 @@ class BlockBuilder {
     ResolvedAttrs cellAttrs;
     cellAttrs.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
     cellAttrs.color = UIColor.blackColor;
+    applyStyle(cellAttrs, [styles_ textStyleFor:@"base"], fontScale_);
     applyStyle(cellAttrs, [styles_ textStyleFor:@"paragraph"], fontScale_);
     for (FMDTextStyle *style in inherited) {
       applyStyle(cellAttrs, style, fontScale_);
@@ -539,6 +546,9 @@ class BlockBuilder {
     ResolvedAttrs base;
     base.color = UIColor.blackColor;
     if (node->type == NodeType::Heading) {
+      // Base cascades under heading builtins: family/color flow in, the
+      // level's size and bold weight stay unless hN overrides them.
+      applyStyle(base, [styles_ textStyleFor:@"base"], fontScale_);
       base.fontSize = [styles_ fontSizeForHeadingLevel:node->level] * fontScale_;
       base.weight = 700;
       for (FMDTextStyle *style in inherited) {
@@ -550,6 +560,7 @@ class BlockBuilder {
           fontScale_);
     } else {
       base.fontSize = [styles_ fontSizeForHeadingLevel:0] * fontScale_;
+      applyStyle(base, [styles_ textStyleFor:@"base"], fontScale_);
       applyStyle(base, [styles_ textStyleFor:@"paragraph"], fontScale_);
       for (FMDTextStyle *style in inherited) {
         applyStyle(base, style, fontScale_);

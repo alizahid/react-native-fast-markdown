@@ -3,6 +3,7 @@ export type {
   FastMarkdownViewProps,
   FontVariant,
   FontWeight,
+  MarkdownContainerStyle,
   MarkdownHeadingLevel,
   MarkdownImageData,
   MarkdownImageStyle,

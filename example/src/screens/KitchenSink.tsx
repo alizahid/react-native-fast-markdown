@@ -1,8 +1,9 @@
-import { Alert, ScrollView, StyleSheet } from 'react-native';
+import { Alert, ScrollView, StyleSheet } from "react-native";
 import {
   FastMarkdownView,
+  type MarkdownContainerStyle,
   type MarkdownStyles,
-} from 'react-native-fast-markdown';
+} from "react-native-fast-markdown";
 
 const MARKDOWN = `# Fast Markdown
 
@@ -76,61 +77,65 @@ Wide (scrolls horizontally):
 
 const styles: MarkdownStyles = {
   headings: {
-    h1: { color: '#111827' },
-    h2: { color: '#1D4ED8' },
-    h3: { color: '#047857', fontWeight: '600' },
+    h1: { color: "#111827" },
+    h2: { color: "#1D4ED8" },
+    h3: { color: "#047857", fontWeight: "600" },
   },
-  paragraph: { fontSize: 16, color: '#1F2937' },
-  bold: { color: '#B91C1C' },
-  italic: { color: '#7C3AED' },
-  strikethrough: { color: '#9CA3AF' },
+  paragraph: { fontSize: 16, color: "#1F2937" },
+  bold: { color: "#B91C1C" },
+  italic: { color: "#7C3AED" },
+  strikethrough: { color: "#9CA3AF" },
   link: {
-    color: '#2563EB',
-    textDecorationLine: 'underline',
+    color: "#2563EB",
+    textDecorationLine: "underline",
   },
   mention: {
-    fontWeight: '600',
+    fontWeight: "600",
     variants: {
-      '^users://': { color: '#DB2777' },
-      '^channels://': { color: '#059669' },
+      "^users://": { color: "#DB2777" },
+      "^channels://": { color: "#059669" },
     },
   },
   inlineCode: {
-    fontFamily: 'Courier',
-    color: '#BE185D',
-    backgroundColor: '#FDF2F8',
+    fontFamily: "Courier",
+    color: "#BE185D",
+    backgroundColor: "#FDF2F8",
   },
-  superscript: { color: '#EA580C' },
-  subscript: { color: '#0284C7' },
-  image: { borderRadius: 12, backgroundColor: '#E5E7EB', maxHeight: 260 },
+  superscript: { color: "#EA580C" },
+  subscript: { color: "#0284C7" },
+  image: { borderRadius: 12, backgroundColor: "#E5E7EB", maxHeight: 260 },
 };
 
 const images = [
-  { url: 'https://picsum.photos/id/1015/600/400', width: 300, height: 200 },
+  { url: "https://picsum.photos/id/1015/600/400", width: 300, height: 200 },
 ];
 
 export function KitchenSink() {
   return (
-    <ScrollView style={sheet.container} contentInsetAdjustmentBehavior="automatic">
+    <ScrollView
+      style={sheet.container}
+      contentInsetAdjustmentBehavior="automatic"
+    >
       <FastMarkdownView
         markdown={MARKDOWN}
         styles={styles}
         images={images}
-        style={sheet.markdown}
-        onLinkPress={({ url }) => Alert.alert('onLinkPress', url)}
-        onLinkLongPress={({ url }) => Alert.alert('onLinkLongPress', url)}
-        onImagePress={({ url }) => Alert.alert('onImagePress', url)}
+        style={markdownStyle}
+        onLinkPress={({ url }) => Alert.alert("onLinkPress", url)}
+        onLinkLongPress={({ url }) => Alert.alert("onLinkLongPress", url)}
+        onImagePress={({ url }) => Alert.alert("onImagePress", url)}
       />
     </ScrollView>
   );
 }
 
+const markdownStyle: MarkdownContainerStyle = {
+  padding: 16,
+  gap: 12,
+};
+
 const sheet = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  markdown: {
-    padding: 16,
-    gap: 12,
   },
 });

@@ -13,8 +13,14 @@ import {
 } from 'react-native-gesture-handler';
 import {
   FastMarkdownView,
+  type MarkdownContainerStyle,
   type MarkdownStyles,
 } from 'react-native-fast-markdown';
+
+const markdownStyle: MarkdownContainerStyle = {
+  padding: 14,
+  gap: 8,
+};
 
 // Hoisted per the list recipe: one styles object shared by every item so
 // the native style config is parsed exactly once.
@@ -85,7 +91,7 @@ export function Feed() {
           <FastMarkdownView
             markdown={item.markdown}
             styles={styles}
-            style={sheet.markdown}
+            style={markdownStyle}
             onLinkPress={({ url }) => setLastPress(`link ${url}`)}
           />
         </Wrapper>
@@ -209,9 +215,5 @@ const sheet = StyleSheet.create({
   },
   cardPressed: {
     backgroundColor: '#EFF6FF',
-  },
-  markdown: {
-    padding: 14,
-    gap: 8,
   },
 });

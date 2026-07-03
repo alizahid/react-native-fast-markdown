@@ -1,4 +1,4 @@
-import type { ColorValue, StyleProp, ViewStyle } from 'react-native';
+import type { ColorValue, StyleProp } from 'react-native';
 
 export type FontVariant =
   | 'small-caps'
@@ -203,15 +203,36 @@ export interface MarkdownUrlEvent {
   url: string;
 }
 
+/**
+ * The viewer's main container style: background, padding, and the gap
+ * between blocks, plus base text styles that cascade into every text
+ * element (paragraphs, headings, lists, tables, quotes) unless overridden
+ * per-element via the `styles` prop. Element builtins survive the cascade:
+ * heading sizes/weight and the code block's monospace font stay unless
+ * their own section overrides them.
+ *
+ * For outer layout (margin, width, flex), wrap the viewer in a View.
+ */
+export interface MarkdownContainerStyle extends MarkdownTextStyle {
+  backgroundColor?: ColorValue;
+  padding?: number;
+  paddingLeft?: number;
+  paddingRight?: number;
+  paddingTop?: number;
+  paddingBottom?: number;
+  /** Vertical spacing between blocks. Default 12. */
+  gap?: number;
+}
+
 export interface FastMarkdownViewProps {
   /** The markdown source to render. */
   markdown: string;
   /**
-   * Main container style. `backgroundColor`, `padding*`, and `gap` (spacing
-   * between blocks) are applied to the markdown content natively; all other
-   * view styles pass through to the host view.
+   * Main container style: `backgroundColor`, `padding*`, `gap`, and base
+   * text styles that cascade into every text element unless overridden via
+   * `styles`. All keys are measured natively.
    */
-  style?: StyleProp<ViewStyle & { gap?: number }>;
+  style?: StyleProp<MarkdownContainerStyle>;
   /** Per-element markdown styles. Hoist to module scope or memoize. */
   styles?: MarkdownStyles;
   images?: MarkdownImageData[];

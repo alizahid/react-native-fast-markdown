@@ -57,8 +57,9 @@
   [self drawSpoilerCovers];
 }
 
-// One contiguous rounded polygon per spoiler (union of per-line run
-// rects), drawn over the text until revealed.
+// One contiguous polygon per spoiler: the union outline of the per-line run
+// rects with every outline corner rounded, drawn over the text until
+// revealed. A wrapped spoiler reads as a single shape, not stacked pills.
 - (void)drawSpoilerCovers {
   if (_attributedText.length == 0 || self.host == nil) {
     return;
@@ -68,6 +69,7 @@
     return;
   }
 
+  const CGFloat maxWidth = self.bounds.size.width;
   [_attributedText
       enumerateAttribute:FMDSpoilerIDAttributeName
                  inRange:NSMakeRange(0, _attributedText.length)
@@ -77,7 +79,7 @@
                     [self.host isSpoilerRevealed:spoilerId.integerValue]) {
                   return;
                 }
-                UIBezierPath *path = [UIBezierPath bezierPath];
+                NSMutableArray<NSValue *> *lineRects = [NSMutableArray new];
                 const NSRange glyphRange =
                     [layoutManager glyphRangeForCharacterRange:range
                                           actualCharacterRange:nil];
@@ -86,16 +88,93 @@
                                 withinSelectedGlyphRange:NSMakeRange(NSNotFound, 0)
                                          inTextContainer:self->_textContainer
                                               usingBlock:^(CGRect rect, BOOL *stopRects) {
-                                                [path appendPath:
-                                                          [UIBezierPath
-                                                              bezierPathWithRoundedRect:
-                                                                  CGRectInset(rect, -2, 0)
-                                                                           cornerRadius:
-                                                                               self.spoilerRadius]];
+                                                CGRect expanded = CGRectInset(rect, -2, 0);
+                                                if (expanded.origin.x < 0) {
+                                                  expanded.size.width += expanded.origin.x;
+                                                  expanded.origin.x = 0;
+                                                }
+                                                if (CGRectGetMaxX(expanded) > maxWidth) {
+                                                  expanded.size.width =
+                                                      maxWidth - expanded.origin.x;
+                                                }
+                                                [lineRects
+                                                    addObject:[NSValue
+                                                                  valueWithCGRect:expanded]];
                                               }];
+                UIBezierPath *path = FMDRoundedOutlinePath(lineRects, self.spoilerRadius);
                 [self.spoilerColor ?: UIColor.darkGrayColor setFill];
                 [path fill];
               }];
+}
+
+// Union outline of vertically stacked per-line rects, rounded at every
+// outline corner (convex and concave).
+static UIBezierPath *FMDRoundedOutlinePath(NSArray<NSValue *> *lines, CGFloat radius) {
+  UIBezierPath *path = [UIBezierPath bezierPath];
+  if (lines.count == 0) {
+    return path;
+  }
+  // Snap adjacent line rects into a contiguous stack so no hairline gaps or
+  // overlaps show between lines.
+  NSUInteger count = lines.count;
+  CGRect rects[count];
+  for (NSUInteger i = 0; i < count; i++) {
+    rects[i] = lines[i].CGRectValue;
+  }
+  for (NSUInteger i = 0; i + 1 < count; i++) {
+    const CGFloat boundary = (CGRectGetMaxY(rects[i]) + CGRectGetMinY(rects[i + 1])) / 2;
+    rects[i].size.height = boundary - rects[i].origin.y;
+    rects[i + 1].size.height = CGRectGetMaxY(rects[i + 1]) - boundary;
+    rects[i + 1].origin.y = boundary;
+  }
+
+  // Clockwise: top edge, down the right side with a jog at each width
+  // change, bottom edge, back up the left side.
+  NSUInteger capacity = count * 4;
+  CGPoint pts[capacity];
+  NSUInteger n = 0;
+  pts[n++] = CGPointMake(CGRectGetMinX(rects[0]), CGRectGetMinY(rects[0]));
+  pts[n++] = CGPointMake(CGRectGetMaxX(rects[0]), CGRectGetMinY(rects[0]));
+  for (NSUInteger i = 0; i + 1 < count; i++) {
+    if (fabs(CGRectGetMaxX(rects[i + 1]) - CGRectGetMaxX(rects[i])) > 0.5) {
+      pts[n++] = CGPointMake(CGRectGetMaxX(rects[i]), CGRectGetMaxY(rects[i]));
+      pts[n++] = CGPointMake(CGRectGetMaxX(rects[i + 1]), CGRectGetMaxY(rects[i]));
+    }
+  }
+  pts[n++] = CGPointMake(CGRectGetMaxX(rects[count - 1]), CGRectGetMaxY(rects[count - 1]));
+  pts[n++] = CGPointMake(CGRectGetMinX(rects[count - 1]), CGRectGetMaxY(rects[count - 1]));
+  for (NSUInteger i = count - 1; i > 0; i--) {
+    if (fabs(CGRectGetMinX(rects[i - 1]) - CGRectGetMinX(rects[i])) > 0.5) {
+      pts[n++] = CGPointMake(CGRectGetMinX(rects[i]), CGRectGetMinY(rects[i]));
+      pts[n++] = CGPointMake(CGRectGetMinX(rects[i - 1]), CGRectGetMinY(rects[i]));
+    }
+  }
+
+  BOOL started = NO;
+  for (NSUInteger i = 0; i < n; i++) {
+    const CGPoint prev = pts[(i + n - 1) % n];
+    const CGPoint v = pts[i];
+    const CGPoint next = pts[(i + 1) % n];
+    const CGFloat inLen = hypot(v.x - prev.x, v.y - prev.y);
+    const CGFloat outLen = hypot(next.x - v.x, next.y - v.y);
+    if (inLen < 0.01 || outLen < 0.01) {
+      continue;
+    }
+    const CGFloat r = MIN(radius, MIN(inLen / 2, outLen / 2));
+    const CGPoint entry =
+        CGPointMake(v.x - (v.x - prev.x) / inLen * r, v.y - (v.y - prev.y) / inLen * r);
+    const CGPoint exit =
+        CGPointMake(v.x + (next.x - v.x) / outLen * r, v.y + (next.y - v.y) / outLen * r);
+    if (!started) {
+      [path moveToPoint:entry];
+      started = YES;
+    } else {
+      [path addLineToPoint:entry];
+    }
+    [path addQuadCurveToPoint:exit controlPoint:v];
+  }
+  [path closePath];
+  return path;
 }
 
 - (nullable NSDictionary *)attributesAtPoint:(CGPoint)point {

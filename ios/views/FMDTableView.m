@@ -1,6 +1,7 @@
 #import "FMDTableView.h"
 
 #import "FMDBlockTextView.h"
+#import "FMDBoxViews.h"
 
 /// The unclipped grid inside the scroller: row boxes + cell text.
 @interface FMDTableGridView : UIView
@@ -114,7 +115,7 @@
 - (void)bind:(FMDMeasuredBlock *)measured host:(nullable id<FMDMarkdownHost>)host {
   _measured = measured;
   if (_scroller == nil) {
-    _scroller = [[UIScrollView alloc] initWithFrame:CGRectZero];
+    _scroller = [[FMDNestedScrollView alloc] initWithFrame:CGRectZero];
     _scroller.showsHorizontalScrollIndicator = NO;
     _scroller.showsVerticalScrollIndicator = NO;
     _scroller.alwaysBounceVertical = NO;

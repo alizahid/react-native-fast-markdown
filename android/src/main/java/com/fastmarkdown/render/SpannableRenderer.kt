@@ -167,7 +167,9 @@ object SpannableRenderer {
           borderBottomColor = null, borderBottomWidth = 0f,
         )
         val layout = context.layoutStyle("codeBlock", defaults)
-        var attrs = ResolvedAttrs(
+        // Base color cascades into code; the monospace family and size are
+        // element builtins that only styles.codeBlock overrides.
+        var attrs = context.apply(ResolvedAttrs(fontSizePx = 14f), "base").copy(
           fontSizePx = 14f * context.density * context.fontScale,
           family = "monospace",
         )
@@ -250,6 +252,7 @@ object SpannableRenderer {
     val itemText = merge(inherited, styles.textStyleFor("listItem"))
 
     var markerAttrs = ResolvedAttrs(fontSizePx = styles.fontSize(0) * context.density * context.fontScale)
+    markerAttrs = context.apply(markerAttrs, "base")
     markerAttrs = context.apply(markerAttrs, "paragraph")
     markerAttrs = context.apply(markerAttrs, itemText)
     if (markerColor != null) {
@@ -295,6 +298,7 @@ object SpannableRenderer {
 
     val cellText = merge(inherited, styles.textStyleFor("tableCell"))
     var cellAttrs = ResolvedAttrs(fontSizePx = styles.fontSize(0) * density * context.fontScale)
+    cellAttrs = context.apply(cellAttrs, "base")
     cellAttrs = context.apply(cellAttrs, "paragraph")
     cellAttrs = context.apply(cellAttrs, cellText)
 
@@ -389,11 +393,15 @@ object SpannableRenderer {
     val scale = context.density * context.fontScale
     var attrs: ResolvedAttrs
     if (node.type == MdNodeType.HEADING) {
-      attrs = ResolvedAttrs(fontSizePx = styles.fontSize(node.level) * scale, weight = 700)
+      // Base cascades under heading builtins: family/color flow in, the
+      // level's size and bold weight stay unless hN overrides them.
+      attrs = context.apply(ResolvedAttrs(fontSizePx = styles.fontSize(0) * scale), "base")
+        .copy(fontSizePx = styles.fontSize(node.level) * scale, weight = 700)
       attrs = context.apply(attrs, inherited)
       attrs = context.apply(attrs, "h${node.level}")
     } else {
       attrs = ResolvedAttrs(fontSizePx = styles.fontSize(0) * scale)
+      attrs = context.apply(attrs, "base")
       attrs = context.apply(attrs, "paragraph")
       attrs = context.apply(attrs, inherited)
     }
