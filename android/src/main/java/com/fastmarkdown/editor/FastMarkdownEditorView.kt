@@ -76,10 +76,6 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   private var lastMentionQuery: String? = null
   private var linkColor = -0xbd5a0b // #4285F5-ish default; styles override
 
-  // Block gap from the styles cascade, rendered as extra space after every
-  // line that ends a block (never inside a quote/code/list group).
-  private var gapPx = 0
-
   // Drawn manually: Fabric never drives onMeasure, and TextView's native
   // hint rendering depends on measure-time layout construction.
   private var placeholderText: String? = null
@@ -212,7 +208,6 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     setTextColor(color)
     typeface = fontFamily?.let { Typeface.create(it, Typeface.NORMAL) } ?: Typeface.DEFAULT
     styles.textStyleFor("link")?.color?.let { linkColor = it }
-    gapPx = (styles.gap * density).toInt()
 
     setPadding(
       (styles.paddingLeft * density).toInt(),
@@ -990,21 +985,6 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
           )
         }
-        // Empty lines get no spacing on either side: they are already
-        // visual separators, and the cursor spans the full line height —
-        // gap spacing would render a gap-tall cursor.
-        val nextLineEmpty =
-          newline + 1 >= editable.length || editable[newline + 1] == '\n'
-        if (gapPx > 0 && lineEnd > lineStart && !nextLineEmpty &&
-          !EditorBlocks.sameGroup(block, lineBlocks.getOrElse(index + 1) { 0 })
-        ) {
-          editable.setSpan(
-            ParagraphGapSpan(gapPx),
-            lineStart,
-            newline + 1,
-            Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-          )
-        }
       }
       if (newline == -1) {
         break
@@ -1190,13 +1170,8 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
 
       val layoutLine = textLayout.getLineForOffset(lineStart)
       val top = textLayout.getLineTop(layoutLine) + offsetY
-      // The block gap lives inside the last display line's height; stripes
-      // and bars must stop before it.
-      val gapApplied = newline != -1 && gapPx > 0 && lineEnd > lineStart &&
-        !EditorBlocks.sameGroup(block, lineBlocks.getOrElse(index + 1) { 0 })
       val bottom =
-        textLayout.getLineBottom(textLayout.getLineForOffset(lineEnd)) + offsetY -
-          (if (gapApplied) gapPx else 0)
+        textLayout.getLineBottom(textLayout.getLineForOffset(lineEnd)) + offsetY
 
       if (type == EditorBlocks.CODE) {
         if (groupTop < 0f) {

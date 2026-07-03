@@ -183,7 +183,7 @@ Paste never inserts directly. `onPaste` receives `{ text?, images?, preventDefau
 
 ### Everything else
 
-`getMarkdown()` resolves the current markdown; `focus()`, `blur()`, `setSelection(start, end)`, `setValue(markdown)`, and `insertMarkdown(markdown)` do what they say. Hardware keyboards get Cmd+B / Cmd+I (iOS) and Ctrl+B / Ctrl+I (Android). The editor shares the viewer's `style` / `styles` contract — the `base`/`paragraph` cascade drives the root text, `link.color` drives links, and `gap` renders as spacing between blocks (consecutive list items, quote lines, and code lines count as one block, like the viewer).
+`getMarkdown()` resolves the current markdown; `focus()`, `blur()`, `setSelection(start, end)`, `setValue(markdown)`, and `insertMarkdown(markdown)` do what they say. Hardware keyboards get Cmd+B / Cmd+I (iOS) and Ctrl+B / Ctrl+I (Android). The editor shares the viewer's `style` / `styles` contract — the `base`/`paragraph` cascade drives the root text and `link.color` drives links. The viewer's `gap` is not applied while editing (a text field flows line to line); drive the editing feel with the text styles themselves.
 
 ## Platform notes & limitations
 

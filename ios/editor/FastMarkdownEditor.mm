@@ -187,9 +187,6 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   CGFloat _lastPublishedHeight;
   UIFont *_baseFont;
   UIColor *_baseColor;
-  // Block gap from the styles cascade, rendered as paragraph spacing at
-  // block boundaries (never inside a quote/code/list group).
-  CGFloat _gap;
   // Marks armed for text typed at the collapsed cursor. Explicit while the
   // user has toggled at this caret position; re-derived from the character
   // before the caret whenever the selection moves.
@@ -294,7 +291,6 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
   _baseFont = font;
   _baseColor = color;
-  _gap = styles.gap;
   _linkColor = [styles textStyleFor:@"link"].color ?: UIColor.systemBlueColor;
   _textView.font = font;
   _textView.textColor = color;
@@ -303,7 +299,6 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   self.backgroundColor = styles.backgroundColor ?: UIColor.clearColor;
 
   [self refreshDisplayAttributesInRange:NSMakeRange(0, _textView.textStorage.length)];
-  [self refreshParagraphSpacing];
   [self applyTypingAttributes];
 
   _placeholderLabel.font = font;
@@ -414,66 +409,6 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   paragraph.firstLineHeadIndent = indent;
   paragraph.headIndent = indent;
   return paragraph;
-}
-
-// Quote/code/list lines of the same type read as ONE block; the gap only
-// separates different blocks (matching the viewer's block spacing).
-static BOOL FMDSameBlockGroup(uint32_t a, uint32_t b) {
-  const auto typeA = FMDBlockType(a);
-  if (typeA != FMDBlockType(b)) {
-    return NO;
-  }
-  return typeA == fastmarkdown::EditorBlockType::Quote ||
-      typeA == fastmarkdown::EditorBlockType::Code || FMDBlockIsList(a);
-}
-
-// Applies the styles-cascade gap as paragraph spacing after every line
-// that ends a block.
-- (void)refreshParagraphSpacing {
-  NSString *text = _textView.text;
-  if (text.length == 0) {
-    return;
-  }
-  NSTextStorage *storage = _textView.textStorage;
-  [storage beginEditing];
-  NSUInteger location = 0;
-  while (location <= text.length) {
-    const NSRange content = [self contentRangeOfLineAt:location];
-    const uint32_t block =
-        content.length > 0 ? [self blockOfLineAt:content.location] : 0;
-    const BOOL hasNext = NSMaxRange(content) < text.length;
-
-    // Empty lines get no spacing on either side: they are already visual
-    // separators, and the caret on an empty line is sized from the line
-    // fragment — paragraph spacing there would render a gap-tall caret.
-    CGFloat spacing = 0;
-    if (hasNext && _gap > 0 && content.length > 0) {
-      const NSUInteger nextStart = NSMaxRange(content) + 1;
-      const NSRange nextContent = [self contentRangeOfLineAt:nextStart];
-      if (nextContent.length > 0) {
-        const uint32_t nextBlock = [self blockOfLineAt:nextContent.location];
-        spacing = FMDSameBlockGroup(block, nextBlock) ? 0 : _gap;
-      }
-    }
-
-    const NSUInteger lineEnd =
-        hasNext ? NSMaxRange(content) + 1 : NSMaxRange(content);
-    if (lineEnd > content.location) {
-      NSMutableParagraphStyle *paragraph =
-          [self paragraphStyleForBlock:block]
-              ?: [[NSMutableParagraphStyle alloc] init];
-      paragraph.paragraphSpacing = spacing;
-      [storage addAttribute:NSParagraphStyleAttributeName
-                      value:paragraph
-                      range:NSMakeRange(content.location, lineEnd - content.location)];
-    }
-
-    if (!hasNext) {
-      break;
-    }
-    location = NSMaxRange(content) + 1;
-  }
-  [storage endEditing];
 }
 
 // Full attributes for a run described by an existing attribute dictionary.
@@ -1038,7 +973,6 @@ static BOOL FMDSameBlockGroup(uint32_t a, uint32_t b) {
 
 - (void)textContentChanged {
   [self refreshPlaceholderVisibility];
-  [self refreshParagraphSpacing];
   [self publishHeight];
   [self invalidateDecorations];
   if (const auto *emitter = [self editorEventEmitter]) {
