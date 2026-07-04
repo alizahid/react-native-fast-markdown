@@ -354,6 +354,18 @@ int main() {
   expectRoundTrip("rt link with parens", "see [x](https://en.wikipedia.org/wiki/Bracket_(disambiguation))");
   expectRoundTrip("rt mention", "ping [@ali](users://ali) in [#general](channels://general)");
   expectRoundTrip("rt autolink", "visit https://example.com today");
+  {
+    // A link whose label equals its URL serializes as the bare URL (the
+    // permissive-autolink form), not the noisy [url](url) form.
+    auto doc = fastmarkdown::parseMarkdown("visit https://example.com today");
+    expectString("autolink serializes bare",
+                 fastmarkdown::astToMarkdown(doc->root),
+                 "visit https://example.com today\n");
+    auto labeled = fastmarkdown::parseMarkdown("[docs](https://example.com)");
+    expectString("labeled link keeps brackets",
+                 fastmarkdown::astToMarkdown(labeled->root),
+                 "[docs](https://example.com)\n");
+  }
   expectRoundTrip("rt image", "![alt text](https://example.com/img.png)");
   expectRoundTrip("rt quote", "> quoted **bold**\n>\n> second paragraph");
   expectRoundTrip("rt nested quote content", "> outer\n>\n> - a\n> - b");

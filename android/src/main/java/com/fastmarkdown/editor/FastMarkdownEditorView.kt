@@ -72,6 +72,23 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   private var suppressWatcher = false
   private var changeStart = 0
   private var changeInserted = 0
+  private var changeReplaced = 0
+
+  // Per-character mark flags of the region an IME re-commit is about to
+  // replace ("a" → "ab" replaces the composing word): SSB collapses spans
+  // whose whole run is swapped out, so the prefix's marks are restored from
+  // this snapshot afterwards.
+  private var replacedMarkFlags: IntArray? = null
+
+  private fun markFlagsAt(spanned: Spanned, offset: Int): Int {
+    var flags = 0
+    for (span in spanned.getSpans(offset, offset + 1, EditorMarkSpan::class.java)) {
+      if (spanned.getSpanStart(span) <= offset && spanned.getSpanEnd(span) > offset) {
+        flags = flags or span.mark
+      }
+    }
+    return flags
+  }
 
   // TextView's constructor fires onSelectionChanged before any of this
   // class's fields exist; nothing below may run until init completes.
@@ -135,16 +152,24 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     addTextChangedListener(object : TextWatcher {
       override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
         editInProgress = true
+        replacedMarkFlags = null
         if (suppressWatcher || s == null) {
           return
         }
         editLine = countNewlines(s, 0, start)
         removedNewlines = countNewlines(s, start, start + count)
+        // Word-sized replacements that grow are IME re-commits; snapshot the
+        // replaced characters' marks so the prefix can be restored. The size
+        // cap keeps select-all replacements out of this path.
+        if (count in 1..512 && after >= count && s is Spanned) {
+          replacedMarkFlags = IntArray(count) { markFlagsAt(s, start + it) }
+        }
       }
 
       override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
         changeStart = start
         changeInserted = count
+        changeReplaced = before
         insertedNewlines = if (s == null) 0 else countNewlines(s, start, start + count)
       }
 
@@ -164,7 +189,11 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
         var exitedList = false
         if (insertedNewlines == 1 && changeInserted == 1 && removedNewlines == 0) {
           val block = lineBlocks.getOrElse(editLine) { 0 }
-          if (block != 0 && lineContentRange(editLine).isEmpty()) {
+          // The Enter split the line at the caret: editLine holds the text
+          // before the caret, editLine + 1 the text after it.
+          val beforeEmpty = lineContentRange(editLine).isEmpty()
+          val afterEmpty = lineContentRange(editLine + 1).isEmpty()
+          if (block != 0 && beforeEmpty && afterEmpty) {
             // Enter on any empty formatted line (list item, quote, code
             // block, heading) exits the block instead of continuing it.
             lineBlocks[editLine] = 0
@@ -174,17 +203,48 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
             suppressWatcher = false
             exitedList = true
           } else if (EditorBlocks.type(block) == EditorBlocks.HEADING) {
-            // A heading does not continue onto the next line.
-            lineBlocks[editLine + 1] = 0
+            if (beforeEmpty) {
+              // Enter at the start of a heading: the heading stays with its
+              // text and a plain empty line opens above it.
+              lineBlocks[editLine] = 0
+            } else if (afterEmpty) {
+              // Enter at the end of a heading does not continue it.
+              lineBlocks[editLine + 1] = 0
+            }
+            // Mid-heading splits keep the heading on both halves.
           }
         }
-        if (!exitedList && changeInserted > 0 && pendingMarks != 0) {
+        // The IME often re-commits a whole composing word to append one
+        // character ("a" → "ab"). Stamping pending marks over the full
+        // insertion would restyle the re-committed prefix (whose spans SSB
+        // already preserved), so only the genuinely new suffix is stamped.
+        if (!exitedList && changeInserted > changeReplaced && pendingMarks != 0) {
+          val stampStart = changeStart + changeReplaced
           for (mark in EditorMarks.ALL) {
             if (pendingMarks and mark != 0) {
-              applyMark(s, mark, changeStart, changeStart + changeInserted)
+              applyMark(s, mark, stampStart, changeStart + changeInserted)
             }
           }
         }
+        // Restore the re-committed prefix's marks from the snapshot (the
+        // replacement collapsed any span that covered exactly that run).
+        val restored = replacedMarkFlags
+        if (restored != null && changeReplaced == restored.size &&
+          changeInserted >= changeReplaced
+        ) {
+          for (i in 0 until changeReplaced) {
+            val flags = restored[i]
+            if (flags == 0) {
+              continue
+            }
+            for (mark in EditorMarks.ALL) {
+              if (flags and mark != 0) {
+                applyMark(s, mark, changeStart + i, changeStart + i + 1)
+              }
+            }
+          }
+        }
+        replacedMarkFlags = null
         // Typing strictly inside an atomic token demotes it to plain text.
         if (changeInserted > 0) {
           for (span in s.getSpans(changeStart, changeStart, LinkDataSpan::class.java)) {
@@ -263,12 +323,14 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   // is in a code context (`let` must not become `Let`).
   private var codeContextActive = false
 
+  private fun lineIsCode(line: Int): Boolean =
+    EditorBlocks.type(lineBlocks.getOrElse(line) { 0 }) == EditorBlocks.CODE
+
   private fun caretInCodeContext(): Boolean {
     if (pendingMarks and EditorMarks.INLINE_CODE != 0) {
       return true
     }
-    val line = lineIndexAt(selectionStart.coerceAtLeast(0))
-    return EditorBlocks.type(lineBlocks.getOrElse(line) { 0 }) == EditorBlocks.CODE
+    return lineIsCode(lineIndexAt(selectionStart.coerceAtLeast(0)))
   }
 
   private fun updateInputTypeForContext() {
@@ -457,6 +519,21 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       if (index < lineBlocks.size) {
         lineBlocks[index] = next
       }
+    }
+    if (EditorBlocks.type(next) == EditorBlocks.CODE) {
+      // A code fence carries raw text only: inline marks and links on the
+      // converted lines would be dropped by the serializer, so shed them
+      // now rather than displaying formatting that cannot survive.
+      val editable = text
+      val rangeStart = lineStartOffset(startLine)
+      val rangeEnd = lineContentRange(endLine).last + 1
+      for (mark in EditorMarks.ALL) {
+        removeMark(editable, mark, rangeStart, rangeEnd)
+      }
+      for (span in editable.getSpans(rangeStart, rangeEnd, LinkDataSpan::class.java)) {
+        editable.removeSpan(span)
+      }
+      pendingMarks = 0
     }
     refreshDisplaySpans(text)
     updateInputTypeForContext()
@@ -828,6 +905,19 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     if (editable.getSpans(wordStart, position, LinkDataSpan::class.java).isNotEmpty()) {
       return
     }
+    // Linkify in place: a bare URL re-parses as an autolink in any markdown
+    // renderer, so the editor must show it as a link too (WYSIWYG). The app
+    // can still restyle or remove it from the onLinkDetected callback.
+    if (!lineIsCode(lineIndexAt(wordStart))) {
+      editable.setSpan(
+        LinkDataSpan(word, atomic = false),
+        wordStart,
+        position,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+      refreshDisplaySpans(editable)
+      emitContentChanged()
+    }
     emitEvent("topEditorLinkDetected") { putString("url", word) }
   }
 
@@ -835,8 +925,26 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   fun toggleMark(mark: Int) {
     val start = selectionStart.coerceAtLeast(0)
     val end = selectionEnd.coerceAtLeast(start)
+    // A code fence carries raw text only — marks applied there would render
+    // in the editor but silently vanish from the markdown, so refuse them.
+    for (line in lineIndexAt(start)..lineIndexAt(end)) {
+      if (EditorBlocks.type(lineBlocks.getOrElse(line) { 0 }) == EditorBlocks.CODE) {
+        return
+      }
+    }
+    // Superscript and subscript are mutually exclusive: a glyph cannot sit
+    // above and below the baseline, and combined they serialize to nested
+    // ^~…~^ that does not round-trip.
+    val exclusive = when (mark) {
+      EditorMarks.SUPERSCRIPT -> EditorMarks.SUBSCRIPT
+      EditorMarks.SUBSCRIPT -> EditorMarks.SUPERSCRIPT
+      else -> 0
+    }
     if (start == end) {
       pendingMarks = pendingMarks xor mark
+      if (pendingMarks and mark != 0) {
+        pendingMarks = pendingMarks and exclusive.inv()
+      }
       pendingArmedAt = start
       updateInputTypeForContext()
       emitState()
@@ -846,6 +954,9 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     if (commonMarksInRange(editable, start, end) and mark != 0) {
       removeMark(editable, mark, start, end)
     } else {
+      if (exclusive != 0) {
+        removeMark(editable, exclusive, start, end)
+      }
       applyMark(editable, mark, start, end)
     }
     refreshDisplaySpans(editable)

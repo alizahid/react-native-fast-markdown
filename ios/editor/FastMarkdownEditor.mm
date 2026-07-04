@@ -204,6 +204,13 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   // the attribute alone cannot represent them).
   uint32_t _typingBlock;
   BOOL _paragraphAfterNewline;
+  // Autocorrect/QuickType replace a whole word ("Ab" → "An"), rebuilding it
+  // with attributes that drop the custom mark keys. The replaced range's
+  // per-character flags are captured in shouldChangeTextInRange and
+  // restored onto the committed text in textViewDidChange.
+  std::vector<uint32_t> _replacedCharFlags;
+  NSRange _markRestoreRange;
+  BOOL _pendingMarkRestore;
   // Autocorrect/autocapitalize from props; suppressed while the caret is in
   // a code context (code block line or armed inline-code mark).
   BOOL _propAutoCorrect;
@@ -580,16 +587,21 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     return;
   }
   NSTextStorage *storage = _textView.textStorage;
+  // A code fence carries raw text only: marks and links on lines converted
+  // to a code block would be dropped by the serializer, so shed them now.
+  const BOOL toCode = FMDBlockType(block) == fastmarkdown::EditorBlockType::Code;
   [storage beginEditing];
   [storage enumerateAttributesInRange:lines
                               options:0
                            usingBlock:^(NSDictionary *attrs, NSRange runRange, BOOL *stop) {
                              const uint32_t flags =
                                  FMDFlagsFromValue(attrs[FMDEditorMarksAttribute]);
-                             [storage setAttributes:[self attributesFromExisting:attrs
-                                                                       withFlags:flags
-                                                                           block:block]
-                                              range:runRange];
+                             NSDictionary *next = toCode
+                                 ? [self attributesForFlags:0 block:block]
+                                 : [self attributesFromExisting:attrs
+                                                      withFlags:flags
+                                                          block:block];
+                             [storage setAttributes:next range:runRange];
                            }];
   [storage endEditing];
 }
@@ -626,6 +638,10 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     _textView.selectedRange = selection;
   }
   _typingBlock = next;
+  if (FMDBlockType(next) == fastmarkdown::EditorBlockType::Code) {
+    // Armed marks cannot survive inside a code fence.
+    _typingFlags = 0;
+  }
   [self applyTypingAttributes];
   [self updateInputTraits];
   [self invalidateDecorations];
@@ -808,10 +824,50 @@ static BOOL FMDBlockIsList(uint32_t packed) {
                                effectiveRange:nil]);
 }
 
+// YES when the caret's armed block or any line the range touches is a code
+// block.
+- (BOOL)selectionTouchesCodeBlock:(NSRange)range {
+  if (FMDBlockType(_typingBlock) == fastmarkdown::EditorBlockType::Code) {
+    return YES;
+  }
+  NSString *text = _textView.text;
+  NSUInteger location = range.location;
+  const NSUInteger max = NSMaxRange(range);
+  while (location <= text.length) {
+    if (FMDBlockType([self blockOfLineAt:location]) ==
+        fastmarkdown::EditorBlockType::Code) {
+      return YES;
+    }
+    const NSUInteger next = NSMaxRange([self contentRangeOfLineAt:location]) + 1;
+    if (next > max) {
+      break;
+    }
+    location = next;
+  }
+  return NO;
+}
+
 - (void)toggleMark:(uint32_t)mark {
   const NSRange selection = _textView.selectedRange;
+  // A code fence carries raw text only — marks applied there would render
+  // in the editor but silently vanish from the markdown, so refuse them.
+  if ([self selectionTouchesCodeBlock:selection]) {
+    return;
+  }
+  // Superscript and subscript are mutually exclusive: a glyph cannot sit
+  // above and below the baseline, and combined they serialize to nested
+  // ^~…~^ that does not round-trip.
+  uint32_t exclusive = 0;
+  if (mark == fastmarkdown::MarkSuperscript) {
+    exclusive = fastmarkdown::MarkSubscript;
+  } else if (mark == fastmarkdown::MarkSubscript) {
+    exclusive = fastmarkdown::MarkSuperscript;
+  }
   if (selection.length == 0) {
     _typingFlags ^= mark;
+    if ((_typingFlags & mark) != 0) {
+      _typingFlags &= ~exclusive;
+    }
     [self applyTypingAttributes];
     [self updateInputTraits];
     [self emitState];
@@ -828,8 +884,9 @@ static BOOL FMDBlockIsList(uint32_t packed) {
                                  FMDFlagsFromValue(attrs[FMDEditorMarksAttribute]);
                              const uint32_t block =
                                  FMDFlagsFromValue(attrs[FMDEditorBlockAttribute]);
-                             const uint32_t next =
-                                 allHave ? (flags & ~mark) : (flags | mark);
+                             const uint32_t next = allHave
+                                 ? (flags & ~mark)
+                                 : ((flags | mark) & ~exclusive);
                              [storage setAttributes:[self attributesFromExisting:attrs
                                                                        withFlags:next
                                                                            block:block]
@@ -1246,6 +1303,16 @@ static BOOL FMDIsWordBreak(unichar c) {
   if (linked != nil) {
     return;
   }
+  // Linkify in place: a bare URL re-parses as an autolink in any markdown
+  // renderer, so the editor must show it as a link too (WYSIWYG). The app
+  // can still restyle or remove it from the onLinkDetected callback.
+  const NSRange wordRange = NSMakeRange(wordStart, location - wordStart);
+  // textViewDidChange serializes right after this returns, so no extra
+  // textContentChanged is needed here.
+  if (FMDBlockType([self blockOfLineAt:wordStart]) !=
+      fastmarkdown::EditorBlockType::Code) {
+    [self applyLink:word atomic:NO inRange:wordRange];
+  }
   if (const auto *emitter = [self editorEventEmitter]) {
     emitter->onEditorLinkDetected({.url = std::string(word.UTF8String ?: "")});
   }
@@ -1330,6 +1397,24 @@ static BOOL FMDIsWordBreak(unichar c) {
     }
   }
 
+  // A growing word replacement is an autocorrect/QuickType commit; snapshot
+  // the replaced characters' marks so they survive the rebuild (the size
+  // cap keeps select-all replacements out of this path).
+  _pendingMarkRestore = NO;
+  if (range.length > 0 && range.length <= 512 && text.length >= range.length &&
+      NSMaxRange(range) <= _textView.textStorage.length) {
+    _replacedCharFlags.clear();
+    NSTextStorage *storage = _textView.textStorage;
+    for (NSUInteger i = 0; i < range.length; i++) {
+      _replacedCharFlags.push_back(FMDFlagsFromValue(
+          [storage attribute:FMDEditorMarksAttribute
+                      atIndex:range.location + i
+               effectiveRange:nil]));
+    }
+    _markRestoreRange = NSMakeRange(range.location, text.length);
+    _pendingMarkRestore = YES;
+  }
+
   // Backspace at the start of a formatted line clears the block first.
   if (text.length == 0 && range.length == 1 &&
       [_textView.text characterAtIndex:range.location] == '\n') {
@@ -1351,6 +1436,37 @@ static BOOL FMDIsWordBreak(unichar c) {
 }
 
 - (void)textViewDidChange:(UITextView *)textView {
+  if (_pendingMarkRestore) {
+    _pendingMarkRestore = NO;
+    NSTextStorage *storage = _textView.textStorage;
+    const NSUInteger location = _markRestoreRange.location;
+    const NSUInteger count =
+        MIN(_replacedCharFlags.size(), _markRestoreRange.length);
+    if (location + count <= storage.length) {
+      [storage beginEditing];
+      for (NSUInteger i = 0; i < count; i++) {
+        const NSUInteger position = location + i;
+        NSDictionary *attrs = [storage attributesAtIndex:position
+                                          effectiveRange:nil];
+        const uint32_t existing =
+            FMDFlagsFromValue(attrs[FMDEditorMarksAttribute]);
+        const uint32_t desired = _replacedCharFlags[i];
+        if (existing == desired) {
+          continue;
+        }
+        const uint32_t block = FMDFlagsFromValue(attrs[FMDEditorBlockAttribute]);
+        [storage setAttributes:[self attributesForFlags:desired
+                                                   block:block
+                                                    link:attrs[FMDEditorLinkAttribute]
+                                                  atomic:[attrs[FMDEditorAtomicAttribute]
+                                                             boolValue]]
+                         range:NSMakeRange(position, 1)];
+      }
+      [storage endEditing];
+    }
+    _replacedCharFlags.clear();
+  }
+
   if (_paragraphAfterNewline) {
     _paragraphAfterNewline = NO;
     _typingBlock = 0;

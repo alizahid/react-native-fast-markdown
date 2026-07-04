@@ -211,6 +211,17 @@ void writeInlineNode(InlineWriter& writer, const Node* node) {
       writeInlineCode(writer, node->text);
       break;
     case NodeType::Link:
+      // A link whose visible text IS its destination re-parses as a
+      // permissive autolink, so emit the bare URL instead of the noisy
+      // [url](url) form.
+      if (node->children.size() == 1 &&
+          node->children[0]->type == NodeType::Text &&
+          node->children[0]->text == node->url &&
+          (node->url.rfind("http://", 0) == 0 ||
+           node->url.rfind("https://", 0) == 0)) {
+        writer.raw(node->url);
+        break;
+      }
       writer.raw("[");
       writeInlineChildren(writer, node);
       writer.raw("](");
