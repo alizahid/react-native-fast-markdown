@@ -56,6 +56,10 @@ struct Node {
   std::string url;
   uint8_t level = 0;
   bool ordered = false;
+  // Text nodes born from character escapes/entities. The inline-extension
+  // scanner must not read delimiters out of them (the author explicitly
+  // de-fanged the characters), so they never merge with neighbours.
+  bool verbatim = false;
   int32_t startIndex = 1;
   std::vector<Node*> children;
 };

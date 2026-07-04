@@ -28,6 +28,10 @@ bool needsInlineEscape(char c) {
     case '[':
     case ']':
     case '!':
+    // '<' opens angle autolinks/raw-HTML-ish constructs; '&' opens
+    // entities (which the parser materializes as literal characters).
+    case '<':
+    case '&':
       return true;
     default:
       return false;
@@ -51,23 +55,15 @@ bool needsLineStartEscape(char c) {
 struct InlineWriter {
   std::string out;
   bool atLineStart = true;
-  // True right after a closing star-emphasis delimiter. A star OPEN written
-  // there would merge close+open into one delimiter run and fail to
-  // re-parse; open-open runs like ***(em+strong) are fine.
-  bool tailIsStarClose = false;
 
   void raw(const std::string& value) {
     out += value;
     if (!value.empty()) {
       atLineStart = value.back() == '\n';
-      tailIsStarClose = false;
     }
   }
 
   void text(const std::string& value) {
-    if (!value.empty()) {
-      tailIsStarClose = false;
-    }
     for (size_t i = 0; i < value.size(); i++) {
       const char c = value[i];
       if (c == '\n') {
@@ -76,6 +72,14 @@ struct InlineWriter {
         continue;
       }
       if (atLineStart) {
+        if (c == ' ') {
+          // A leading space run would be trimmed by the parser (or, at 4+,
+          // become an indented code block). One entity space defuses both
+          // and preserves the run.
+          out += "&#32;";
+          atLineStart = false;
+          continue;
+        }
         if (needsLineStartEscape(c)) {
           out += '\\';
         } else if (std::isdigit(static_cast<unsigned char>(c))) {
@@ -144,7 +148,19 @@ void writeLinkDestination(InlineWriter& writer, const std::string& url) {
 
 void writeInlineChildren(InlineWriter& writer, const Node* node);
 
-void writeInlineNode(InlineWriter& writer, const Node* node) {
+// True when the star delimiters about to be written would extend the
+// writer's trailing star run to 4+ — a run md4c's delimiter algorithm no
+// longer splits correctly (3-star runs like **X***y* are fine).
+bool starRunWouldMerge(const InlineWriter& writer, size_t openLen) {
+  size_t trailing = 0;
+  for (auto it = writer.out.rbegin(); it != writer.out.rend() && *it == '*'; ++it) {
+    trailing++;
+  }
+  return trailing > 0 && trailing + openLen >= 4;
+}
+
+void writeInlineNode(
+    InlineWriter& writer, const Node* node, bool nextStartsAlnum) {
   switch (node->type) {
     case NodeType::Text:
       writer.text(node->text);
@@ -155,24 +171,23 @@ void writeInlineNode(InlineWriter& writer, const Node* node) {
     case NodeType::HardBreak:
       writer.raw("\\\n");
       break;
-    case NodeType::Bold: {
-      // Stars by default ('_' cannot open/close emphasis intraword), but
-      // flip to underscores when opening right after a star CLOSE: the
-      // close+open delimiters would merge into one run and fail to
-      // re-parse.
-      const bool star = !writer.tailIsStarClose;
-      writer.raw(star ? "**" : "__");
-      writeInlineChildren(writer, node);
-      writer.raw(star ? "**" : "__");
-      writer.tailIsStarClose = star;
-      break;
-    }
+    case NodeType::Bold:
     case NodeType::Italic: {
-      const bool star = !writer.tailIsStarClose;
-      writer.raw(star ? "*" : "_");
+      // Stars by default: '_' cannot open/close emphasis intraword, and
+      // md4c resolves 3-star adjacency (**X***y*) correctly. Only when the
+      // open would fuse into a 4+ star run — which md4c fails to split —
+      // fall back to underscores, and only where flanking permits (the open
+      // side is a star, i.e. punctuation; the close side must not touch a
+      // word character).
+      const size_t openLen = node->type == NodeType::Bold ? 2 : 1;
+      const bool underscore =
+          starRunWouldMerge(writer, openLen) && !nextStartsAlnum;
+      const char* delimiter = node->type == NodeType::Bold
+          ? (underscore ? "__" : "**")
+          : (underscore ? "_" : "*");
+      writer.raw(delimiter);
       writeInlineChildren(writer, node);
-      writer.raw(star ? "*" : "_");
-      writer.tailIsStarClose = star;
+      writer.raw(delimiter);
       break;
     }
     case NodeType::Strikethrough:
@@ -186,19 +201,26 @@ void writeInlineNode(InlineWriter& writer, const Node* node) {
       writer.raw("||");
       break;
     case NodeType::Superscript: {
-      // The caret-pair form cannot contain spaces; multi-word content uses
-      // the Reddit paren form.
+      // The caret-pair form cannot contain whitespace; multi-word content
+      // uses the Reddit paren form — which in turn ends at the first ")",
+      // unescapably. Content that needs both is unrepresentable: emit it
+      // unmarked rather than corrupt the round trip.
       InlineWriter content;
       content.atLineStart = false;
       writeInlineChildren(content, node);
-      if (content.out.find(' ') != std::string::npos) {
+      const bool hasWhitespace =
+          content.out.find_first_of(" \t") != std::string::npos;
+      const bool hasParen = content.out.find(')') != std::string::npos;
+      if (!hasWhitespace) {
+        writer.raw("^");
+        writer.raw(content.out);
+        writer.raw("^");
+      } else if (!hasParen) {
         writer.raw("^(");
         writer.raw(content.out);
         writer.raw(")");
       } else {
-        writer.raw("^");
         writer.raw(content.out);
-        writer.raw("^");
       }
       break;
     }
@@ -242,8 +264,18 @@ void writeInlineNode(InlineWriter& writer, const Node* node) {
 }
 
 void writeInlineChildren(InlineWriter& writer, const Node* node) {
-  for (const Node* child : node->children) {
-    writeInlineNode(writer, child);
+  const auto& kids = node->children;
+  for (size_t i = 0; i < kids.size(); i++) {
+    // Underscore-fallback lookahead: does a word character immediately
+    // follow this child? Only Text siblings can supply one.
+    bool nextStartsAlnum = false;
+    if (i + 1 < kids.size() && kids[i + 1]->type == NodeType::Text &&
+        !kids[i + 1]->text.empty()) {
+      nextStartsAlnum =
+          std::isalnum(static_cast<unsigned char>(kids[i + 1]->text.front())) != 0 ||
+          static_cast<unsigned char>(kids[i + 1]->text.front()) >= 0x80;
+    }
+    writeInlineNode(writer, kids[i], nextStartsAlnum);
   }
 }
 
@@ -325,7 +357,7 @@ std::vector<std::string> listItemLines(const Node* item) {
       appendLines(blockLines(child), !lastWasInlineRun);
       lastWasInlineRun = false;
     } else {
-      writeInlineNode(inlineRun, child);
+      writeInlineNode(inlineRun, child, false);
     }
   }
   flushInline();

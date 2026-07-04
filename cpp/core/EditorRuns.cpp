@@ -233,11 +233,12 @@ void appendMarkedText(EditorDocument& out, const std::string& text, uint32_t fla
   if (text.empty()) {
     return;
   }
-  const auto start =
-      static_cast<uint32_t>(utf16Length(out.text.data(), out.text.size()));
+  const uint32_t start = out.textUtf16Length;
   out.text += text;
+  out.textUtf16Length +=
+      static_cast<uint32_t>(utf16Length(text.data(), text.size()));
   if (flags != 0) {
-    const auto end = start + static_cast<uint32_t>(utf16Length(text.data(), text.size()));
+    const uint32_t end = out.textUtf16Length;
     if (!out.runs.empty() && out.runs.back().flags == flags &&
         out.runs.back().end == start) {
       out.runs.back().end = end;
@@ -257,6 +258,7 @@ struct EditorCollector {
   void endLine() {
     out.lines.push_back(currentLine);
     out.text += '\n';
+    out.textUtf16Length += 1;
   }
 
   void beginBlock(const EditorLine& line) {
@@ -292,11 +294,9 @@ struct EditorCollector {
         appendMarkedText(out, node->text, activeFlags | MarkInlineCode);
         break;
       case NodeType::Link: {
-        const auto start = static_cast<uint32_t>(
-            utf16Length(out.text.data(), out.text.size()));
+        const uint32_t start = out.textUtf16Length;
         collectChildren(node, activeFlags, context);
-        const auto end = static_cast<uint32_t>(
-            utf16Length(out.text.data(), out.text.size()));
+        const uint32_t end = out.textUtf16Length;
         if (end > start) {
           out.links.push_back({start, end, node->url});
         }
@@ -314,9 +314,12 @@ struct EditorCollector {
         size_t lineStart = 0;
         while (true) {
           const size_t newline = content.find('\n', lineStart);
-          out.text += content.substr(
+          const std::string piece = content.substr(
               lineStart, newline == std::string::npos ? std::string::npos
                                                       : newline - lineStart);
+          out.text += piece;
+          out.textUtf16Length +=
+              static_cast<uint32_t>(utf16Length(piece.data(), piece.size()));
           if (newline == std::string::npos) {
             break;
           }
@@ -357,6 +360,7 @@ struct EditorCollector {
       case NodeType::TableCell:
         if (!atBlockStart && !out.text.empty() && out.text.back() != '\n') {
           out.text += ' ';
+          out.textUtf16Length += 1;
         }
         collectChildren(node, activeFlags, context);
         break;
@@ -438,10 +442,66 @@ std::string markdownFromEditor(
   };
   collected.back().block = blockForLine(0);
 
+  // Sweep instead of rescanning every run per piece (which made heavily
+  // styled documents O(pieces × runs)). Run edges are all cuts, so a run
+  // covers piece [prev, next) exactly when start <= prev < end.
+  std::vector<std::pair<uint32_t, uint32_t>> runStarts;
+  std::vector<std::pair<uint32_t, uint32_t>> runEnds;
+  runStarts.reserve(trimmed.size());
+  runEnds.reserve(trimmed.size());
+  for (const StyledRun& run : trimmed) {
+    runStarts.push_back({run.start, run.flags});
+    runEnds.push_back({run.end, run.flags});
+  }
+  std::sort(runStarts.begin(), runStarts.end());
+  std::sort(runEnds.begin(), runEnds.end());
+  std::vector<size_t> linkOrder(links.size());
+  for (size_t l = 0; l < links.size(); l++) {
+    linkOrder[l] = l;
+  }
+  std::sort(linkOrder.begin(), linkOrder.end(), [&](size_t a, size_t b) {
+    return links[a].start < links[b].start;
+  });
+
+  int bitCounts[32] = {0};
+  const auto adjustFlags = [&](uint32_t flags, int delta) {
+    for (int bit = 0; bit < 32; bit++) {
+      if (flags & (1u << bit)) {
+        bitCounts[bit] += delta;
+      }
+    }
+  };
+  const auto activeFlags = [&]() {
+    uint32_t flags = 0;
+    for (int bit = 0; bit < 32; bit++) {
+      if (bitCounts[bit] > 0) {
+        flags |= 1u << bit;
+      }
+    }
+    return flags;
+  };
+
+  size_t startIdx = 0;
+  size_t endIdx = 0;
+  size_t linkPtr = 0;
+
   auto it = cuts.begin();
   uint32_t prev = *it;
   for (++it; it != cuts.end(); ++it) {
     const uint32_t next = *it;
+    while (endIdx < runEnds.size() && runEnds[endIdx].first <= prev) {
+      adjustFlags(runEnds[endIdx].second, -1);
+      endIdx++;
+    }
+    while (startIdx < runStarts.size() && runStarts[startIdx].first <= prev) {
+      adjustFlags(runStarts[startIdx].second, 1);
+      startIdx++;
+    }
+    while (linkPtr < linkOrder.size() &&
+           links[linkOrder[linkPtr]].end <= prev) {
+      linkPtr++;
+    }
+
     const std::string piece =
         text.substr(toByte[prev], toByte[next] - toByte[prev]);
     if (piece == "\n") {
@@ -449,20 +509,13 @@ std::string markdownFromEditor(
       collected.push_back({});
       collected.back().block = blockForLine(lineIndex);
     } else if (!piece.empty()) {
-      uint32_t flags = 0;
-      for (const StyledRun& run : trimmed) {
-        if (run.start <= prev && next <= run.end) {
-          flags |= run.flags;
-        }
-      }
       int linkIndex = -1;
-      for (size_t l = 0; l < links.size(); l++) {
-        if (links[l].start <= prev && next <= links[l].end) {
-          linkIndex = static_cast<int>(l);
-          break;
-        }
+      if (linkPtr < linkOrder.size() &&
+          links[linkOrder[linkPtr]].start <= prev &&
+          next <= links[linkOrder[linkPtr]].end) {
+        linkIndex = static_cast<int>(linkOrder[linkPtr]);
       }
-      collected.back().segments.push_back({piece, flags, linkIndex});
+      collected.back().segments.push_back({piece, activeFlags(), linkIndex});
     }
     prev = next;
   }

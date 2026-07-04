@@ -53,6 +53,8 @@ export type FontWeight =
  * Text styling shared by every text-bearing markdown element.
  */
 export interface MarkdownTextStyle {
+  /** Highlight behind the text run. */
+  backgroundColor?: ColorValue;
   color?: ColorValue;
   fontFamily?: string;
   fontSize?: number;
@@ -336,6 +338,11 @@ export interface FastMarkdownEditorProps {
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   autoCorrect?: boolean;
   autoFocus?: boolean;
+  /**
+   * Caret color. On iOS the caret and selection share one tint, so
+   * `selectionColor` wins when both are set. Android 10+ only; platform
+   * colors (`PlatformColor`) are not supported.
+   */
   cursorColor?: ColorValue;
   /** Initial markdown content, applied once. */
   defaultValue?: string;
@@ -357,6 +364,10 @@ export interface FastMarkdownEditorProps {
   placeholder?: string;
   placeholderTextColor?: ColorValue;
   scrollEnabled?: boolean;
+  /**
+   * Selection highlight color. On iOS this also tints the caret (UIKit
+   * shares one tint). Platform colors (`PlatformColor`) are not supported.
+   */
   selectionColor?: ColorValue;
   /** Same container style contract as the viewer. */
   style?: StyleProp<MarkdownContainerStyle>;

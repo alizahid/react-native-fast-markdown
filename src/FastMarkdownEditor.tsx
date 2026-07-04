@@ -9,6 +9,7 @@ export function FastMarkdownEditor({
   autoCapitalize,
   autoCorrect,
   autoFocus,
+  cursorColor,
   defaultValue,
   editable,
   multiline = true,
@@ -18,6 +19,8 @@ export function FastMarkdownEditor({
   onFocus,
   placeholder,
   placeholderTextColor,
+  scrollEnabled,
+  selectionColor,
   style,
   ref,
 }: FastMarkdownEditorProps & { ref?: Ref<FastMarkdownEditorRef> }) {
@@ -65,6 +68,7 @@ export function FastMarkdownEditor({
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}
+      cursorColor={cursorColor}
       defaultValue={defaultValue}
       editable={editable}
       multiline={multiline}
@@ -78,6 +82,8 @@ export function FastMarkdownEditor({
       placeholder={placeholder}
       placeholderTextColor={placeholderTextColor}
       ref={inputRef}
+      scrollEnabled={scrollEnabled}
+      selectionColor={selectionColor}
       style={style as StyleProp<TextStyle>}
     />
   );

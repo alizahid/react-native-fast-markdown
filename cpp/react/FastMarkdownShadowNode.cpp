@@ -1,6 +1,7 @@
 #include "FastMarkdownShadowNode.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "FastMarkdownMeasurer.h"
 
@@ -70,7 +71,13 @@ Size FastMarkdownShadowNode::measureContent(
   }
   imagesJson += '}';
 
-  const float maxWidth = layoutConstraints.maximumSize.width;
+  // Under an unconstrained parent the max width is +inf; measuring against
+  // it would produce nonsense (one endless line). Fall back to the
+  // viewport-ish minimum and let Yoga assign the real frame.
+  float maxWidth = layoutConstraints.maximumSize.width;
+  if (!std::isfinite(maxWidth)) {
+    maxWidth = std::max(layoutConstraints.minimumSize.width, 0.0f);
+  }
   // The host views compute the same multiplier (RN's iOS category table /
   // Android configuration.fontScale) so measured and rendered heights
   // agree.

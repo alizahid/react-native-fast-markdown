@@ -29,7 +29,20 @@ function processedColor(value: FastMarkdownEditorProps["cursorColor"]): number {
     return 0;
   }
   const processed = processColor(value);
-  return typeof processed === "number" ? processed : 0;
+  if (typeof processed !== "number") {
+    if (__DEV__) {
+      console.warn(
+        "react-native-fast-markdown: platform colors (PlatformColor/" +
+          "DynamicColorIOS) are not supported for editor color props and " +
+          "were ignored. Use a static color instead."
+      );
+    }
+    return 0;
+  }
+  // 0 (fully transparent) is the "unset" sentinel, so nudge a real
+  // transparent to the nearest representable value; `| 0` keeps the value
+  // inside the Int32 codegen contract on iOS.
+  return processed === 0 ? 0x01_00_00_00 | 0 : processed | 0;
 }
 
 export function FastMarkdownEditor({
@@ -118,7 +131,10 @@ export function FastMarkdownEditor({
         }
       },
       setValue: (markdown: string) => {
-        markdownRef.current = null;
+        // Seed with the value being set so getMarkdown() never reports the
+        // pre-setValue document; native re-emits its canonical serialization
+        // right after.
+        markdownRef.current = markdown;
         textRef.current = markdown;
         if (nativeRef.current) {
           Commands.setValue(nativeRef.current, markdown);
@@ -243,7 +259,27 @@ export function FastMarkdownEditor({
           : undefined
       }
       onEditorChangeState={
-        onChangeState ? (event) => onChangeState(event.nativeEvent) : undefined
+        onChangeState
+          ? (event) => {
+              // Copy the declared fields so consumers never see the raw
+              // nativeEvent extras (target, etc.).
+              const state = event.nativeEvent;
+              onChangeState({
+                headingLevel: state.headingLevel,
+                isBlockQuote: state.isBlockQuote,
+                isBold: state.isBold,
+                isCodeBlock: state.isCodeBlock,
+                isInlineCode: state.isInlineCode,
+                isItalic: state.isItalic,
+                isOrderedList: state.isOrderedList,
+                isSpoiler: state.isSpoiler,
+                isStrikethrough: state.isStrikethrough,
+                isSubscript: state.isSubscript,
+                isSuperscript: state.isSuperscript,
+                isUnorderedList: state.isUnorderedList,
+              });
+            }
+          : undefined
       }
       onEditorChangeText={(event: NativeSyntheticEvent<{ text: string }>) => {
         textRef.current = event.nativeEvent.text;

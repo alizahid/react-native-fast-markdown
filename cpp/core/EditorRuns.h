@@ -62,6 +62,10 @@ struct EditorDocument {
   // Paragraph.
   std::vector<EditorLine> lines;
   std::vector<LinkRun> links;
+  // Running UTF-16 length of `text`, maintained by every append during
+  // extraction so run offsets never require an O(N) rescan (which made
+  // opening large documents quadratic).
+  uint32_t textUtf16Length = 0;
 };
 
 // Serializes the editor's content to markdown. Every newline in `text` is a

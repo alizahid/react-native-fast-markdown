@@ -1,6 +1,7 @@
 #include "FastMarkdownEditorShadowNode.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "FastMarkdownMeasurer.h"
 
@@ -12,7 +13,10 @@ Size FastMarkdownEditorShadowNode::measureContent(
   const auto& props = getConcreteProps();
   const auto& state = getStateData();
 
-  const Float maxWidth = layoutConstraints.maximumSize.width;
+  Float maxWidth = layoutConstraints.maximumSize.width;
+  if (!std::isfinite(maxWidth)) {
+    maxWidth = std::max(layoutConstraints.minimumSize.width, Float{0});
+  }
 
   Float height = static_cast<Float>(state.height);
   if (height <= 0) {

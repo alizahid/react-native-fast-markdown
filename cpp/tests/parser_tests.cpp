@@ -389,6 +389,65 @@ int main() {
       "> A quote\n\n- item one\n- item two\n\n```js\nconsole.log(1);\n```\n\n"
       "| K | V |\n|---|---|\n| a | 1 |\n\n---\n\nThe ||end|| ^fin^");
 
+  // --- Escaped extension delimiters must stay literal through round trips
+  // (md4c strips backslashes before the inline-extension scanner runs; the
+  // preprocess entity rewrite + verbatim text nodes keep them de-fanged).
+  expectStyledRoundTrip("escape literal spoiler", "a ||spoiler|| b", {});
+  expectStyledRoundTrip("escape literal caret", "a^b c", {});
+  expectStyledRoundTrip("escape literal tilde pair", "a ~sub~ b", {});
+  expectStyledRoundTrip("escape literal strikethrough", "x ~~strike~~ y", {});
+  expectStyledRoundTrip("escape literal reddit spoiler", ">!hidden!< tail", {});
+  expectStyledRoundTrip("escape literal entity text", "use &#124; here", {});
+  expectStyledRoundTrip("escape literal angle autolink", "see <http://example.com> now", {});
+  expectStyledRoundTrip("escape leading spaces", "    indented text", {});
+  expectRoundTrip("escaped pipe still literal in backticks", "keep `a \\| b` code");
+
+  // --- Emphasis adjacency: stars must survive intraword adjacency and the
+  // 4+ star-run fallback must use flanking-legal underscores.
+  expectStyledRoundTrip("adjacent bold italic intraword", "XyZ",
+      {{0, 1, fastmarkdown::MarkBold}, {1, 2, fastmarkdown::MarkItalic}});
+  expectStyledRoundTrip("adjacent italic bold intraword", "XyZ",
+      {{0, 1, fastmarkdown::MarkItalic}, {1, 2, fastmarkdown::MarkBold}});
+
+  // --- Superscript content that fits neither caret form.
+  expectStyledRoundTrip("sup paren without space", "ab",
+      {{0, 2, fastmarkdown::MarkSuperscript}});
+
+  // --- Hostile nesting must parse without blowing the stack (depth cap).
+  {
+    std::string hostile;
+    for (int i = 0; i < 20000; i++) {
+      hostile += '>';
+    }
+    hostile += " x";
+    auto doc = fastmarkdown::parseMarkdown(hostile);
+    g_total++;
+    if (doc->root == nullptr) {
+      g_failures++;
+      std::printf("FAIL deep nesting parse\n");
+    } else {
+      // Serialization must also complete (bounded recursion).
+      const std::string out = fastmarkdown::astToMarkdown(doc->root);
+      if (out.empty()) {
+        g_failures++;
+        std::printf("FAIL deep nesting serialize\n");
+      }
+    }
+  }
+
+  // --- Nested image inside alt text keeps the outer alt intact.
+  expectContains(
+      "nested image alt",
+      "![a ![b](u2) c](u1)",
+      R"("text":"a b c")");
+
+  // --- Surrogate-range character references become U+FFFD, not invalid
+  // UTF-8.
+  expectContains(
+      "surrogate entity replaced",
+      "bad &#xD800; ref",
+      "\xEF\xBF\xBD");
+
   // --- Editor plain-text bridge (E1) ---
   expectString(
       "editor markdown from text",

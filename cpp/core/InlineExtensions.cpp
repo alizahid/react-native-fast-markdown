@@ -45,6 +45,10 @@ Pos findToken(
   for (size_t ci = startChild; ci < kids.size(); ci++) {
     Node* child = kids[ci];
     if (child->type == NodeType::Text) {
+      if (child->verbatim) {
+        // Escaped/entity characters never form delimiters.
+        continue;
+      }
       size_t from = (ci == startChild) ? startOff : 0;
       size_t found = child->text.find(token, from);
       if (found != kNpos) {
@@ -130,7 +134,7 @@ void pairPass(
   size_t off = 0;
   while (ci < kids.size()) {
     Node* child = kids[ci];
-    if (child->type != NodeType::Text) {
+    if (child->type != NodeType::Text || child->verbatim) {
       ci++;
       off = 0;
       continue;
@@ -172,7 +176,7 @@ void subscriptPass(Node* parent, AstArena& arena) {
   size_t off = 0;
   while (ci < kids.size()) {
     Node* child = kids[ci];
-    if (child->type != NodeType::Text) {
+    if (child->type != NodeType::Text || child->verbatim) {
       ci++;
       off = 0;
       continue;
@@ -206,7 +210,7 @@ void superscriptPass(Node* parent, AstArena& arena) {
   size_t off = 0;
   while (ci < kids.size()) {
     Node* child = kids[ci];
-    if (child->type != NodeType::Text) {
+    if (child->type != NodeType::Text || child->verbatim) {
       ci++;
       off = 0;
       continue;

@@ -77,6 +77,8 @@ function put(out: Serialized, key: string, value: unknown): void {
   }
 }
 
+const warnedColorKeys = new Set<string>();
+
 function putColor(
   out: Serialized,
   key: string,
@@ -87,7 +89,16 @@ function putColor(
   }
   const processed = processColor(value);
   if (typeof processed === "number") {
-    out[key] = processed;
+    // The Int32 codegen/JSON contract wants signed 32-bit; iOS processColor
+    // returns unsigned.
+    out[key] = processed | 0;
+  } else if (__DEV__ && !warnedColorKeys.has(key)) {
+    warnedColorKeys.add(key);
+    console.warn(
+      `react-native-fast-markdown: "${key}" received a platform color ` +
+        "(PlatformColor/DynamicColorIOS), which cannot cross the style " +
+        "bridge and was ignored. Use a static color instead."
+    );
   }
 }
 
@@ -121,6 +132,7 @@ function serializeText(
   }
   put(out, "fontFamily", style.fontFamily);
   put(out, "lineHeight", style.lineHeight);
+  putColor(out, "backgroundColor", style.backgroundColor);
   putColor(out, "color", style.color);
   put(out, "fontVariant", style.fontVariant);
   putColor(out, "textDecorationColor", style.textDecorationColor);
@@ -187,8 +199,11 @@ export function serializeStyles(
     if (Object.keys(section).length > 0) {
       out.main = section;
     }
-    // Text keys cascade into every text element as the `base` style.
-    put(out, "base", serializeText(main));
+    // Text keys cascade into every text element as the `base` style. The
+    // container's backgroundColor must not ride along, or every text run
+    // would inherit it as a highlight.
+    const { backgroundColor: _containerBackground, ...mainText } = main;
+    put(out, "base", serializeText(mainText));
   }
 
   if (styles != null) {

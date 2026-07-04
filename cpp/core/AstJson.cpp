@@ -1,5 +1,7 @@
 #include "AstJson.h"
 
+#include <cstdio>
+
 namespace fastmarkdown {
 
 namespace {
@@ -41,7 +43,15 @@ void appendEscaped(std::string& out, const std::string& value) {
       case '\n': out += "\\n"; break;
       case '\t': out += "\\t"; break;
       case '\r': out += "\\r"; break;
-      default: out += c; break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          char buf[8];
+          std::snprintf(buf, sizeof(buf), "\\u%04x", c);
+          out += buf;
+        } else {
+          out += c;
+        }
+        break;
     }
   }
 }
@@ -74,10 +84,31 @@ void write(std::string& out, const Node* node) {
   }
   if (!node->children.empty()) {
     out += ",\"children\":[";
+    bool first = true;
     for (size_t i = 0; i < node->children.size(); i++) {
-      if (i > 0) {
+      // Adjacent text nodes dump as one: verbatim (entity-born) nodes are a
+      // scanner-facing distinction, not a content one, and tests compare
+      // content.
+      if (node->children[i]->type == NodeType::Text) {
+        std::string merged = node->children[i]->text;
+        while (i + 1 < node->children.size() &&
+               node->children[i + 1]->type == NodeType::Text) {
+          merged += node->children[i + 1]->text;
+          i++;
+        }
+        if (!first) {
+          out += ',';
+        }
+        first = false;
+        out += "{\"type\":\"text\",\"text\":\"";
+        appendEscaped(out, merged);
+        out += "\"}";
+        continue;
+      }
+      if (!first) {
         out += ',';
       }
+      first = false;
       write(out, node->children[i]);
     }
     out += ']';

@@ -26,6 +26,93 @@ bool isFenceLine(const std::string& s, size_t lineStart, size_t lineEnd) {
   return run >= 3;
 }
 
+// md4c strips backslashes before the inline-extension scanner runs, so an
+// escaped extension delimiter (\| \^ \~) would be re-assembled and re-trigger
+// spoilers/sup/sub. Rewrite them to entity forms here, where the backslash is
+// still visible; the parser materializes entities as verbatim text the
+// scanner skips. Backtick spans are honored (their backslashes are literal
+// code content), approximated per line.
+void appendWithEscapeRewrite(
+    const std::string& in, size_t start, size_t end, std::string& out) {
+  size_t i = start;
+  while (i < end) {
+    const char c = in[i];
+    if (c == '`') {
+      // Enter a code span: find the closing run of the same length and copy
+      // the whole span untouched. No closer -> literal backticks.
+      size_t runLen = 0;
+      size_t j = i;
+      while (j < end && in[j] == '`') {
+        j++;
+        runLen++;
+      }
+      size_t close = std::string::npos;
+      size_t scan = j;
+      while (scan < end) {
+        if (in[scan] != '`') {
+          scan++;
+          continue;
+        }
+        size_t closeLen = 0;
+        size_t r = scan;
+        while (r < end && in[r] == '`') {
+          r++;
+          closeLen++;
+        }
+        if (closeLen == runLen) {
+          close = scan;
+          break;
+        }
+        scan = r;
+      }
+      if (close != std::string::npos) {
+        out.append(in, i, (close + runLen) - i);
+        i = close + runLen;
+      } else {
+        out.append(in, i, j - i);
+        i = j;
+      }
+      continue;
+    }
+    if (c == '\\' && i + 1 < end) {
+      const char next = in[i + 1];
+      switch (next) {
+        case '|':
+          out.append("&#124;");
+          break;
+        case '^':
+          out.append("&#94;");
+          break;
+        case '~':
+          out.append("&#126;");
+          break;
+        // The spoiler pair tokens ">!" / "!<" are also assembled from
+        // adjacent characters after md4c unescapes, so their pieces get the
+        // same treatment.
+        case '!':
+          out.append("&#33;");
+          break;
+        case '<':
+          out.append("&#60;");
+          break;
+        case '>':
+          out.append("&#62;");
+          break;
+        default:
+          // Copy escape pairs atomically so "\\|" reads as literal
+          // backslash + active pipe.
+          out.push_back(c);
+          out.push_back(next);
+          break;
+      }
+      i += 2;
+      continue;
+    }
+    out.push_back(c);
+    i++;
+  }
+}
+
 } // namespace
 
 std::string preprocessMarkdown(const std::string& input) {
@@ -67,7 +154,7 @@ std::string preprocessMarkdown(const std::string& input) {
           if (j + 1 < lineEnd && input[j + 1] == '!') {
             out.append(input, pos, j - pos);
             out.push_back('\\');
-            out.append(input, j, lineEnd - j);
+            appendWithEscapeRewrite(input, j, lineEnd, out);
             escaped = true;
             break;
           }
@@ -78,7 +165,7 @@ std::string preprocessMarkdown(const std::string& input) {
         }
       }
       if (!escaped) {
-        out.append(input, pos, lineEnd - pos);
+        appendWithEscapeRewrite(input, pos, lineEnd, out);
       }
     }
 

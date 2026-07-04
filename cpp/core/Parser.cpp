@@ -11,7 +11,9 @@ namespace fastmarkdown {
 namespace {
 
 void appendUtf8(std::string& out, uint32_t cp) {
-  if (cp == 0 || cp > 0x10FFFF) {
+  // Surrogates are not scalar values; encoding them yields invalid UTF-8
+  // that desynchronizes the UTF-16 offset tables downstream.
+  if (cp == 0 || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
     cp = 0xFFFD;
   }
   if (cp < 0x80) {
@@ -114,9 +116,17 @@ std::string attributeToString(const MD_ATTRIBUTE& attr) {
   return out;
 }
 
+// Nesting cap: malicious documents (">"×20000) otherwise build ASTs deep
+// enough to overflow the stack in every recursive consumer. Content beyond
+// the cap flattens into the deepest allowed node.
+constexpr size_t kMaxNestingDepth = 64;
+
 struct ParseState {
   MarkdownDocument* doc = nullptr;
   std::vector<Node*> stack;
+  // Enter callbacks swallowed by the depth cap; the matching leave
+  // callbacks must not pop real nodes.
+  int overflowDepth = 0;
   // Inside an image span all inline callbacks accumulate into the alt text.
   Node* imageNode = nullptr;
   int imageSpanDepth = 0;
@@ -124,6 +134,10 @@ struct ParseState {
 
   Node* top() {
     return stack.back();
+  }
+
+  bool atDepthCap() const {
+    return stack.size() >= kMaxNestingDepth;
   }
 
   Node* push(NodeType type) {
@@ -145,7 +159,9 @@ struct ParseState {
       parent->text.append(s, n);
       return;
     }
-    if (!parent->children.empty() && parent->children.back()->type == NodeType::Text) {
+    if (!parent->children.empty() &&
+        parent->children.back()->type == NodeType::Text &&
+        !parent->children.back()->verbatim) {
       parent->children.back()->text.append(s, n);
       return;
     }
@@ -153,10 +169,32 @@ struct ParseState {
     text->text.assign(s, n);
     parent->children.push_back(text);
   }
+
+  // Entity-derived text: the characters were explicitly de-fanged by the
+  // author, so the node is tagged verbatim and kept unmerged — the
+  // inline-extension scanner skips it.
+  void appendVerbatimText(const std::string& s) {
+    Node* parent = top();
+    if (parent->type == NodeType::CodeBlock || parent->type == NodeType::InlineCode) {
+      parent->text.append(s);
+      return;
+    }
+    Node* text = doc->arena.alloc(NodeType::Text);
+    text->text = s;
+    text->verbatim = true;
+    parent->children.push_back(text);
+  }
 };
 
 int onEnterBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
   auto* state = static_cast<ParseState*>(userdata);
+  // Depth cap: swallow pushes beyond the limit (THEAD/TBODY/HR/HTML never
+  // push, and their leaves never pop, so they bypass the accounting).
+  if (type != MD_BLOCK_THEAD && type != MD_BLOCK_TBODY &&
+      type != MD_BLOCK_HR && type != MD_BLOCK_HTML && state->atDepthCap()) {
+    state->overflowDepth++;
+    return 0;
+  }
   switch (type) {
     case MD_BLOCK_DOC:
       state->doc->root = state->push(NodeType::Document);
@@ -249,7 +287,11 @@ int onLeaveBlock(MD_BLOCKTYPE type, void* detail, void* userdata) {
     case MD_BLOCK_HTML:
       break;
     default:
-      state->pop();
+      if (state->overflowDepth > 0) {
+        state->overflowDepth--;
+      } else {
+        state->pop();
+      }
       break;
   }
   return 0;
@@ -260,6 +302,10 @@ int onEnterSpan(MD_SPANTYPE type, void* detail, void* userdata) {
   if (state->imageNode != nullptr) {
     // Styled spans inside image alt text are flattened.
     state->imageSpanDepth++;
+    return 0;
+  }
+  if (state->atDepthCap()) {
+    state->overflowDepth++;
     return 0;
   }
   switch (type) {
@@ -301,13 +347,20 @@ int onEnterSpan(MD_SPANTYPE type, void* detail, void* userdata) {
 int onLeaveSpan(MD_SPANTYPE type, void* detail, void* userdata) {
   (void)detail;
   auto* state = static_cast<ParseState*>(userdata);
-  if (type == MD_SPAN_IMG) {
-    state->imageNode = nullptr;
-    state->imageSpanDepth = 0;
-    return 0;
-  }
   if (state->imageNode != nullptr) {
-    state->imageSpanDepth--;
+    if (state->imageSpanDepth > 0) {
+      // Spans nested inside alt text unwind here — including nested images,
+      // whose leave must not clear the OUTER image's accumulation.
+      state->imageSpanDepth--;
+      return 0;
+    }
+    if (type == MD_SPAN_IMG) {
+      state->imageNode = nullptr;
+      return 0;
+    }
+  }
+  if (state->overflowDepth > 0) {
+    state->overflowDepth--;
     return 0;
   }
   state->pop();
@@ -345,7 +398,7 @@ int onText(MD_TEXTTYPE type, const MD_CHAR* text, MD_SIZE size, void* userdata) 
     case MD_TEXT_ENTITY: {
       std::string translated;
       appendEntity(translated, text, size);
-      state->appendText(translated.data(), translated.size());
+      state->appendVerbatimText(translated);
       break;
     }
     case MD_TEXT_NULLCHAR: {
