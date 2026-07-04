@@ -10,6 +10,7 @@
 
 #import "../../cpp/core/EditorRuns.h"
 #import "../../cpp/react/FastMarkdownEditorShadowNode.h"
+#import "../style/FMDFontScale.h"
 #import "../style/FMDStyleConfig.h"
 #import "../style/FMDTextStyle.h"
 
@@ -207,6 +208,10 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   // a code context (code block line or armed inline-code mark).
   BOOL _propAutoCorrect;
   UITextAutocapitalizationType _propAutoCapitalize;
+  BOOL _allowFontScaling;
+  // Dynamic Type multiplier applied to font sizes and line heights; 1 when
+  // allowFontScaling is off. Must match the shadow node's fontSizeMultiplier.
+  CGFloat _fontScale;
   BOOL _suppressFocusEvents;
   UIColor *_linkColor;
   NSArray<NSString *> *_mentionTriggers;
@@ -232,6 +237,14 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     _props = defaultProps;
     _stylesJson = @"";
     _multiline = YES;
+    _allowFontScaling = YES;
+    _fontScale = FMDFontSizeMultiplier();
+
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(fmdContentSizeCategoryDidChange)
+               name:UIContentSizeCategoryDidChangeNotification
+             object:nil];
     _lastPublishedHeight = 0;
     _baseFont = [UIFont systemFontOfSize:16];
     _baseColor = UIColor.blackColor;
@@ -292,16 +305,22 @@ static BOOL FMDBlockIsList(uint32_t packed) {
       lineHeight = style.lineHeight.doubleValue;
     }
   }
+  _fontScale = _allowFontScaling ? FMDFontSizeMultiplier() : 1.0;
+  fontSize *= _fontScale;
+  lineHeight *= _fontScale;
+
   _lineHeight = lineHeight;
   for (uint8_t level = 1; level <= 6; level++) {
     FMDTextStyle *heading =
         [styles textStyleFor:[NSString stringWithFormat:@"h%d", level]];
     _headingLineHeights[level] =
-        heading.lineHeight != nil ? heading.lineHeight.doubleValue : 0;
+        (heading.lineHeight != nil ? heading.lineHeight.doubleValue : 0) *
+        _fontScale;
   }
   FMDTextStyle *codeStyle = [styles textStyleFor:@"codeBlock"];
-  _codeLineHeight =
-      codeStyle.lineHeight != nil ? codeStyle.lineHeight.doubleValue : lineHeight;
+  _codeLineHeight = codeStyle.lineHeight != nil
+      ? codeStyle.lineHeight.doubleValue * _fontScale
+      : lineHeight;
 
   UIFont *font = nil;
   if (fontFamily != nil) {
@@ -851,6 +870,11 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   _multiline = newProps.multiline;
   [self publishHeight];
 
+  if (newProps.allowFontScaling != _allowFontScaling) {
+    _allowFontScaling = newProps.allowFontScaling;
+    [self applyTextStyles];
+  }
+
   _propAutoCorrect = newProps.autoCorrect;
   switch (newProps.autoCapitalize) {
     case FastMarkdownEditorAutoCapitalize::None:
@@ -908,6 +932,16 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   if (self.window != nil && props.autoFocus && !_autoFocusHandled) {
     _autoFocusHandled = YES;
     [_textView becomeFirstResponder];
+  }
+}
+
+- (void)dealloc {
+  [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
+- (void)fmdContentSizeCategoryDidChange {
+  if (_allowFontScaling) {
+    [self applyTextStyles];
   }
 }
 

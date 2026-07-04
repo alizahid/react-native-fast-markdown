@@ -18,6 +18,7 @@ using FMDComponentDescriptor = ConcreteComponentDescriptor<FastMarkdownShadowNod
 
 #import "measure/FMDMarkdownMeasurer.h"
 #import "render/FMDContentCache.h"
+#import "style/FMDFontScale.h"
 #import "style/FMDStyleConfig.h"
 #import "views/FMDBlockStackView.h"
 #import "views/FMDBlockTextView.h"
@@ -34,6 +35,7 @@ using namespace facebook::react;
 @implementation FastMarkdownView {
   NSString *_markdown;
   NSString *_stylesJson;
+  BOOL _allowFontScaling;
   FMDBlockStackView *_stack;
   NSString *_boundKey;
   CGFloat _boundWidth;
@@ -81,6 +83,15 @@ using namespace facebook::react;
     _props = defaultProps;
     _markdown = @"";
     _stylesJson = @"";
+    _allowFontScaling = YES;
+
+    // Dynamic Type changes re-render in place; RN relayouts the shadow
+    // tree with the new multiplier on its own.
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(fmdContentSizeCategoryDidChange)
+               name:UIContentSizeCategoryDidChangeNotification
+             object:nil];
     _stack = [[FMDBlockStackView alloc] initWithFrame:CGRectZero];
     _propImageSizes = [NSMutableDictionary new];
     _loadedImageSizes = [NSMutableDictionary new];
@@ -298,6 +309,16 @@ static void FMDSetNeedsDisplayDeep(UIView *view) {
   _state = std::static_pointer_cast<const FastMarkdownShadowNode::ConcreteState>(state);
 }
 
+- (void)dealloc {
+  [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
+- (void)fmdContentSizeCategoryDidChange {
+  if (_allowFontScaling) {
+    [self setNeedsLayout];
+  }
+}
+
 - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps {
   const auto &newViewProps = *std::static_pointer_cast<FastMarkdownViewProps const>(props);
 
@@ -310,9 +331,11 @@ static void FMDSetNeedsDisplayDeep(UIView *view) {
                                length:newViewProps.stylesJson.size()
                              encoding:NSUTF8StringEncoding] ?: @"";
 
-  if (![markdown isEqualToString:_markdown] || ![stylesJson isEqualToString:_stylesJson]) {
+  if (![markdown isEqualToString:_markdown] || ![stylesJson isEqualToString:_stylesJson] ||
+      newViewProps.allowFontScaling != _allowFontScaling) {
     _markdown = markdown;
     _stylesJson = stylesJson;
+    _allowFontScaling = newViewProps.allowFontScaling;
     [self setNeedsLayout];
   }
 
@@ -367,18 +390,19 @@ static void FMDSetNeedsDisplayDeep(UIView *view) {
     return;
   }
 
-  // Pinned to 1.0 until allowFontScaling lands; must match the shadow node.
-  const CGFloat fontScale = 1.0;
+  // Must match the shadow node's LayoutContext::fontSizeMultiplier.
+  const CGFloat fontScale = _allowFontScaling ? FMDFontSizeMultiplier() : 1.0;
   FMDRenderedContent *content = [FMDContentCache contentForMarkdown:_markdown
                                                          stylesJson:_stylesJson
                                                           fontScale:fontScale];
   NSDictionary *imageSizes = [self mergedImageSizes];
   FMDWidthLayout *layout = [content layoutForWidth:contentWidth imageSizes:imageSizes];
 
-  NSString *key = [NSString stringWithFormat:@"%lu\x1f%lu\x1f%lu",
+  NSString *key = [NSString stringWithFormat:@"%lu\x1f%lu\x1f%lu\x1f%.3f",
                                              (unsigned long)_markdown.hash,
                                              (unsigned long)_stylesJson.hash,
-                                             (unsigned long)imageSizes.hash];
+                                             (unsigned long)imageSizes.hash,
+                                             fontScale];
   if (![key isEqualToString:_boundKey] || _boundWidth != contentWidth) {
     _boundKey = key;
     _boundWidth = contentWidth;

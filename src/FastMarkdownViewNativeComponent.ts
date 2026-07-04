@@ -15,6 +15,7 @@ interface ImageData {
 }
 
 interface NativeProps extends ViewProps {
+  allowFontScaling?: CodegenTypes.WithDefault<boolean, true>;
   images?: readonly ImageData[];
   markdown: string;
   onImagePress?: CodegenTypes.DirectEventHandler<UrlEvent>;

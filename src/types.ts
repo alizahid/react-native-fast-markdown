@@ -331,6 +331,8 @@ export interface FastMarkdownEditorRef {
 }
 
 export interface FastMarkdownEditorProps {
+  /** Scale text with the system font size setting. Defaults to true. */
+  allowFontScaling?: boolean;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   autoCorrect?: boolean;
   autoFocus?: boolean;
@@ -363,6 +365,8 @@ export interface FastMarkdownEditorProps {
 }
 
 export interface FastMarkdownViewProps {
+  /** Scale text with the system font size setting. Defaults to true. */
+  allowFontScaling?: boolean;
   images?: MarkdownImageData[];
   /** The markdown source to render. */
   markdown: string;

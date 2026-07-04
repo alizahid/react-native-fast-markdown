@@ -30,6 +30,11 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     return FastMarkdownEditorView(context)
   }
 
+  @ReactProp(name = "allowFontScaling")
+  override fun setAllowFontScaling(view: FastMarkdownEditorView?, value: Boolean) {
+    view?.allowFontScaling = value
+  }
+
   @ReactProp(name = "autoCapitalize")
   override fun setAutoCapitalize(view: FastMarkdownEditorView?, value: String?) {
     view?.setCapitalizeMode(value)

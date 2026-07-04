@@ -191,7 +191,7 @@ Paste never inserts directly. `onPaste` receives `{ text?, images?, preventDefau
 - `textDecorationStyle`/`textDecorationColor` render fully on iOS; Android draws plain underline/strikethrough.
 - `borderCurve: 'continuous'` is iOS-only.
 - `fontVariant` supports `tabular-nums`, `proportional-nums`, `oldstyle-nums`, `lining-nums`, `small-caps` (font support required).
-- Font scaling (`allowFontScaling`) is not applied yet; text renders at the sizes you specify.
+- `allowFontScaling` (default `true`) scales all text — including `lineHeight` — with the system font size setting on both components.
 - Spoilers and inline formatting inside link labels stay literal; spoilers inside table cells are unsupported (the `|` delimiter conflicts).
 - Code blocks render plain monospace (no syntax highlighting).
 

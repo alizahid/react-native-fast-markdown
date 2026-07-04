@@ -22,7 +22,16 @@ import com.fastmarkdown.views.MarkdownHost
 class FastMarkdownView(context: Context) : ViewGroup(context), MarkdownHost {
   private var markdown: String = ""
   private var stylesJson: String = ""
-  private var boundKey: Triple<String, String, Int>? = null
+
+  var allowFontScaling = true
+    set(value) {
+      if (field != value) {
+        field = value
+        boundKey = null
+        requestLayout()
+      }
+    }
+  private var boundKey: List<Any>? = null
   private var boundWidth: Int = 0
   private val stack = BlockStackView(context)
 
@@ -163,8 +172,10 @@ class FastMarkdownView(context: Context) : ViewGroup(context), MarkdownHost {
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
     val density = resources.displayMetrics.density
-    // Pinned to 1.0 until allowFontScaling lands; must match the shadow node.
-    val fontScale = 1.0f
+    // Must match the shadow node's LayoutContext::fontSizeMultiplier
+    // (Android's system font scale).
+    val fontScale =
+      if (allowFontScaling) resources.configuration.fontScale else 1.0f
     val styles = StyleConfig.from(stylesJson)
 
     setBackgroundColor(styles.backgroundColor ?: Color.TRANSPARENT)
@@ -183,7 +194,7 @@ class FastMarkdownView(context: Context) : ViewGroup(context), MarkdownHost {
     val imageSizes = mergedImageSizes()
     val layout = content.layoutFor(contentWidthPx, imageSizes)
 
-    val key = Triple(markdown, stylesJson, imageSizes.hashCode())
+    val key = listOf(markdown, stylesJson, imageSizes.hashCode(), fontScale)
     if (boundKey != key || boundWidth != contentWidthPx) {
       boundKey = key
       boundWidth = contentWidthPx

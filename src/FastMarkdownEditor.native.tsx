@@ -33,6 +33,7 @@ function processedColor(value: FastMarkdownEditorProps["cursorColor"]): number {
 }
 
 export function FastMarkdownEditor({
+  allowFontScaling,
   autoCapitalize,
   autoCorrect,
   autoFocus,
@@ -215,6 +216,7 @@ export function FastMarkdownEditor({
 
   return (
     <NativeFastMarkdownEditor
+      allowFontScaling={allowFontScaling}
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}

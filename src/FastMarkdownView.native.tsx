@@ -10,6 +10,7 @@ import {
 import type { FastMarkdownViewProps, MarkdownUrlEvent } from "./types";
 
 export function FastMarkdownView({
+  allowFontScaling,
   markdown,
   style,
   styles,
@@ -28,6 +29,7 @@ export function FastMarkdownView({
 
   return (
     <NativeFastMarkdownView
+      allowFontScaling={allowFontScaling}
       images={images}
       markdown={markdown}
       onImagePress={

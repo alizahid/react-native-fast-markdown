@@ -5,6 +5,7 @@ import type { FastMarkdownEditorProps, FastMarkdownEditorRef } from "./types";
 
 // Non-native (web) fallback: a plain multiline text input over raw markdown.
 export function FastMarkdownEditor({
+  allowFontScaling,
   autoCapitalize,
   autoCorrect,
   autoFocus,
@@ -60,6 +61,7 @@ export function FastMarkdownEditor({
 
   return (
     <TextInput
+      allowFontScaling={allowFontScaling}
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}

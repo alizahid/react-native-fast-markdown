@@ -71,11 +71,15 @@ Size FastMarkdownShadowNode::measureContent(
   imagesJson += '}';
 
   const float maxWidth = layoutConstraints.maximumSize.width;
-  // Font scaling is pinned to 1.0 until allowFontScaling lands; the host
-  // views must use the same value so measured and rendered heights agree.
-  (void)layoutContext;
+  // The host views compute the same multiplier (RN's iOS category table /
+  // Android configuration.fontScale) so measured and rendered heights
+  // agree.
+  float fontScale = 1.0f;
+  if (props.allowFontScaling && layoutContext.fontSizeMultiplier > 0) {
+    fontScale = static_cast<float>(layoutContext.fontSizeMultiplier);
+  }
   const float height = fastmarkdown::FastMarkdownMeasurer::shared().measure(
-      props.markdown, props.stylesJson, imagesJson, maxWidth, 1.0f);
+      props.markdown, props.stylesJson, imagesJson, maxWidth, fontScale);
 
   Size size;
   size.width = maxWidth;

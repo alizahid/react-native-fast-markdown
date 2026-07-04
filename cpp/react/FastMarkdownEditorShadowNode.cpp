@@ -20,12 +20,16 @@ Size FastMarkdownEditorShadowNode::measureContent(
     // shared measurer so the editor mounts at its real height.
     const std::string& markdown =
         props.defaultValue.empty() ? " " : props.defaultValue;
+    float fontScale = 1.0f;
+    if (props.allowFontScaling && layoutContext.fontSizeMultiplier > 0) {
+      fontScale = static_cast<float>(layoutContext.fontSizeMultiplier);
+    }
     height = static_cast<Float>(fastmarkdown::FastMarkdownMeasurer::shared().measure(
         markdown,
         props.stylesJson,
         "{}",
         static_cast<float>(maxWidth),
-        1.0f));
+        fontScale));
   }
 
   // Autogrow cap: past maxHeight the view scrolls internally instead of

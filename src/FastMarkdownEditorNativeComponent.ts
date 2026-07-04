@@ -59,6 +59,7 @@ interface PasteEvent {
 }
 
 interface NativeProps extends ViewProps {
+  allowFontScaling?: CodegenTypes.WithDefault<boolean, true>;
   autoCapitalize?: CodegenTypes.WithDefault<
     "none" | "sentences" | "words" | "characters",
     "sentences"

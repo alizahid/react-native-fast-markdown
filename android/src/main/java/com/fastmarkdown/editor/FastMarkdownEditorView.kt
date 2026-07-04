@@ -37,6 +37,17 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
 
   private var stylesJson: String = ""
   private var defaultValueApplied = false
+
+  var allowFontScaling = true
+    set(value) {
+      if (field != value) {
+        field = value
+        applyTextStyles()
+        refreshDisplaySpans(text)
+        invalidate()
+      }
+    }
+
   private var multiline = true
   private var autoCorrectEnabled = true
   private var capitalizeMode = "sentences"
@@ -217,14 +228,19 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       spec.color?.let { color = it }
       spec.lineHeight?.let { lineHeight = it }
     }
+    // Must match the shadow node's fontSizeMultiplier (the system scale).
+    val fontScale =
+      if (allowFontScaling) resources.configuration.fontScale else 1.0f
+    fontSize *= fontScale
+    lineHeight *= fontScale
     lineHeightPx = (lineHeight * density).toInt()
     for (level in 1..6) {
       headingLineHeightsPx[level] =
-        ((styles.textStyleFor("h$level")?.lineHeight ?: 0f) * density).toInt()
+        ((styles.textStyleFor("h$level")?.lineHeight ?: 0f) * density * fontScale).toInt()
     }
     codeLineHeightPx =
       styles.textStyleFor("codeBlock")?.lineHeight
-        ?.let { (it * density).toInt() }
+        ?.let { (it * density * fontScale).toInt() }
         ?: lineHeightPx
 
     setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize * density)

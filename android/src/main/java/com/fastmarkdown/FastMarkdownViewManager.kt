@@ -30,6 +30,11 @@ class FastMarkdownViewManager : SimpleViewManager<FastMarkdownView>(),
     return FastMarkdownView(context)
   }
 
+  @ReactProp(name = "allowFontScaling")
+  override fun setAllowFontScaling(view: FastMarkdownView?, value: Boolean) {
+    view?.allowFontScaling = value
+  }
+
   @ReactProp(name = "markdown")
   override fun setMarkdown(view: FastMarkdownView?, value: String?) {
     view?.setMarkdown(value)
