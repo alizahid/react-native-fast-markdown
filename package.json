@@ -54,7 +54,7 @@
     "clean": "del-cli lib",
     "example": "bun run --cwd example",
     "fix": "ultracite fix",
-    "prepare": "husky",
+    "prepare": "bob build && husky",
     "release": "release-it --only-version",
     "test": "bun test src && cpp/tests/run_tests.sh",
     "typecheck": "tsc"
