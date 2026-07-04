@@ -1,16 +1,24 @@
 #import "FMDTextStyle.h"
 
+#import <React/RCTConvert.h>
+
 @implementation FMDTextStyle
 
 + (nullable UIColor *)colorFromJson:(nullable id)value {
-  if (![value isKindOfClass:[NSNumber class]]) {
-    return nil;
+  if ([value isKindOfClass:[NSNumber class]]) {
+    const uint32_t argb = [value unsignedIntValue];
+    return [UIColor colorWithRed:((argb >> 16) & 0xFF) / 255.0
+                           green:((argb >> 8) & 0xFF) / 255.0
+                            blue:(argb & 0xFF) / 255.0
+                           alpha:((argb >> 24) & 0xFF) / 255.0];
   }
-  const uint32_t argb = [value unsignedIntValue];
-  return [UIColor colorWithRed:((argb >> 16) & 0xFF) / 255.0
-                         green:((argb >> 8) & 0xFF) / 255.0
-                          blue:(argb & 0xFF) / 255.0
-                         alpha:((argb >> 24) & 0xFF) / 255.0];
+  if ([value isKindOfClass:[NSDictionary class]]) {
+    // Platform colors: {semantic: [...]} / {dynamic: {light, dark, ...}}.
+    // RCTConvert resolves them to (possibly dynamic-provider) UIColors that
+    // adapt to trait changes at draw time.
+    return [RCTConvert UIColor:value];
+  }
+  return nil;
 }
 
 + (nullable instancetype)fromJson:(nullable NSDictionary *)json {

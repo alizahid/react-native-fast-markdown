@@ -1,5 +1,6 @@
 package com.fastmarkdown
 
+import com.fastmarkdown.style.PlatformColorResolver
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.module.annotations.ReactModule
@@ -27,6 +28,7 @@ class FastMarkdownViewManager : SimpleViewManager<FastMarkdownView>(),
 
   public override fun createViewInstance(context: ThemedReactContext): FastMarkdownView {
     FastMarkdownNative.ensureInstalled()
+    PlatformColorResolver.install(context)
     return FastMarkdownView(context)
   }
 

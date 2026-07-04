@@ -1,5 +1,6 @@
 #import "FastMarkdownEditor.h"
 
+#import <React/RCTConversions.h>
 #import <react/renderer/components/FastMarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/FastMarkdownViewSpec/Props.h>
 #import <react/renderer/components/FastMarkdownViewSpec/RCTComponentViewHelpers.h>
@@ -997,9 +998,13 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   }
   [self updateInputTraits];
 
-  if (newProps.cursorColor != 0) {
-    _textView.tintColor = [FMDTextStyle colorFromJson:@(newProps.cursorColor)];
-  }
+  // UIKit shares one tint for the caret and the selection highlight;
+  // selectionColor wins when both are set, nil restores the system tint.
+  // SharedColor carries platform colors (PlatformColor/DynamicColorIOS)
+  // through as dynamic-provider UIColors.
+  UIColor *selectionColor = RCTUIColorFromSharedColor(newProps.selectionColor);
+  UIColor *cursorColor = RCTUIColorFromSharedColor(newProps.cursorColor);
+  _textView.tintColor = selectionColor ?: cursorColor;
 
   NSMutableArray<NSString *> *triggers = [NSMutableArray array];
   for (const auto &trigger : newProps.mentionTriggers) {
@@ -1017,12 +1022,10 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     _textView.accessibilityLabel = placeholder;
     [self setNeedsLayout];
   }
-  if (newProps.placeholderTextColor != 0) {
-    _placeholderLabel.textColor =
-        [FMDTextStyle colorFromJson:@(newProps.placeholderTextColor)];
-  } else {
-    _placeholderLabel.textColor = [UIColor colorWithWhite:0 alpha:0.3];
-  }
+  UIColor *placeholderColor =
+      RCTUIColorFromSharedColor(newProps.placeholderTextColor);
+  _placeholderLabel.textColor =
+      placeholderColor ?: [UIColor colorWithWhite:0 alpha:0.3];
 
   if (newProps.autoFocus && !prevProps.autoFocus) {
     _autoFocusHandled = NO;
@@ -1030,6 +1033,16 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
   [super updateProps:props oldProps:oldProps];
   [self refreshPlaceholderVisibility];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+  [super traitCollectionDidChange:previousTraitCollection];
+  if ([self.traitCollection
+          hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+    // Marker/stripe decorations draw with (possibly dynamic) UIColors;
+    // re-resolve them under the new appearance.
+    [self invalidateDecorations];
+  }
 }
 
 - (void)didMoveToWindow {

@@ -56,15 +56,18 @@ class StyleConfig private constructor(private val root: JSONObject) {
     private val cache = HashMap<String, StyleConfig>()
 
     fun from(stylesJson: String): StyleConfig {
+      // Platform colors resolve against the current theme; a dark-mode flip
+      // must not serve configs holding light-resolved ints.
+      val cacheKey = "${PlatformColorResolver.appearanceKey()}\u001f$stylesJson"
       synchronized(cache) {
-        cache[stylesJson]?.let { return it }
+        cache[cacheKey]?.let { return it }
         val config = StyleConfig(
           runCatching { JSONObject(stylesJson.ifEmpty { "{}" }) }.getOrElse { JSONObject() }
         )
         if (cache.size > 16) {
           cache.clear()
         }
-        cache[stylesJson] = config
+        cache[cacheKey] = config
         return config
       }
     }

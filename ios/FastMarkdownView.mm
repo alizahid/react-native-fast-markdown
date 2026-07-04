@@ -32,6 +32,8 @@ using namespace facebook::react;
 @interface FastMarkdownView () <FMDMarkdownHost, UIGestureRecognizerDelegate>
 @end
 
+static void FMDSetNeedsDisplayDeep(UIView *view);
+
 @implementation FastMarkdownView {
   NSString *_markdown;
   NSString *_stylesJson;
@@ -287,6 +289,19 @@ static void FMDSetNeedsDisplayDeep(UIView *view) {
   }
   for (UIView *subview in view.subviews) {
     FMDSetNeedsDisplayDeep(subview);
+  }
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+  [super traitCollectionDidChange:previousTraitCollection];
+  if ([self.traitCollection
+          hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+    // Dynamic (platform) colors resolve at draw time for text, but border
+    // and background colors snapshot into CGColors when blocks bind; rebind
+    // so they re-resolve under the new appearance.
+    _boundKey = nil;
+    [self setNeedsLayout];
+    FMDSetNeedsDisplayDeep(self);
   }
 }
 

@@ -5,7 +5,7 @@ import {
   useMemo,
   useRef,
 } from "react";
-import { type NativeSyntheticEvent, processColor } from "react-native";
+import type { NativeSyntheticEvent } from "react-native";
 
 import NativeFastMarkdownEditor, {
   Commands,
@@ -23,27 +23,6 @@ import type {
 } from "./types";
 
 type NativeEditor = React.ElementRef<typeof NativeFastMarkdownEditor>;
-
-function processedColor(value: FastMarkdownEditorProps["cursorColor"]): number {
-  if (value == null) {
-    return 0;
-  }
-  const processed = processColor(value);
-  if (typeof processed !== "number") {
-    if (__DEV__) {
-      console.warn(
-        "react-native-fast-markdown: platform colors (PlatformColor/" +
-          "DynamicColorIOS) are not supported for editor color props and " +
-          "were ignored. Use a static color instead."
-      );
-    }
-    return 0;
-  }
-  // 0 (fully transparent) is the "unset" sentinel, so nudge a real
-  // transparent to the nearest representable value; `| 0` keeps the value
-  // inside the Int32 codegen contract on iOS.
-  return processed === 0 ? 0x01_00_00_00 | 0 : processed | 0;
-}
 
 export function FastMarkdownEditor({
   allowFontScaling,
@@ -236,7 +215,7 @@ export function FastMarkdownEditor({
       autoCapitalize={autoCapitalize}
       autoCorrect={autoCorrect}
       autoFocus={autoFocus}
-      cursorColor={processedColor(cursorColor)}
+      cursorColor={cursorColor}
       defaultValue={defaultValue}
       editable={editable}
       maxHeight={typeof maxHeight === "number" ? maxHeight : 0}
@@ -307,10 +286,10 @@ export function FastMarkdownEditor({
       }
       onEditorPaste={handlePaste}
       placeholder={placeholder}
-      placeholderTextColor={processedColor(placeholderTextColor)}
+      placeholderTextColor={placeholderTextColor}
       ref={nativeRef}
       scrollEnabled={scrollEnabled}
-      selectionColor={processedColor(selectionColor)}
+      selectionColor={selectionColor}
       style={editorHostStyle}
       stylesJson={stylesJson}
     />

@@ -77,8 +77,6 @@ function put(out: Serialized, key: string, value: unknown): void {
   }
 }
 
-const warnedColorKeys = new Set<string>();
-
 function putColor(
   out: Serialized,
   key: string,
@@ -89,16 +87,14 @@ function putColor(
   }
   const processed = processColor(value);
   if (typeof processed === "number") {
-    // The Int32 codegen/JSON contract wants signed 32-bit; iOS processColor
-    // returns unsigned.
+    // The Int32 JSON contract wants signed 32-bit; iOS processColor returns
+    // unsigned.
     out[key] = processed | 0;
-  } else if (__DEV__ && !warnedColorKeys.has(key)) {
-    warnedColorKeys.add(key);
-    console.warn(
-      `react-native-fast-markdown: "${key}" received a platform color ` +
-        "(PlatformColor/DynamicColorIOS), which cannot cross the style " +
-        "bridge and was ignored. Use a static color instead."
-    );
+  } else if (typeof processed === "object" && processed !== null) {
+    // Platform colors (PlatformColor / DynamicColorIOS): processColor
+    // returns a JSON-serializable descriptor ({semantic}/{dynamic} on iOS,
+    // {resource_paths} on Android) that the native style parser resolves.
+    out[key] = processed;
   }
 }
 

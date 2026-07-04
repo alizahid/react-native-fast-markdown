@@ -11,8 +11,12 @@ mock.module("react-native", () => ({
       return style ?? {};
     },
   },
-  processColor: (value: unknown): number | null => {
+  processColor: (value: unknown): number | object | null => {
     if (typeof value === "number") {
+      return value;
+    }
+    if (typeof value === "object" && value !== null) {
+      // Platform colors pass through processColor as their descriptors.
       return value;
     }
     if (value === "red") {
@@ -35,6 +39,24 @@ function parse(json: string): Record<string, any> {
 }
 
 describe("serializeStyles", () => {
+  test("platform color descriptors pass through as objects", () => {
+    const out = parse(
+      serializeStyles(
+        {
+          link: { color: { semantic: ["linkColor"] } as never },
+          paragraph: {
+            color: { resource_paths: ["?attr/colorPrimary"] } as never,
+          },
+        },
+        undefined
+      )
+    );
+    expect(out.link.color).toEqual({ semantic: ["linkColor"] });
+    expect(out.paragraph.color).toEqual({
+      resource_paths: ["?attr/colorPrimary"],
+    });
+  });
+
   test("empty input produces empty object", () => {
     expect(serializeStyles(undefined, undefined)).toBe("{}");
   });

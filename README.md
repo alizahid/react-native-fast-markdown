@@ -87,9 +87,11 @@ The viewer ships **unstyled by default**. Two exports cover the common cases:
 
 Two shared shapes compose every element style:
 
-**Text** — `fontSize`, `fontWeight`, `fontFamily`, `color`, `fontVariant`, `textDecorationColor`, `textDecorationLine`, `textDecorationStyle`
+**Text** — `fontSize`, `fontWeight`, `fontFamily`, `color`, `backgroundColor` (run highlight), `fontVariant`, `lineHeight`, `textDecorationColor`, `textDecorationLine`, `textDecorationStyle`
 
 **Layout** — `backgroundColor`, `padding` (+ per-side), `borderRadius`, `borderCurve` (iOS), `borderColor`/`borderWidth` (+ per-side)
+
+Every color accepts platform colors (`PlatformColor`, `DynamicColorIOS`) as well as static values — on iOS they stay dynamic and adapt to light/dark automatically; on Android they resolve against the current theme.
 
 | Key | Accepts | Notes |
 | --- | --- | --- |

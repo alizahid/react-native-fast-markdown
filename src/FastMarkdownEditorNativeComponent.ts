@@ -1,5 +1,6 @@
 import {
   type CodegenTypes,
+  type ColorValue,
   codegenNativeCommands,
   codegenNativeComponent,
   type HostComponent,
@@ -66,8 +67,7 @@ interface NativeProps extends ViewProps {
   >;
   autoCorrect?: CodegenTypes.WithDefault<boolean, true>;
   autoFocus?: CodegenTypes.WithDefault<boolean, false>;
-  /** Processed ARGB int; 0 = unset. */
-  cursorColor?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
+  cursorColor?: ColorValue;
   defaultValue?: string;
   editable?: CodegenTypes.WithDefault<boolean, true>;
   /** Autogrow cap in points; 0 = unbounded. Past it the editor scrolls. */
@@ -86,11 +86,9 @@ interface NativeProps extends ViewProps {
   onEditorMentionStart?: CodegenTypes.DirectEventHandler<MentionEvent>;
   onEditorPaste?: CodegenTypes.DirectEventHandler<PasteEvent>;
   placeholder?: string;
-  /** Processed ARGB int; 0 = unset. */
-  placeholderTextColor?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
+  placeholderTextColor?: ColorValue;
   scrollEnabled?: CodegenTypes.WithDefault<boolean, false>;
-  /** Processed ARGB int; 0 = unset. */
-  selectionColor?: CodegenTypes.WithDefault<CodegenTypes.Int32, 0>;
+  selectionColor?: ColorValue;
   stylesJson?: string;
 }
 

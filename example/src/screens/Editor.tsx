@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
+  PlatformColor,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -61,6 +62,10 @@ export function Editor() {
           placeholder="Write something..."
           placeholderTextColor="#9CA3AF"
           ref={editor.ref}
+          selectionColor={Platform.select({
+            android: PlatformColor("?attr/colorPrimary"),
+            ios: PlatformColor("systemTealColor"),
+          })}
           style={editorStyle}
           styles={styles}
         />

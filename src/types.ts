@@ -340,8 +340,8 @@ export interface FastMarkdownEditorProps {
   autoFocus?: boolean;
   /**
    * Caret color. On iOS the caret and selection share one tint, so
-   * `selectionColor` wins when both are set. Android 10+ only; platform
-   * colors (`PlatformColor`) are not supported.
+   * `selectionColor` wins when both are set. Android 10+ only. Platform
+   * colors (`PlatformColor`, `DynamicColorIOS`) are supported.
    */
   cursorColor?: ColorValue;
   /** Initial markdown content, applied once. */
@@ -366,7 +366,8 @@ export interface FastMarkdownEditorProps {
   scrollEnabled?: boolean;
   /**
    * Selection highlight color. On iOS this also tints the caret (UIKit
-   * shares one tint). Platform colors (`PlatformColor`) are not supported.
+   * shares one tint). Platform colors (`PlatformColor`, `DynamicColorIOS`)
+   * are supported.
    */
   selectionColor?: ColorValue;
   /** Same container style contract as the viewer. */

@@ -11,12 +11,24 @@ import com.fastmarkdown.style.StyleConfig
  * mount never re-parses.
  */
 object ContentCache {
-  private data class Key(val markdown: String, val stylesJson: String, val fontScale: Float)
+  private data class Key(
+    val markdown: String,
+    val stylesJson: String,
+    val fontScale: Float,
+    // Rendered spans hold theme-resolved platform colors; a dark-mode flip
+    // must not serve light-resolved content.
+    val appearance: Int,
+  )
 
   private val cache = object : LruCache<Key, RenderedContent>(64) {}
 
   fun get(markdown: String, stylesJson: String, fontScale: Float): RenderedContent {
-    val key = Key(markdown, stylesJson, fontScale)
+    val key = Key(
+      markdown,
+      stylesJson,
+      fontScale,
+      com.fastmarkdown.style.PlatformColorResolver.appearanceKey(),
+    )
     synchronized(cache) {
       cache.get(key)?.let { return it }
     }

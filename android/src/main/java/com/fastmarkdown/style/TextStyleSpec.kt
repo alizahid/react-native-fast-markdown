@@ -49,6 +49,8 @@ class TextStyleSpec(
       if (!has(key)) {
         return null
       }
+      // Platform colors arrive as {"resource_paths": [...]} descriptors.
+      optJSONObject(key)?.let { return PlatformColorResolver.resolve(it) }
       val value = optLong(key, Long.MIN_VALUE)
       return if (value == Long.MIN_VALUE) null else value.toInt()
     }

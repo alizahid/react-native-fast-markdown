@@ -10,6 +10,7 @@ import com.facebook.react.uimanager.annotations.ReactProp
 import com.facebook.react.viewmanagers.FastMarkdownEditorManagerDelegate
 import com.facebook.react.viewmanagers.FastMarkdownEditorManagerInterface
 import com.fastmarkdown.FastMarkdownNative
+import com.fastmarkdown.style.PlatformColorResolver
 
 @ReactModule(name = FastMarkdownEditorManager.NAME)
 class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
@@ -27,6 +28,7 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
 
   public override fun createViewInstance(context: ThemedReactContext): FastMarkdownEditorView {
     FastMarkdownNative.ensureInstalled()
+    PlatformColorResolver.install(context)
     return FastMarkdownEditorView(context)
   }
 
@@ -50,9 +52,9 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     view?.setAutoFocus(value)
   }
 
-  @ReactProp(name = "cursorColor")
-  override fun setCursorColor(view: FastMarkdownEditorView?, value: Int) {
-    view?.setCursorColorInt(value)
+  @ReactProp(name = "cursorColor", customType = "Color")
+  override fun setCursorColor(view: FastMarkdownEditorView?, value: Int?) {
+    view?.setCursorColorInt(value ?: 0)
   }
 
   @ReactProp(name = "defaultValue")
@@ -94,9 +96,9 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     view?.setPlaceholderText(value)
   }
 
-  @ReactProp(name = "placeholderTextColor")
-  override fun setPlaceholderTextColor(view: FastMarkdownEditorView?, value: Int) {
-    view?.setPlaceholderColor(value)
+  @ReactProp(name = "placeholderTextColor", customType = "Color")
+  override fun setPlaceholderTextColor(view: FastMarkdownEditorView?, value: Int?) {
+    view?.setPlaceholderColor(value ?: 0)
   }
 
   @ReactProp(name = "scrollEnabled")
@@ -104,9 +106,9 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     view?.setScrollAllowed(value)
   }
 
-  @ReactProp(name = "selectionColor")
-  override fun setSelectionColor(view: FastMarkdownEditorView?, value: Int) {
-    view?.setSelectionColorInt(value)
+  @ReactProp(name = "selectionColor", customType = "Color")
+  override fun setSelectionColor(view: FastMarkdownEditorView?, value: Int?) {
+    view?.setSelectionColorInt(value ?: 0)
   }
 
   @ReactProp(name = "stylesJson")
