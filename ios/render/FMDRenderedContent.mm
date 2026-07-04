@@ -37,11 +37,27 @@
   return height;
 }
 
+// NSDictionary.hash is just the entry COUNT — size changes that keep the
+// count would collide. Key on the sorted contents instead.
++ (NSString *)keyForImageSizes:
+    (nullable NSDictionary<NSString *, NSArray<NSNumber *> *> *)imageSizes {
+  if (imageSizes.count == 0) {
+    return @"";
+  }
+  NSMutableString *out = [NSMutableString string];
+  for (NSString *url in
+       [imageSizes.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+    NSArray<NSNumber *> *size = imageSizes[url];
+    [out appendFormat:@"%@\x1e%@x%@\x1f", url, size.firstObject, size.lastObject];
+  }
+  return out;
+}
+
 - (FMDWidthLayout *)layoutForWidth:(CGFloat)width
                         imageSizes:(nullable NSDictionary<NSString *, NSArray<NSNumber *> *> *)imageSizes {
-  NSString *key = [NSString stringWithFormat:@"%.1f|%lu",
+  NSString *key = [NSString stringWithFormat:@"%.1f|%@",
                                              width,
-                                             (unsigned long)imageSizes.hash];
+                                             [FMDRenderedContent keyForImageSizes:imageSizes]];
   @synchronized(self) {
     FMDWidthLayout *cached = _layoutCache[key];
     if (cached != nil) {

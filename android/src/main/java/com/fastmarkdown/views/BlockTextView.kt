@@ -264,6 +264,13 @@ class BlockTextView(context: Context) : View(context) {
     return false
   }
 
+  override fun onDetachedFromWindow() {
+    super.onDetachedFromWindow()
+    // A teardown mid-press would otherwise fire the runnable ~500ms later
+    // against a recycled host.
+    cancelPress()
+  }
+
   private fun cancelPress() {
     removeCallbacks(longPressRunnable)
     pressedLink = null

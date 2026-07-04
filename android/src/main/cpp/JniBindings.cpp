@@ -6,13 +6,13 @@
 // speak modified UTF-8 and corrupt supplementary characters (emoji).
 
 #include <jni.h>
+#include <pthread.h>
 
 #include <string>
 #include <vector>
 
 #include "core/AstSerializer.h"
 #include "core/EditorRuns.h"
-#include "core/EditorText.h"
 #include "core/Parser.h"
 #include "react/FastMarkdownMeasurer.h"
 
@@ -43,6 +43,22 @@ jbyteArray toByteArray(JNIEnv* env, const uint8_t* data, size_t size) {
   return result;
 }
 
+// Threads WE attach must detach before exiting or ART aborts the process
+// ("Native thread exiting without having called DetachCurrentThread"); a
+// pthread key destructor covers early exits.
+pthread_key_t g_detachKey;
+pthread_once_t g_detachKeyOnce = PTHREAD_ONCE_INIT;
+
+void detachCurrentThread(void*) {
+  if (g_vm != nullptr) {
+    g_vm->DetachCurrentThread();
+  }
+}
+
+void makeDetachKey() {
+  pthread_key_create(&g_detachKey, detachCurrentThread);
+}
+
 JNIEnv* currentEnv() {
   if (g_vm == nullptr) {
     return nullptr;
@@ -53,6 +69,8 @@ JNIEnv* currentEnv() {
     if (g_vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
       return nullptr;
     }
+    pthread_once(&g_detachKeyOnce, makeDetachKey);
+    pthread_setspecific(g_detachKey, env);
   } else if (state != JNI_OK) {
     return nullptr;
   }
@@ -67,24 +85,6 @@ Java_com_fastmarkdown_FastMarkdownNative_parse(JNIEnv* env, jclass, jbyteArray m
   const auto document = fastmarkdown::parseMarkdown(input);
   const std::vector<uint8_t> bytes = fastmarkdown::serializeAst(document->root);
   return toByteArray(env, bytes.data(), bytes.size());
-}
-
-extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_fastmarkdown_FastMarkdownNative_markdownFromPlainText(
-    JNIEnv* env,
-    jclass,
-    jbyteArray text) {
-  const std::string result = fastmarkdown::markdownFromPlainText(toStdString(env, text));
-  return toByteArray(env, reinterpret_cast<const uint8_t*>(result.data()), result.size());
-}
-
-extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_fastmarkdown_FastMarkdownNative_plainTextFromMarkdown(
-    JNIEnv* env,
-    jclass,
-    jbyteArray markdown) {
-  const std::string result = fastmarkdown::plainTextFromMarkdown(toStdString(env, markdown));
-  return toByteArray(env, reinterpret_cast<const uint8_t*>(result.data()), result.size());
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
@@ -223,6 +223,12 @@ Java_com_fastmarkdown_FastMarkdownNative_installMeasurer(
             jniEnv, reinterpret_cast<const uint8_t*>(stylesJson.data()), stylesJson.size());
         jbyteArray jImages = toByteArray(
             jniEnv, reinterpret_cast<const uint8_t*>(imagesJson.data()), imagesJson.size());
+        if (jMarkdown == nullptr || jStyles == nullptr || jImages == nullptr) {
+          // NewByteArray OOM leaves a pending exception; calling into Java
+          // with one pending is undefined behavior.
+          jniEnv->ExceptionClear();
+          return 0.0f;
+        }
         const jfloat height = jniEnv->CallFloatMethod(
             g_measurer, g_measureMethod, jMarkdown, jStyles, jImages, maxWidth, fontScale);
         jniEnv->DeleteLocalRef(jMarkdown);

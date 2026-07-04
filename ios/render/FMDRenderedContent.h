@@ -22,6 +22,9 @@ NS_ASSUME_NONNULL_BEGIN
                  bottomPadding:(CGFloat)bottomPadding;
 
 /// imageSizes: url -> @[@(width), @(height)] in points (dp).
++ (NSString *)keyForImageSizes:
+    (nullable NSDictionary<NSString *, NSArray<NSNumber *> *> *)imageSizes;
+
 - (FMDWidthLayout *)layoutForWidth:(CGFloat)width
                         imageSizes:(nullable NSDictionary<NSString *, NSArray<NSNumber *> *> *)imageSizes;
 

@@ -72,6 +72,18 @@ class MarkdownImageView(context: Context) : ImageView(context) {
     invalidate()
   }
 
+  /**
+   * Discard hook (views are recreated wholesale on rebind): stops the
+   * in-flight request from delivering into a recycled host and frees GIF
+   * buffers early. Transient detaches during scrolling must NOT clear —
+   * this is only called when the parent drops the view for good.
+   */
+  fun unbind() {
+    host = null
+    block = null
+    Glide.with(context.applicationContext).clear(this)
+  }
+
   override fun onDraw(canvas: Canvas) {
     val image = block ?: return
     if (image.borderRadiusPx > 0) {

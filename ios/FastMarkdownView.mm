@@ -280,7 +280,11 @@ using namespace facebook::react;
 }
 
 static void FMDSetNeedsDisplayDeep(UIView *view) {
-  [view setNeedsDisplay];
+  // Spoiler covers are drawn by the text views only; invalidating images
+  // and scrollers too would double the redraw work.
+  if ([view isKindOfClass:FMDBlockTextView.class]) {
+    [view setNeedsDisplay];
+  }
   for (UIView *subview in view.subviews) {
     FMDSetNeedsDisplayDeep(subview);
   }
@@ -331,6 +335,12 @@ static void FMDSetNeedsDisplayDeep(UIView *view) {
                                length:newViewProps.stylesJson.size()
                              encoding:NSUTF8StringEncoding] ?: @"";
 
+  if (![markdown isEqualToString:_markdown]) {
+    // Spoiler ids are render-order counters and learned image sizes belong
+    // to the old document; both must not survive a content change.
+    [_revealedSpoilers removeAllObjects];
+    [_loadedImageSizes removeAllObjects];
+  }
   if (![markdown isEqualToString:_markdown] || ![stylesJson isEqualToString:_stylesJson] ||
       newViewProps.allowFontScaling != _allowFontScaling) {
     _markdown = markdown;
@@ -339,14 +349,21 @@ static void FMDSetNeedsDisplayDeep(UIView *view) {
     [self setNeedsLayout];
   }
 
-  [_propImageSizes removeAllObjects];
+  NSMutableDictionary<NSString *, NSArray<NSNumber *> *> *nextPropSizes =
+      [NSMutableDictionary dictionaryWithCapacity:newViewProps.images.size()];
   for (const auto &image : newViewProps.images) {
     NSString *url = [[NSString alloc] initWithBytes:image.url.data()
                                              length:image.url.size()
                                            encoding:NSUTF8StringEncoding];
     if (url != nil) {
-      _propImageSizes[url] = @[ @(image.width), @(image.height) ];
+      nextPropSizes[url] = @[ @(image.width), @(image.height) ];
     }
+  }
+  if (![nextPropSizes isEqualToDictionary:_propImageSizes]) {
+    _propImageSizes = nextPropSizes;
+    // The pre-size data changed: cached layouts for the old sizes must not
+    // be reused even when the measured height happens to match.
+    [self setNeedsLayout];
   }
 
   [super updateProps:props oldProps:oldProps];
@@ -398,10 +415,12 @@ static void FMDSetNeedsDisplayDeep(UIView *view) {
   NSDictionary *imageSizes = [self mergedImageSizes];
   FMDWidthLayout *layout = [content layoutForWidth:contentWidth imageSizes:imageSizes];
 
-  NSString *key = [NSString stringWithFormat:@"%lu\x1f%lu\x1f%lu\x1f%.3f",
-                                             (unsigned long)_markdown.hash,
-                                             (unsigned long)_stylesJson.hash,
-                                             (unsigned long)imageSizes.hash,
+  // Full contents, not hashes: CFString samples long strings and
+  // NSDictionary.hash is the entry count — both collide.
+  NSString *key = [NSString stringWithFormat:@"%@\x1f%@\x1f%@\x1f%.3f",
+                                             _markdown,
+                                             _stylesJson,
+                                             [FMDRenderedContent keyForImageSizes:imageSizes],
                                              fontScale];
   if (![key isEqualToString:_boundKey] || _boundWidth != contentWidth) {
     _boundKey = key;

@@ -15,9 +15,12 @@
     cache.countLimit = 64;
   });
 
-  NSString *key = [NSString stringWithFormat:@"%lu\x1f%lu\x1f%.3f",
-                                             (unsigned long)markdown.hash,
-                                             (unsigned long)stylesJson.hash,
+  // Full contents, not hashes: CFString's hash samples at most 96
+  // characters, so distinct long documents collide and would render each
+  // other's content. NSCache copies nothing — the key strings are shared.
+  NSString *key = [NSString stringWithFormat:@"%@\x1f%@\x1f%.3f",
+                                             markdown,
+                                             stylesJson,
                                              fontScale];
   FMDRenderedContent *cached = [cache objectForKey:key];
   if (cached != nil) {

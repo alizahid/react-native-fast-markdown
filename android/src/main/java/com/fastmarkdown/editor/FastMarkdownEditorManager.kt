@@ -101,7 +101,7 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
 
   @ReactProp(name = "scrollEnabled")
   override fun setScrollEnabled(view: FastMarkdownEditorView?, value: Boolean) {
-    view?.isVerticalScrollBarEnabled = value
+    view?.setScrollAllowed(value)
   }
 
   @ReactProp(name = "selectionColor")

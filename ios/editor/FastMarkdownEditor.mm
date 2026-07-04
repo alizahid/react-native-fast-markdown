@@ -1,6 +1,5 @@
 #import "FastMarkdownEditor.h"
 
-#import <React/RCTComponentViewFactory.h>
 #import <react/renderer/components/FastMarkdownViewSpec/EventEmitters.h>
 #import <react/renderer/components/FastMarkdownViewSpec/Props.h>
 #import <react/renderer/components/FastMarkdownViewSpec/RCTComponentViewHelpers.h>
@@ -211,6 +210,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   std::vector<uint32_t> _replacedCharFlags;
   NSRange _markRestoreRange;
   BOOL _pendingMarkRestore;
+  BOOL _markdownEmitScheduled;
   // Autocorrect/autocapitalize from props; suppressed while the caret is in
   // a code context (code block line or armed inline-code mark).
   BOOL _propAutoCorrect;
@@ -543,17 +543,25 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   _textView.autocorrectionType = correction;
   _textView.autocapitalizationType = capitalization;
   _textView.spellCheckingType = spelling;
-  if (_textView.isFirstResponder) {
+  if (_textView.isFirstResponder && self.window != nil) {
     // reloadInputViews alone leaves an already-latched shift key engaged
     // (the first code character would still capitalize); cycling the
     // responder resets the keyboard's state. Focus/blur events are
     // suppressed — JS must not see a blip.
     _suppressFocusEvents = YES;
+    __block BOOL refocused = NO;
     [UIView performWithoutAnimation:^{
       [self->_textView resignFirstResponder];
-      [self->_textView becomeFirstResponder];
+      refocused = [self->_textView becomeFirstResponder];
     }];
     _suppressFocusEvents = NO;
+    if (!refocused) {
+      // The keyboard is gone for real; JS must not believe the editor is
+      // still focused.
+      if (const auto *emitter = [self editorEventEmitter]) {
+        emitter->onEditorBlur({});
+      }
+    }
   }
 }
 
@@ -566,6 +574,33 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   const NSRange probe = NSMakeRange(MIN(location, text.length), 0);
   [text getLineStart:&start end:nil contentsEnd:&contentsEnd forRange:probe];
   return NSMakeRange(start, contentsEnd - start);
+}
+
+// Line-iteration primitive safe for every terminator (\n, \r, \r\n):
+// reports the line STARTING at `location` and where the next line begins.
+// Returns NO when `location` is not a line start (iteration is done). The
+// old "NSMaxRange(content) + 1" advance assumed 1-char terminators and
+// looped forever on \r\n.
+- (BOOL)lineStartingAt:(NSUInteger)location
+               content:(NSRange *)outContent
+              nextLine:(NSUInteger *)outNext {
+  NSString *text = _textView.text;
+  if (location > text.length) {
+    return NO;
+  }
+  NSUInteger start = 0;
+  NSUInteger end = 0;
+  NSUInteger contentsEnd = 0;
+  [text getLineStart:&start
+                  end:&end
+          contentsEnd:&contentsEnd
+             forRange:NSMakeRange(location, 0)];
+  if (start != location) {
+    return NO;
+  }
+  *outContent = NSMakeRange(start, contentsEnd - start);
+  *outNext = end;
+  return YES;
 }
 
 - (uint32_t)blockOfLineAt:(NSUInteger)location {
@@ -618,8 +653,10 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     allMatch = _typingBlock == target;
   } else {
     NSUInteger cursor = lines.location;
-    while (cursor < NSMaxRange(lines)) {
-      const NSRange content = [self contentRangeOfLineAt:cursor];
+    NSRange content;
+    NSUInteger nextLine;
+    while (cursor < NSMaxRange(lines) &&
+           [self lineStartingAt:cursor content:&content nextLine:&nextLine]) {
       if (content.length > 0 && [self blockOfLineAt:cursor] != target) {
         allMatch = NO;
         break;
@@ -628,7 +665,10 @@ static BOOL FMDBlockIsList(uint32_t packed) {
         allMatch = NO;
         break;
       }
-      cursor = NSMaxRange(content) + 1;
+      if (nextLine == cursor) {
+        break;
+      }
+      cursor = nextLine;
     }
   }
 
@@ -697,10 +737,15 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   const UIEdgeInsets inset = _textView.textContainerInset;
   UIColor *markerColor = [_baseColor colorWithAlphaComponent:0.6];
 
+  NSDictionary *markerAttributes = @{
+    NSFontAttributeName : _baseFont,
+    NSForegroundColorAttributeName : markerColor,
+  };
   NSUInteger location = 0;
   NSInteger orderedNumber = 0;
-  while (location <= text.length) {
-    const NSRange content = [self contentRangeOfLineAt:location];
+  NSRange content;
+  NSUInteger nextLine;
+  while ([self lineStartingAt:location content:&content nextLine:&nextLine]) {
     const uint32_t block = [self displayBlockForLineContent:content];
     const auto type = FMDBlockType(block);
 
@@ -723,21 +768,17 @@ static BOOL FMDBlockIsList(uint32_t packed) {
           NSString *marker = type == fastmarkdown::EditorBlockType::Bullet
               ? @"•"
               : [NSString stringWithFormat:@"%ld.", (long)orderedNumber];
-          NSDictionary *attributes = @{
-            NSFontAttributeName : [_baseFont fontWithSize:_baseFont.pointSize],
-            NSForegroundColorAttributeName : markerColor,
-          };
-          const CGSize size = [marker sizeWithAttributes:attributes];
+          const CGSize size = [marker sizeWithAttributes:markerAttributes];
           [marker drawAtPoint:CGPointMake(inset.left + 24 - size.width - 6, top)
-               withAttributes:attributes];
+               withAttributes:markerAttributes];
         }
       }
     }
 
-    if (NSMaxRange(content) >= text.length) {
+    if (nextLine == location) {
       break;
     }
-    location = NSMaxRange(content) + 1;
+    location = nextLine;
   }
 }
 
@@ -765,8 +806,9 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   };
 
   NSUInteger location = 0;
-  while (location <= text.length) {
-    const NSRange content = [self contentRangeOfLineAt:location];
+  NSRange content;
+  NSUInteger nextLine;
+  while ([self lineStartingAt:location content:&content nextLine:&nextLine]) {
     const uint32_t block = [self displayBlockForLineContent:content];
     const CGRect lineRect = FMDBlockType(block) == fastmarkdown::EditorBlockType::Code
         ? [self rectForLineContent:content]
@@ -782,10 +824,10 @@ static BOOL FMDBlockIsList(uint32_t packed) {
       flush();
     }
 
-    if (NSMaxRange(content) >= text.length) {
+    if (nextLine == location) {
       break;
     }
-    location = NSMaxRange(content) + 1;
+    location = nextLine;
   }
   flush();
 }
@@ -831,18 +873,24 @@ static BOOL FMDBlockIsList(uint32_t packed) {
     return YES;
   }
   NSString *text = _textView.text;
-  NSUInteger location = range.location;
+  NSUInteger lineStart = 0;
+  [text getLineStart:&lineStart
+                  end:nil
+          contentsEnd:nil
+             forRange:NSMakeRange(MIN(range.location, text.length), 0)];
+  NSUInteger location = lineStart;
   const NSUInteger max = NSMaxRange(range);
-  while (location <= text.length) {
+  NSRange content;
+  NSUInteger nextLine;
+  while ([self lineStartingAt:location content:&content nextLine:&nextLine]) {
     if (FMDBlockType([self blockOfLineAt:location]) ==
         fastmarkdown::EditorBlockType::Code) {
       return YES;
     }
-    const NSUInteger next = NSMaxRange([self contentRangeOfLineAt:location]) + 1;
-    if (next > max) {
+    if (nextLine == location || nextLine > max) {
       break;
     }
-    location = next;
+    location = nextLine;
   }
   return NO;
 }
@@ -957,7 +1005,8 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   for (const auto &trigger : newProps.mentionTriggers) {
     NSString *value = FMDStringFromCpp(trigger);
     if (value.length > 0) {
-      [triggers addObject:[value substringToIndex:1]];
+      [triggers addObject:[value substringWithRange:
+                                      [value rangeOfComposedCharacterSequenceAtIndex:0]]];
     }
   }
   _mentionTriggers = triggers;
@@ -1094,16 +1143,20 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
   std::vector<fastmarkdown::EditorLine> lines;
   NSUInteger location = 0;
-  while (location <= text.length) {
-    const NSRange content = [self contentRangeOfLineAt:location];
+  NSRange content;
+  NSUInteger nextLine;
+  while ([self lineStartingAt:location content:&content nextLine:&nextLine]) {
     const uint32_t block =
         content.length > 0 ? [self blockOfLineAt:content.location] : 0;
     lines.push_back(
         {FMDBlockType(block), static_cast<uint8_t>(block & 0xFF)});
-    if (NSMaxRange(content) >= text.length) {
+    if (nextLine == location) {
       break;
     }
-    location = NSMaxRange(content) + 1;
+    location = nextLine;
+  }
+  if (lines.empty()) {
+    lines.push_back({});
   }
 
   __block std::vector<fastmarkdown::LinkRun> links;
@@ -1130,7 +1183,22 @@ static BOOL FMDBlockIsList(uint32_t packed) {
   if (const auto *emitter = [self editorEventEmitter]) {
     const std::string text(_textView.text.UTF8String ?: "");
     emitter->onEditorChangeText({.text = text});
-    emitter->onEditorChangeMarkdown({.markdown = [self serializedMarkdown]});
+  }
+  // Serializing the whole document per keystroke is the expensive half of
+  // this pipeline; coalesce bursts to one emission per runloop turn.
+  if (!_markdownEmitScheduled) {
+    _markdownEmitScheduled = YES;
+    __weak __typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      __typeof(self) strongSelf = weakSelf;
+      if (strongSelf == nil) {
+        return;
+      }
+      strongSelf->_markdownEmitScheduled = NO;
+      if (const auto *emitter = [strongSelf editorEventEmitter]) {
+        emitter->onEditorChangeMarkdown({.markdown = [strongSelf serializedMarkdown]});
+      }
+    });
   }
 }
 
@@ -1347,6 +1415,19 @@ static BOOL FMDIsWordBreak(unichar c) {
     return NO;
   }
 
+  // Normalize CR line endings at the door (system drag-and-drop and some
+  // input methods deliver them); the whole line model assumes "\n".
+  if ([text rangeOfString:@"\r"].location != NSNotFound) {
+    NSString *sanitized =
+        [[text stringByReplacingOccurrencesOfString:@"\r\n" withString:@"\n"]
+            stringByReplacingOccurrencesOfString:@"\r"
+                                      withString:@"\n"];
+    [_textView.textStorage replaceCharactersInRange:range withString:sanitized];
+    _textView.selectedRange = NSMakeRange(range.location + sanitized.length, 0);
+    [self textViewDidChange:_textView];
+    return NO;
+  }
+
   // Deleting into an atomic token removes the whole token.
   if (text.length == 0 && range.length > 0) {
     NSRange expanded = range;
@@ -1544,11 +1625,13 @@ static BOOL FMDIsWordBreak(unichar c) {
     [self invalidateDecorations];
   }
   [self emitState];
-  if (const auto *emitter = [self editorEventEmitter]) {
-    emitter->onEditorChangeSelection({
-        .start = static_cast<int>(selection.location),
-        .end = static_cast<int>(selection.location + selection.length),
-    });
+  if (moved) {
+    if (const auto *emitter = [self editorEventEmitter]) {
+      emitter->onEditorChangeSelection({
+          .start = static_cast<int>(selection.location),
+          .end = static_cast<int>(selection.location + selection.length),
+      });
+    }
   }
 }
 
@@ -1685,30 +1768,52 @@ static BOOL FMDIsWordBreak(unichar c) {
   UIPasteboard *pasteboard = UIPasteboard.generalPasteboard;
   const std::string text(pasteboard.string.UTF8String ?: "");
 
-  std::vector<FastMarkdownEditorEventEmitter::OnEditorPasteImages> images;
-  if (pasteboard.hasImages) {
-    for (UIImage *image in pasteboard.images) {
-      NSData *data = UIImagePNGRepresentation(image);
-      if (data == nil) {
-        continue;
-      }
-      NSString *path = [NSTemporaryDirectory()
-          stringByAppendingPathComponent:
-              [NSString stringWithFormat:@"fmd-paste-%@.png", NSUUID.UUID.UUIDString]];
-      if (![data writeToFile:path atomically:YES]) {
-        continue;
-      }
-      images.push_back({
-          .height = image.size.height,
-          .url = std::string([NSString stringWithFormat:@"file://%@", path].UTF8String),
-          .width = image.size.width,
-      });
+  if (!pasteboard.hasImages) {
+    if (const auto *emitter = [self editorEventEmitter]) {
+      emitter->onEditorPaste({.images = {}, .text = text});
     }
+    return;
   }
 
-  if (const auto *emitter = [self editorEventEmitter]) {
-    emitter->onEditorPaste({.images = std::move(images), .text = text});
-  }
+  // PNG-encoding pasted photos synchronously would freeze the main thread
+  // for the whole encode + disk write; do it off-main and emit when done.
+  NSArray<UIImage *> *pastedImages = pasteboard.images;
+  __weak __typeof(self) weakSelf = self;
+  dispatch_async(
+      dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        auto images =
+            std::vector<FastMarkdownEditorEventEmitter::OnEditorPasteImages>();
+        for (UIImage *image in pastedImages) {
+          NSData *data = UIImagePNGRepresentation(image);
+          if (data == nil) {
+            continue;
+          }
+          NSString *path = [NSTemporaryDirectory()
+              stringByAppendingPathComponent:
+                  [NSString
+                      stringWithFormat:@"fmd-paste-%@.png", NSUUID.UUID.UUIDString]];
+          if (![data writeToFile:path atomically:YES]) {
+            continue;
+          }
+          images.push_back({
+              .height = image.size.height,
+              .url = std::string([NSString stringWithFormat:@"file://%@", path].UTF8String),
+              .width = image.size.width,
+          });
+        }
+        auto shared =
+            std::make_shared<std::vector<FastMarkdownEditorEventEmitter::OnEditorPasteImages>>(
+                std::move(images));
+        dispatch_async(dispatch_get_main_queue(), ^{
+          __typeof(self) strongSelf = weakSelf;
+          if (strongSelf == nil) {
+            return;
+          }
+          if (const auto *emitter = [strongSelf editorEventEmitter]) {
+            emitter->onEditorPaste({.images = std::move(*shared), .text = text});
+          }
+        });
+      });
 }
 
 - (void)editorTextViewShortcut:(uint32_t)mark {
@@ -1786,11 +1891,25 @@ static BOOL FMDIsWordBreak(unichar c) {
   [self toggleBlock:fastmarkdown::EditorBlockType::Bullet level:0];
 }
 
+- (NSString *)singleLine:(NSString *)value {
+  NSString *flattened =
+      [[value stringByReplacingOccurrencesOfString:@"\r" withString:@" "]
+          stringByReplacingOccurrencesOfString:@"\n"
+                                    withString:@" "];
+  return flattened;
+}
+
 - (void)insertLink:(NSString *)url label:(NSString *)label {
   if (url.length == 0) {
     return;
   }
+  label = [self singleLine:label ?: @""];
   const NSRange selection = _textView.selectedRange;
+  // A code fence carries raw text only — a link there would render in the
+  // editor but vanish from the markdown.
+  if ([self selectionTouchesCodeBlock:selection]) {
+    return;
+  }
   if (selection.length > 0) {
     [self applyLink:url atomic:NO inRange:selection];
     _textView.selectedRange = NSMakeRange(NSMaxRange(selection), 0);
@@ -1836,6 +1955,10 @@ static BOOL FMDIsWordBreak(unichar c) {
 
 - (void)insertMention:(NSString *)trigger label:(NSString *)label url:(NSString *)url {
   if (label.length == 0 || url.length == 0) {
+    return;
+  }
+  label = [self singleLine:label];
+  if ([self selectionTouchesCodeBlock:_textView.selectedRange]) {
     return;
   }
   // Replaces the active mention query (trigger included), or inserts at

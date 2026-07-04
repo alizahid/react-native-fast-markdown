@@ -17,7 +17,17 @@ class BlockStackView(context: Context) : ViewGroup(context) {
 
   var host: MarkdownHost? = null
 
+  private fun unbindImages(group: android.view.ViewGroup) {
+    for (index in 0 until group.childCount) {
+      when (val child = group.getChildAt(index)) {
+        is MarkdownImageView -> child.unbind()
+        is android.view.ViewGroup -> unbindImages(child)
+      }
+    }
+  }
+
   fun setBlocks(blocks: List<MeasuredBlock>, gap: Float) {
+    unbindImages(this)
     measured = blocks
     gapPx = gap
     removeAllViews()

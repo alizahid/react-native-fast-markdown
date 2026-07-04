@@ -25,7 +25,6 @@ object EditorMarks {
 
 /** Per-line block types; mirrors fastmarkdown::EditorBlockType. */
 object EditorBlocks {
-  const val PARAGRAPH = 0
   const val HEADING = 1
   const val QUOTE = 2
   const val CODE = 3
@@ -38,7 +37,6 @@ object EditorBlocks {
 
   fun level(packed: Int): Int = packed and 0xFF
 
-  fun isList(packed: Int): Boolean = type(packed) == BULLET || type(packed) == ORDERED
 }
 
 /** Marker for every derived visual span; removed wholesale on rebuild. */

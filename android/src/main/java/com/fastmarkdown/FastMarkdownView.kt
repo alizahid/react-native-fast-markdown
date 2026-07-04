@@ -51,6 +51,8 @@ class FastMarkdownView(context: Context) : ViewGroup(context), MarkdownHost {
   fun resetForRecycle() {
     markdown = ""
     stylesJson = ""
+    allowFontScaling = true
+    stateWrapper = null
     boundKey = null
     boundWidth = 0
     propImageSizes.clear()
@@ -148,6 +150,11 @@ class FastMarkdownView(context: Context) : ViewGroup(context), MarkdownHost {
     val next = value ?: ""
     if (next != markdown) {
       markdown = next
+      // Spoiler ids are render-order counters; carrying revealed indices
+      // into different content would pre-reveal the wrong spans.
+      revealedSpoilers.clear()
+      // Sizes learned for the old document may not apply to the new one.
+      loadedImageSizes.clear()
       requestLayout()
       invalidate()
     }

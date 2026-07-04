@@ -76,7 +76,7 @@ Size FastMarkdownShadowNode::measureContent(
   // viewport-ish minimum and let Yoga assign the real frame.
   float maxWidth = layoutConstraints.maximumSize.width;
   if (!std::isfinite(maxWidth)) {
-    maxWidth = std::max(layoutConstraints.minimumSize.width, 0.0f);
+    maxWidth = std::max(static_cast<float>(layoutConstraints.minimumSize.width), 0.0f);
   }
   // The host views compute the same multiplier (RN's iOS category table /
   // Android configuration.fontScale) so measured and rendered heights

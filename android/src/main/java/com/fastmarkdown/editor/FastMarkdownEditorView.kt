@@ -58,6 +58,7 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   // internally like a textarea.
   private var maxHeightPx = 0
   private var contentExceedsMax = false
+  private var scrollAllowed = true
 
   // Marks armed for text typed at the collapsed cursor; re-derived from the
   // character before the caret whenever the selection moves outside an edit.
@@ -107,7 +108,7 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   private var mentionTrigger = ""
   private var mentionStart = 0
   private var lastMentionQuery: String? = null
-  private var linkColor = -0xbd5a0b // #4285F5-ish default; styles override
+  private var linkColor = DEFAULT_LINK_COLOR
 
   // Resolved lineHeight per context (px); 0 = natural. Headings and code
   // use their own element style, everything else the base/paragraph
@@ -119,16 +120,20 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   // Drawn manually: Fabric never drives onMeasure, and TextView's native
   // hint rendering depends on measure-time layout construction.
   private var placeholderText: String? = null
-  private var placeholderColor: Int = 0x4D000000
+  private var placeholderColor: Int = DEFAULT_PLACEHOLDER_COLOR
   private val placeholderPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
 
   private val density = context.resources.displayMetrics.density
+  private val defaultHighlightColor = highlightColor
 
   // Fabric assigns exact frames and never runs a parent measure/layout pass,
   // so TextView's internal Layout is not rebuilt after programmatic setText
   // or hint changes. Re-run measure/layout in place against the current
   // frame (the standard fix for text-bearing custom views under Fabric).
+  private var relayoutPending = false
+
   private val measureAndLayout = Runnable {
+    relayoutPending = false
     if (width > 0 && height > 0) {
       measure(
         MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
@@ -140,7 +145,10 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
 
   override fun requestLayout() {
     super.requestLayout()
-    post(measureAndLayout)
+    if (!relayoutPending) {
+      relayoutPending = true
+      post(measureAndLayout)
+    }
   }
 
   init {
@@ -160,17 +168,23 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
         removedNewlines = countNewlines(s, start, start + count)
         // Word-sized replacements that grow are IME re-commits; snapshot the
         // replaced characters' marks so the prefix can be restored. The size
-        // cap keeps select-all replacements out of this path.
-        if (count in 1..512 && after >= count && s is Spanned) {
+        // cap keeps selection replacements (e.g. a clipboard-chip paste over
+        // a long selection) out of this path — composing words are short.
+        if (count in 1..48 && after >= count && s is Spanned) {
           replacedMarkFlags = IntArray(count) { markFlagsAt(s, start + it) }
         }
       }
 
       override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+        if (suppressWatcher || s == null) {
+          // A nested programmatic edit (block exit) must not clobber the
+          // outer edit's bookkeeping mid-afterTextChanged.
+          return
+        }
         changeStart = start
         changeInserted = count
         changeReplaced = before
-        insertedNewlines = if (s == null) 0 else countNewlines(s, start, start + count)
+        insertedNewlines = countNewlines(s, start, start + count)
       }
 
       override fun afterTextChanged(s: Editable?) {
@@ -255,7 +269,15 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
             }
           }
         }
-        refreshDisplaySpans(text)
+        if (insertedNewlines == 0 && removedNewlines == 0 && s.isNotEmpty()) {
+          // Plain in-line keystroke: derived spans on other lines are still
+          // valid; rebuilding them all would reflow the whole document.
+          refreshDisplaySpansAround(s, changeStart, changeStart + changeInserted)
+        } else {
+          refreshDisplaySpans(s)
+        }
+        // The armed-mark guard is positional; any text edit invalidates it.
+        pendingArmedAt = -1
         emitContentChanged()
         if (changeInserted == 1 && changeStart < s.length && isWordBreak(s[changeStart])) {
           detectLinkBefore(changeStart)
@@ -360,10 +382,11 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       else -> InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
     }
     val selection = selectionStart
+    val selectionUpper = selectionEnd
     inputType = type
     isSingleLine = !multiline
-    if (selection >= 0 && selection <= text.length) {
-      setSelection(selection)
+    if (selection in 0..text.length && selectionUpper in selection..text.length) {
+      setSelection(selection, selectionUpper)
     }
     applyTextStyles()
   }
@@ -373,6 +396,10 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     if (json != stylesJson) {
       stylesJson = json
       applyTextStyles()
+      // Existing derived spans carry the OLD line heights / link color; a
+      // theme change must restyle content that is already there.
+      refreshDisplaySpans(text)
+      invalidate()
     }
   }
 
@@ -665,9 +692,24 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     val end = selectionEnd.coerceAtLeast(start)
     val startLine = lineIndexAt(start)
     val editable = text
+    val removedLines = countNewlines(editable, start, end)
+    val decodedLineCount = decoded.lineBlocks.size / 2
     suppressWatcher = true
     editable.replace(start, end, decoded.text)
     suppressWatcher = false
+    // The replace ran under suppressWatcher, so the watcher's lineBlocks
+    // splice never happened. Splice here or every line AFTER the paste
+    // point keeps a stale block entry (a heading below the caret would be
+    // silently stripped by the block-copy loop overwriting shifted
+    // indices).
+    repeat(removedLines) {
+      if (startLine + 1 < lineBlocks.size) {
+        lineBlocks.removeAt(startLine + 1)
+      }
+    }
+    repeat((decodedLineCount - 1).coerceAtLeast(0)) {
+      lineBlocks.add((startLine + 1).coerceAtMost(lineBlocks.size), 0)
+    }
     ensureLineBlocks()
 
     var runIndex = 0
@@ -702,7 +744,6 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
         )
       }
     }
-    val decodedLineCount = decoded.lineBlocks.size / 2
     for (k in 0 until decodedLineCount) {
       val lineIndex = startLine + k
       if (lineIndex >= lineBlocks.size) {
@@ -915,7 +956,7 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
         position,
         Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
       )
-      refreshDisplaySpans(editable)
+      refreshDisplaySpansAround(editable, wordStart, position)
       emitContentChanged()
     }
     emitEvent("topEditorLinkDetected") { putString("url", word) }
@@ -1048,18 +1089,28 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   }
 
   /**
-   * Rebuilds every derived visual span: inline spans from the data mark
-   * spans (boundary points partition the text into constant-flag
-   * intervals), and per-line block spans from lineBlocks.
+   * Rebuilds the derived visual spans inside [regionStart, regionEnd):
+   * inline spans from the data mark spans (boundary points partition the
+   * text into constant-flag intervals), and per-line block spans from
+   * lineBlocks. The default region is the whole document.
    */
-  private fun refreshDisplaySpans(editable: Editable) {
-    for (span in editable.getSpans(0, editable.length, EditorDerivedSpan::class.java)) {
-      editable.removeSpan(span)
+  private fun refreshDisplaySpans(
+    editable: Editable,
+    regionStart: Int = 0,
+    regionEnd: Int = editable.length,
+  ) {
+    for (span in editable.getSpans(regionStart, regionEnd, EditorDerivedSpan::class.java)) {
+      if (editable.getSpanStart(span) < regionEnd && editable.getSpanEnd(span) > regionStart) {
+        editable.removeSpan(span)
+      }
     }
 
-    for (span in editable.getSpans(0, editable.length, LinkDataSpan::class.java)) {
+    for (span in editable.getSpans(regionStart, regionEnd, LinkDataSpan::class.java)) {
       val start = editable.getSpanStart(span)
       val end = editable.getSpanEnd(span)
+      if (start >= regionEnd || end <= regionStart) {
+        continue
+      }
       if (end > start) {
         editable.setSpan(
           LinkDisplaySpan(linkColor),
@@ -1070,13 +1121,26 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       }
     }
 
-    val marks = editable.getSpans(0, editable.length, EditorMarkSpan::class.java)
+    val marks = editable.getSpans(regionStart, regionEnd, EditorMarkSpan::class.java)
+      .filter { editable.getSpanStart(it) < regionEnd && editable.getSpanEnd(it) > regionStart }
     if (marks.isNotEmpty()) {
-      val cuts = sortedSetOf(0, editable.length)
-      for (span in marks) {
-        cuts.add(editable.getSpanStart(span).coerceIn(0, editable.length))
-        cuts.add(editable.getSpanEnd(span).coerceIn(0, editable.length))
+      // Sweep over sorted edges instead of rescanning every mark span per
+      // interval (that scan was O(spans²) per keystroke).
+      val starts = marks.map { editable.getSpanStart(it).coerceIn(0, editable.length) to it.mark }
+        .sortedBy { it.first }
+      val ends = marks.map { editable.getSpanEnd(it).coerceIn(0, editable.length) to it.mark }
+        .sortedBy { it.first }
+      val cuts = sortedSetOf(regionStart, regionEnd)
+      for ((position, _) in starts) {
+        cuts.add(position)
       }
+      for ((position, _) in ends) {
+        cuts.add(position)
+      }
+      val bitCounts = IntArray(32)
+      var startIdx = 0
+      var endIdx = 0
+      var active = 0
       val points = cuts.toIntArray()
       for (i in 0 until points.size - 1) {
         val start = points[i]
@@ -1084,15 +1148,27 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
         if (end <= start) {
           continue
         }
-        var flags = 0
-        for (span in marks) {
-          if (editable.getSpanStart(span) <= start && editable.getSpanEnd(span) >= end) {
-            flags = flags or span.mark
+        while (endIdx < ends.size && ends[endIdx].first <= start) {
+          val mark = ends[endIdx].second
+          for (bit in 0 until 32) {
+            if (mark and (1 shl bit) != 0 && --bitCounts[bit] == 0) {
+              active = active and (1 shl bit).inv()
+            }
           }
+          endIdx++
         }
-        if (flags != 0) {
+        while (startIdx < starts.size && starts[startIdx].first <= start) {
+          val mark = starts[startIdx].second
+          for (bit in 0 until 32) {
+            if (mark and (1 shl bit) != 0 && bitCounts[bit]++ == 0) {
+              active = active or (1 shl bit)
+            }
+          }
+          startIdx++
+        }
+        if (active != 0) {
           editable.setSpan(
-            EditorDisplaySpan(flags),
+            EditorDisplaySpan(active),
             start,
             end,
             Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -1102,9 +1178,16 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     }
 
     ensureLineBlocks()
-    var lineStart = 0
-    var index = 0
+    var lineStart = lineStartOffset(lineIndexAt(regionStart))
+    var index = lineIndexAt(regionStart)
+    // Ordered markers number from the start of their contiguous group,
+    // which may sit before the region; recover the count from lineBlocks.
     var orderedNumber = 0
+    var probe = index - 1
+    while (probe >= 0 && EditorBlocks.type(lineBlocks.getOrElse(probe) { 0 }) == EditorBlocks.ORDERED) {
+      orderedNumber++
+      probe--
+    }
     while (true) {
       val newline = editable.indexOf('\n', lineStart)
       val lineEnd = if (newline == -1) editable.length else newline
@@ -1152,12 +1235,65 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
           Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
         )
       }
-      if (newline == -1) {
+      if (newline == -1 || newline + 1 >= regionEnd) {
         break
       }
       lineStart = newline + 1
       index++
     }
+  }
+
+  /**
+   * Scoped refresh for plain in-line keystrokes: expands the edit to whole
+   * lines plus any span it touches, so derived spans elsewhere (and their
+   * DynamicLayout reflows) are left alone. Structural edits (newlines,
+   * empty doc) take the full-document path — ordered-list renumbering can
+   * ripple arbitrarily far.
+   */
+  private fun refreshDisplaySpansAround(editable: Editable, editStart: Int, editEnd: Int) {
+    var start = editStart.coerceIn(0, editable.length)
+    var end = editEnd.coerceIn(start, editable.length)
+    while (true) {
+      var expandedStart = start
+      var expandedEnd = end
+      // getSpans also returns spans merely TOUCHING the probe; absorbing
+      // those would chain across adjacent line-height spans to the whole
+      // document, so only strict overlaps expand the region.
+      for (span in editable.getSpans(start, end, EditorDerivedSpan::class.java)) {
+        if (editable.getSpanStart(span) < end && editable.getSpanEnd(span) > start) {
+          expandedStart = minOf(expandedStart, editable.getSpanStart(span))
+          expandedEnd = maxOf(expandedEnd, editable.getSpanEnd(span))
+        }
+      }
+      for (span in editable.getSpans(start, end, EditorMarkSpan::class.java)) {
+        if (editable.getSpanStart(span) < end && editable.getSpanEnd(span) > start) {
+          expandedStart = minOf(expandedStart, editable.getSpanStart(span))
+          expandedEnd = maxOf(expandedEnd, editable.getSpanEnd(span))
+        }
+      }
+      for (span in editable.getSpans(start, end, LinkDataSpan::class.java)) {
+        if (editable.getSpanStart(span) < end && editable.getSpanEnd(span) > start) {
+          expandedStart = minOf(expandedStart, editable.getSpanStart(span))
+          expandedEnd = maxOf(expandedEnd, editable.getSpanEnd(span))
+        }
+      }
+      while (expandedStart > 0 && editable[expandedStart - 1] != '\n') {
+        expandedStart--
+      }
+      while (expandedEnd < editable.length && editable[expandedEnd] != '\n') {
+        expandedEnd++
+      }
+      if (expandedEnd < editable.length) {
+        // Include the newline: line-height spans cover it.
+        expandedEnd++
+      }
+      if (expandedStart == start && expandedEnd == end) {
+        break
+      }
+      start = expandedStart.coerceIn(0, editable.length)
+      end = expandedEnd.coerceIn(start, editable.length)
+    }
+    refreshDisplaySpans(editable, start, end)
   }
 
   private fun serializedMarkdown(): String {
@@ -1193,10 +1329,22 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     )
   }
 
+  private var markdownEmitPending = false
+
   private fun emitContentChanged() {
     publishHeight()
     emitEvent("topEditorChangeText") { putString("text", text.toString()) }
-    emitEvent("topEditorChangeMarkdown") { putString("markdown", serializedMarkdown()) }
+    // Serializing the whole document (spans + JNI round trip) per keystroke
+    // is the expensive half; coalesce bursts to one emission per frame.
+    if (!markdownEmitPending) {
+      markdownEmitPending = true
+      post {
+        markdownEmitPending = false
+        if (stateWrapper != null) {
+          emitEvent("topEditorChangeMarkdown") { putString("markdown", serializedMarkdown()) }
+        }
+      }
+    }
   }
 
   private fun emitState() {
@@ -1262,14 +1410,16 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   }
 
   fun setPlaceholderColor(value: Int) {
-    if (value != 0 && placeholderColor != value) {
-      placeholderColor = value
+    val next = if (value != 0) value else DEFAULT_PLACEHOLDER_COLOR
+    if (placeholderColor != next) {
+      placeholderColor = next
       invalidate()
     }
   }
 
   private val decorationPaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private val decorationTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+  private val placeholderMetrics = Paint.FontMetrics()
 
   override fun onDraw(canvas: Canvas) {
     drawBlockDecorations(canvas)
@@ -1279,10 +1429,11 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
       placeholderPaint.textSize = textSize
       placeholderPaint.typeface = typeface
       placeholderPaint.color = placeholderColor
+      placeholderPaint.getFontMetrics(placeholderMetrics)
       canvas.drawText(
         hint,
         compoundPaddingLeft.toFloat(),
-        compoundPaddingTop - placeholderPaint.fontMetrics.top,
+        compoundPaddingTop - placeholderMetrics.top,
         placeholderPaint,
       )
     }
@@ -1295,7 +1446,9 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
    */
   private fun drawBlockDecorations(canvas: Canvas) {
     val textLayout = layout ?: return
-    if (lineBlocks.isEmpty()) {
+    // Plain-paragraph documents (the common case) draw nothing; skip the
+    // per-line text scan the cursor-blink invalidations would otherwise pay.
+    if (lineBlocks.none { it != 0 }) {
       return
     }
     val offsetY = compoundPaddingTop.toFloat()
@@ -1382,15 +1535,17 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   }
 
   fun setCursorColorInt(value: Int) {
-    if (value != 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      textCursorDrawable?.setTint(value)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      if (value != 0) {
+        textCursorDrawable?.setTint(value)
+      } else {
+        textCursorDrawable?.setTintList(null)
+      }
     }
   }
 
   fun setSelectionColorInt(value: Int) {
-    if (value != 0) {
-      highlightColor = value
-    }
+    highlightColor = if (value != 0) value else defaultHighlightColor
   }
 
   fun setAutoFocus(value: Boolean) {
@@ -1422,22 +1577,46 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   }
 
   fun resetForRecycle() {
+    // The next tenant's props arrive after this; every prop-backed field
+    // must return to its default or state leaks between list items. The
+    // clear runs watcher-silent: emitting change events for a view being
+    // recycled would reach the OLD component's JS handlers.
+    stateWrapper = null
+    suppressWatcher = true
     setText("")
+    suppressWatcher = false
     stylesJson = ""
     defaultValueApplied = false
     pendingAutoFocus = false
     lastPublishedHeight = 0f
     maxHeightPx = 0
     contentExceedsMax = false
+    scrollAllowed = true
+    isVerticalScrollBarEnabled = false
     pendingMarks = 0
     pendingArmedAt = -1
     lastStateKey = -1L
     lineBlocks.clear()
+    ensureLineBlocks()
     mentionActive = false
     lastMentionQuery = null
-    stateWrapper = null
-    if (codeContextActive) {
-      codeContextActive = false
+    mentionTriggers = emptyList()
+    placeholderText = null
+    hint = null
+    placeholderColor = DEFAULT_PLACEHOLDER_COLOR
+    linkColor = DEFAULT_LINK_COLOR
+    isEnabled = true
+    highlightColor = defaultHighlightColor
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+      textCursorDrawable?.setTintList(null)
+    }
+    val inputDirty = codeContextActive || !multiline || !autoCorrectEnabled ||
+      capitalizeMode != "sentences"
+    codeContextActive = false
+    multiline = true
+    autoCorrectEnabled = true
+    capitalizeMode = "sentences"
+    if (inputDirty) {
       applyInputType()
     }
     applyTextStyles()
@@ -1498,10 +1677,19 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
   override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
     // While capped, drags scroll the editor's own content — the parent
     // scroll view must not steal them.
-    if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN && contentExceedsMax) {
+    if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN &&
+      contentExceedsMax && scrollAllowed
+    ) {
       parent?.requestDisallowInterceptTouchEvent(true)
     }
     return super.onTouchEvent(event)
+  }
+
+  fun setScrollAllowed(value: Boolean) {
+    if (scrollAllowed != value) {
+      scrollAllowed = value
+      isVerticalScrollBarEnabled = contentExceedsMax && scrollAllowed
+    }
   }
 
   private fun publishHeight() {
@@ -1519,13 +1707,18 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
     if (contentExceedsMax) {
       heightPx = maxHeightPx
     }
-    isVerticalScrollBarEnabled = contentExceedsMax
+    isVerticalScrollBarEnabled = contentExceedsMax && scrollAllowed
     val heightDp = heightPx / density
     if (kotlin.math.abs(heightDp - lastPublishedHeight) < 0.5f) {
       return
     }
     lastPublishedHeight = heightDp
     wrapper.updateState(Arguments.createMap().apply { putDouble("height", heightDp.toDouble()) })
+  }
+
+  private companion object {
+    const val DEFAULT_PLACEHOLDER_COLOR = 0x4D000000
+    const val DEFAULT_LINK_COLOR = -0xbd5a0b // #4285F5-ish; styles override
   }
 
   private inline fun emitEvent(name: String, crossinline builder: WritableMap.() -> Unit) {
