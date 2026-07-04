@@ -1,9 +1,9 @@
 <p align="center">
-  <img alt="react-native-fast-markdown" src="https://github.com/alizahid/react-native-fast-markdown/blob/main/.github/banner.png?raw=true" width="720">
+  <img alt="react-native-fast-markdown — native markdown viewer and WYSIWYG editor for React Native" src="https://raw.githubusercontent.com/alizahid/react-native-fast-markdown/main/docs/hero.svg" width="900">
 </p>
 
 <p align="center">
-  Fast, fully native Markdown renderer for React Native
+  Fast, fully native Markdown viewer &amp; WYSIWYG editor for React Native
 </p>
 
 <p align="center">
@@ -140,6 +140,24 @@ const renderItem = ({ item }) => (
 );
 ```
 
+## Performance
+
+Numbers from the shared C++ core (Apple M-series, `-O2`; the same code runs on device — expect a few multiples slower on mid-range phones, still far below frame budget):
+
+| Operation | Input | Time |
+| --- | --- | --- |
+| Parse a typical feed post | 1.5 KB mixed markdown | **35 µs** |
+| Parse a large document | 160 KB | **4.1 ms** |
+| Open a document in the editor (`editorFromMarkdown`) | 160 KB, ~6,400 style runs | **4.7 ms** |
+| Serialize the editor back to markdown | 160 KB | **5.8 ms** |
+| Serialize the full `defaultStyles` object in JS | 980 B JSON | **3 µs**, memoized |
+
+Beyond raw parsing: measurement runs on the Fabric layout thread (never on main), parse + layout results are cached and shared between measure and mount, editor keystrokes only rebuild the derived styling of the lines they touch, and markdown serialization is coalesced to once per frame. The 500-item Feed screen in the example app scrolls at 60 fps on both platforms.
+
+### Why styles cross as JSON
+
+You may notice styles ship natively as one `stylesJson` string instead of a structured object. This is deliberate, not legacy: Fabric props cross via JSI either way (there is no old-bridge serialization in either design), codegen cannot express the open-keyed `mention.variants` map, and the string doubles as the cache key shared by the C++ measurer, iOS, and Android — a structured prop would need deep equality or native re-serialization to get the same caching. The cost is ~3 µs once per distinct styles object.
+
 ## Editor
 
 `FastMarkdownEditor` is a WYSIWYG editor with markdown as the interchange format: no visible syntax while editing, `onChangeMarkdown` fires with serialized markdown on every edit, and `setValue`/`defaultValue`/paste parse markdown into styled content.
@@ -199,7 +217,28 @@ Paste never inserts directly. `onPaste` receives `{ text?, images?, preventDefau
 
 ## Sponsors
 
-[<img alt="Duet" src="https://github.com/alizahid/react-native-fast-markdown/blob/main/.github/duet.png?raw=true" width="128">](https://duet.so)
+Development of react-native-fast-markdown is supported by:
+
+<table>
+  <tr>
+    <td align="center" width="200">
+      <a href="https://duet.so">
+        <img alt="Duet" src="https://github.com/alizahid/react-native-fast-markdown/blob/main/.github/duet.png?raw=true" width="96"><br>
+        <b>Duet</b>
+      </a>
+      <br>
+      <sub>Your AI coworker that runs your business 24/7</sub>
+    </td>
+    <td align="center" width="200">
+      <a href="https://acorn.blue">
+        <img alt="Acorn" src="https://github.com/alizahid/react-native-fast-markdown/blob/main/.github/acorn.png?raw=true" width="96"><br>
+        <b>Acorn</b>
+      </a>
+      <br>
+      <sub>Reddit for mobile</sub>
+    </td>
+  </tr>
+</table>
 
 ## License
 
