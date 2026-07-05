@@ -39,8 +39,8 @@ Size FastMarkdownEditorShadowNode::measureContent(
   // Autogrow cap: past maxHeight the view scrolls internally instead of
   // growing (the view publishes capped heights too; this covers the
   // initial defaultValue measurement).
-  if (props.maxContentHeight > 0) {
-    height = std::min(height, static_cast<Float>(props.maxContentHeight));
+  if (props.maxHeight > 0) {
+    height = std::min(height, static_cast<Float>(props.maxHeight));
   }
 
   height = std::clamp(

@@ -71,11 +71,13 @@ interface NativeProps extends ViewProps {
   defaultValue?: string;
   editable?: CodegenTypes.WithDefault<boolean, true>;
   /**
-   * Autogrow cap in points; 0 = unbounded. Past it the editor scrolls.
-   * Deliberately NOT named maxHeight: Yoga parses that key out of the same
-   * raw-props bag, and the default 0 would clamp the node to zero height.
+   * Autogrow cap in points; native default 0 = unbounded. Yoga ALSO parses
+   * this key out of the raw-props bag as max-height, so the wrapper MUST
+   * omit it entirely when unset — an unconditional 0 clamps the node to
+   * zero height (dead flex-sized editors). When set, Yoga's clamp equals
+   * the autogrow cap, which is exactly the intended geometry.
    */
-  maxContentHeight?: CodegenTypes.WithDefault<CodegenTypes.Double, 0>;
+  maxHeight?: CodegenTypes.WithDefault<CodegenTypes.Double, 0>;
   mentionTriggers?: readonly string[];
   multiline?: CodegenTypes.WithDefault<boolean, true>;
   onEditorBlur?: CodegenTypes.DirectEventHandler<null>;

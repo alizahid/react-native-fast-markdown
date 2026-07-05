@@ -60,8 +60,10 @@ export function FastMarkdownEditor({
   const textRef = useRef<string>(defaultValue ?? "");
 
   const { hostStyle, main } = splitContainerStyle(style);
-  // maxHeight is native-managed: autogrow caps there and the editor
-  // scrolls internally past it, so Yoga must not clamp on top.
+  // maxHeight rides as a native prop (autogrow cap; the editor scrolls
+  // internally past it) instead of a host style key. It is omitted when
+  // unset: Yoga reads the same raw prop as max-height, and a 0 would clamp
+  // flex-sized editors to zero height.
   const { maxHeight, ...editorHostStyle } = hostStyle;
   const mainKey = JSON.stringify(main);
   const stylesJson = useMemo(
@@ -218,7 +220,9 @@ export function FastMarkdownEditor({
       cursorColor={cursorColor}
       defaultValue={defaultValue}
       editable={editable}
-      maxContentHeight={typeof maxHeight === "number" ? maxHeight : 0}
+      maxHeight={
+        typeof maxHeight === "number" && maxHeight > 0 ? maxHeight : undefined
+      }
       mentionTriggers={mentionTriggers}
       multiline={multiline}
       onEditorBlur={onBlur ? () => onBlur() : undefined}

@@ -67,8 +67,8 @@ class FastMarkdownEditorManager : SimpleViewManager<FastMarkdownEditorView>(),
     view?.isEnabled = value
   }
 
-  @ReactProp(name = "maxContentHeight")
-  override fun setMaxContentHeight(view: FastMarkdownEditorView?, value: Double) {
+  @ReactProp(name = "maxHeight")
+  override fun setMaxHeight(view: FastMarkdownEditorView?, value: Double) {
     view?.setMaxContentHeight(value)
   }
 

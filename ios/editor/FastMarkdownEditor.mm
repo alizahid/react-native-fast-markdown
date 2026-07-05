@@ -972,7 +972,7 @@ static BOOL FMDBlockIsList(uint32_t packed) {
 
   _textView.editable = newProps.editable;
   _propScrollEnabled = newProps.scrollEnabled;
-  _maxHeight = newProps.maxContentHeight;
+  _maxHeight = newProps.maxHeight;
   _multiline = newProps.multiline;
   [self publishHeight];
 
