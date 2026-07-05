@@ -70,8 +70,12 @@ interface NativeProps extends ViewProps {
   cursorColor?: ColorValue;
   defaultValue?: string;
   editable?: CodegenTypes.WithDefault<boolean, true>;
-  /** Autogrow cap in points; 0 = unbounded. Past it the editor scrolls. */
-  maxHeight?: CodegenTypes.WithDefault<CodegenTypes.Double, 0>;
+  /**
+   * Autogrow cap in points; 0 = unbounded. Past it the editor scrolls.
+   * Deliberately NOT named maxHeight: Yoga parses that key out of the same
+   * raw-props bag, and the default 0 would clamp the node to zero height.
+   */
+  maxContentHeight?: CodegenTypes.WithDefault<CodegenTypes.Double, 0>;
   mentionTriggers?: readonly string[];
   multiline?: CodegenTypes.WithDefault<boolean, true>;
   onEditorBlur?: CodegenTypes.DirectEventHandler<null>;

@@ -218,7 +218,7 @@ export function FastMarkdownEditor({
       cursorColor={cursorColor}
       defaultValue={defaultValue}
       editable={editable}
-      maxHeight={typeof maxHeight === "number" ? maxHeight : 0}
+      maxContentHeight={typeof maxHeight === "number" ? maxHeight : 0}
       mentionTriggers={mentionTriggers}
       multiline={multiline}
       onEditorBlur={onBlur ? () => onBlur() : undefined}
