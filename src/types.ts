@@ -1,4 +1,4 @@
-import type { ColorValue, StyleProp, ViewStyle } from "react-native";
+import type { ColorValue, StyleProp } from "react-native";
 
 export type FontVariant =
   | "small-caps"
@@ -223,24 +223,28 @@ export interface MarkdownUrlEvent {
 /**
  * The main container style: background, padding, and the gap between
  * blocks, plus base text styles that cascade into every text element
- * unless overridden per-element via the `styles` prop. Those keys are
- * measured natively; every other ViewStyle key (flex, width, margins, ...)
- * passes through to the host view as normal Fabric layout.
+ * (paragraphs, headings, lists, tables, quotes) unless overridden
+ * per-element via the `styles` prop. Element builtins survive the cascade:
+ * heading sizes/weight and the code block's monospace font stay unless
+ * their own section overrides them.
+ *
+ * For outer layout (margin, width, flex), wrap the component in a View.
  */
-export type MarkdownContainerStyle = Omit<
-  ViewStyle,
-  "backgroundColor" | "gap" | "maxHeight"
-> &
-  MarkdownTextStyle & {
-    backgroundColor?: ColorValue;
-    /** Vertical spacing between blocks; overrides `styles.gap`. */
-    gap?: number;
-    /**
-     * Editor: caps autogrow — past this height the editor scrolls
-     * internally like a textarea. Viewer: plain layout clamp.
-     */
-    maxHeight?: number;
-  };
+export interface MarkdownContainerStyle extends MarkdownTextStyle {
+  backgroundColor?: ColorValue;
+  /** Vertical spacing between blocks; overrides `styles.gap`. */
+  gap?: number;
+  /**
+   * Editor: caps autogrow — past this height the editor scrolls
+   * internally like a textarea. Viewer: plain layout clamp.
+   */
+  maxHeight?: number;
+  padding?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
+  paddingRight?: number;
+  paddingTop?: number;
+}
 
 /** Formatting active at the cursor / selection. */
 export interface MarkdownEditorState {
