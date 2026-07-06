@@ -103,12 +103,14 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
   return path;
 }
 
-// Chip band: cap height above the baseline, descender depth below, padded
-// equally. Anchoring to the ink envelope keeps the air above capitals equal
-// to the air below descenders for ANY font — font-declared ascents vary
-// wildly (Inter's is 0.97em, ~4pt above its capitals at 16pt) and produce
-// top-heavy chips.
-static const CGFloat FMDChipPad = 2;
+// Chip band: cap height above the baseline, descender depth below.
+// Anchoring to the ink envelope keeps chips consistent for ANY font —
+// font-declared ascents vary wildly (Inter's is 0.97em, ~4pt above its
+// capitals at 16pt) and produce top-heavy chips. Padding is asymmetric:
+// descenders are rare, so the descender allowance already reads as bottom
+// padding on baseline-sitting text.
+static const CGFloat FMDChipPadTop = 3;
+static const CGFloat FMDChipPadBottom = 1;
 
 static void FMDChipMetrics(UIFont *font, CGFloat *outAscent, CGFloat *outDescent) {
   *outAscent = font.capHeight;
@@ -181,9 +183,10 @@ static void FMDChipMetrics(UIFont *font, CGFloat *outAscent, CGFloat *outDescent
                   const CGFloat baselineY =
                       fragment.origin.y + startLocation.y;
                   const CGFloat top =
-                      MAX(baselineY - chipAscent - FMDChipPad, 0);
-                  const CGFloat bottom = MIN(baselineY + chipDescent + FMDChipPad,
-                                             self.bounds.size.height);
+                      MAX(baselineY - chipAscent - FMDChipPadTop, 0);
+                  const CGFloat bottom =
+                      MIN(baselineY + chipDescent + FMDChipPadBottom,
+                          self.bounds.size.height);
                   const CGFloat padLeft = firstLine ? chip.padLeft : 0;
                   const CGFloat padRight = lastLine ? chip.padRight : 0;
                   CGRect chipRect = CGRectMake(
