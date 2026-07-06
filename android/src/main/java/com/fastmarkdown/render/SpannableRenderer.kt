@@ -457,6 +457,10 @@ object SpannableRenderer {
       attrs = ResolvedAttrs(fontSizePx = 16f * scale)
       attrs = context.apply(attrs, "base")
       attrs = context.apply(attrs, inherited)
+      // Headings shed the inherited lineHeight like they shed paragraph
+      // styles: a body lineHeight would cap the taller heading's line box
+      // and clip its ascenders. hN.lineHeight still applies.
+      attrs = attrs.copy(lineHeightPx = 0)
       attrs = context.apply(attrs, "h${node.level}")
     } else {
       attrs = ResolvedAttrs(fontSizePx = 16f * scale)

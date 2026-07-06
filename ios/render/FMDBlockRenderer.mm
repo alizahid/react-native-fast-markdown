@@ -641,6 +641,10 @@ class BlockBuilder {
       for (FMDTextStyle *style in inherited) {
         applyStyle(base, style, fontScale_);
       }
+      // Headings shed the inherited lineHeight like they shed paragraph
+      // styles: a body lineHeight would cap the taller heading's line box
+      // and clip its ascenders. hN.lineHeight still applies.
+      base.lineHeight = 0;
       applyStyle(
           base,
           [styles_ textStyleFor:[NSString stringWithFormat:@"h%d", (int)node->level]],

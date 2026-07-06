@@ -95,7 +95,7 @@ Every color accepts platform colors (`PlatformColor`, `DynamicColorIOS`) as well
 
 | Key | Accepts | Notes |
 | --- | --- | --- |
-| `headings.h1`–`h6` | text | Do **not** inherit `paragraph`. `defaultStyles`: 32/26/22/18/16/14, bold. |
+| `headings.h1`–`h6` | text | Do **not** inherit `paragraph`, and ignore the base `lineHeight` (a body line height would clip taller headings) — set `headings.hN.lineHeight` explicitly if needed. `defaultStyles`: 32/26/22/18/16/14, bold. |
 | `paragraph` | text | Base for body text; inline styles cascade on top. |
 | `bold`, `italic`, `strikethrough` | text | |
 | `link` | text + `borderRadius`, `borderCurve` (iOS) | `backgroundColor` draws as a rounded chip behind the run. `defaultStyles`: system blue. |
