@@ -197,4 +197,62 @@ describe("serializeStyles", () => {
     );
     expect(out.paragraph).toBeUndefined();
   });
+
+  test("axis padding expands with side > axis > padding precedence", () => {
+    const out = parse(
+      serializeStyles(undefined, {
+        padding: 16,
+        paddingHorizontal: 8,
+        paddingTop: 2,
+      })
+    );
+    expect(out.main).toEqual({
+      paddingLeft: 8,
+      paddingRight: 8,
+      paddingTop: 2,
+      paddingBottom: 16,
+    });
+  });
+
+  test("inlineCode axis padding expands to left/right", () => {
+    const out = parse(
+      serializeStyles({ inlineCode: { paddingHorizontal: 4 } }, undefined)
+    );
+    expect(out.inlineCode).toEqual({ paddingLeft: 4, paddingRight: 4 });
+  });
+
+  test("table header/body rows and header cell serialize", () => {
+    const out = parse(
+      serializeStyles(
+        {
+          tableHeaderRow: { backgroundColor: "red" },
+          tableBodyRow: { backgroundColor: "blue" },
+          tableHeaderCell: { color: "red", paddingVertical: 10 },
+        },
+        undefined
+      )
+    );
+    expect(out.tableHeaderRow.backgroundColor).toBe(0xff_ff_00_00 | 0);
+    expect(out.tableBodyRow.backgroundColor).toBe(0xff_00_00_ff | 0);
+    expect(out.tableHeaderCell.color).toBe(0xff_ff_00_00 | 0);
+    expect(out.tableHeaderCell.paddingTop).toBe(10);
+    expect(out.tableHeaderCell.paddingBottom).toBe(10);
+    expect(out.tableHeaderCell.paddingLeft).toBeUndefined();
+  });
+
+  test("chip keys serialize for link, mention, and inline code", () => {
+    const out = parse(
+      serializeStyles(
+        {
+          link: { borderRadius: 4, borderCurve: "continuous" },
+          mention: { borderRadius: 6 },
+          inlineCode: { borderRadius: 3, borderCurve: "continuous" },
+        },
+        undefined
+      )
+    );
+    expect(out.link).toEqual({ borderRadius: 4, borderCurve: "continuous" });
+    expect(out.mention.borderRadius).toBe(6);
+    expect(out.inlineCode.borderCurve).toBe("continuous");
+  });
 });

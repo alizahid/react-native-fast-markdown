@@ -89,7 +89,7 @@ Two shared shapes compose every element style:
 
 **Text** — `fontSize`, `fontWeight`, `fontFamily`, `color`, `backgroundColor` (run highlight), `fontVariant`, `lineHeight`, `textDecorationColor`, `textDecorationLine`, `textDecorationStyle`
 
-**Layout** — `backgroundColor`, `padding` (+ per-side), `borderRadius`, `borderCurve` (iOS), `borderColor`/`borderWidth` (+ per-side)
+**Layout** — `backgroundColor`, `padding` (+ `paddingHorizontal`/`paddingVertical` and per-side), `borderRadius`, `borderCurve` (iOS), `borderColor`/`borderWidth` (+ per-side)
 
 Every color accepts platform colors (`PlatformColor`, `DynamicColorIOS`) as well as static values — on iOS they stay dynamic and adapt to light/dark automatically; on Android they resolve against the current theme.
 
@@ -98,9 +98,9 @@ Every color accepts platform colors (`PlatformColor`, `DynamicColorIOS`) as well
 | `headings.h1`–`h6` | text | Do **not** inherit `paragraph`. `defaultStyles`: 32/26/22/18/16/14, bold. |
 | `paragraph` | text | Base for body text; inline styles cascade on top. |
 | `bold`, `italic`, `strikethrough` | text | |
-| `link` | text | `defaultStyles`: system blue. |
-| `mention` | text + `variants` | `variants` maps a regex (tested against the link URL, longest pattern first) to a style. A link matching any variant is a mention. |
-| `inlineCode` | text + `backgroundColor`, `borderRadius`, `padding(Left/Right)` | Always monospace. `defaultStyles`: 8% black background. |
+| `link` | text + `borderRadius`, `borderCurve` (iOS) | `backgroundColor` draws as a rounded chip behind the run. `defaultStyles`: system blue. |
+| `mention` | text + `borderRadius`, `borderCurve` (iOS) + `variants` | `backgroundColor` draws as a rounded chip. `variants` maps a regex (tested against the link URL, longest pattern first) to a style. A link matching any variant is a mention. |
+| `inlineCode` | text + `backgroundColor`, `borderRadius`, `borderCurve` (iOS), `padding(Horizontal/Left/Right)` | Always monospace; the background draws as a rounded chip. `defaultStyles`: 8% black background. |
 | `superscript`, `subscript` | text | Default: 0.7x size with baseline shift. |
 | `spoiler` | `backgroundColor`, `borderRadius`, `borderCurve` | The tap-to-reveal cover — one contiguous polygon even across line wraps. Unstyled: plain black. |
 | `codeBlock` | text + layout | Always monospace; long lines scroll horizontally. `defaultStyles`: 14pt, 8% black, radius 6, padding 12. |
@@ -110,8 +110,10 @@ Every color accepts platform colors (`PlatformColor`, `DynamicColorIOS`) as well
 | `listItem` | text | Cascades into item content. |
 | `image` | `borderRadius`, `backgroundColor`, `height`, `maxHeight` | `backgroundColor` shows while loading. |
 | `table` | layout + `minColumnWidth`, `maxColumnWidth` | Unstyled: natural column widths. `defaultStyles`: clamps to `[44, 320]`. |
-| `tableRow` | layout | `defaultStyles`: 1pt bottom-border separator. |
+| `tableRow` | layout | Base for all rows. `defaultStyles`: 1pt bottom-border separator. |
+| `tableHeaderRow`, `tableBodyRow` | layout | Layer over `tableRow` for header vs body rows. |
 | `tableCell` | text + `padding*` | Header cells are always bold. `defaultStyles`: padding 8. |
+| `tableHeaderCell` | text + `padding*` | Layers over `tableCell` for header cells. |
 | `divider` | `color`, `height` | Thematic break (`---`). Unstyled: 1pt black. `defaultStyles`: subtle hairline. |
 | `gap` | number | Vertical spacing between blocks. The `style` prop's `gap` wins when both are set. Unstyled: 0. `defaultStyles`: 12. |
 

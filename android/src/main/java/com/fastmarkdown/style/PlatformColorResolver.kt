@@ -18,6 +18,9 @@ object PlatformColorResolver {
     contextRef = WeakReference(context)
   }
 
+  /** The registered themed context (font/color resolution off-view). */
+  fun current(): Context? = contextRef?.get()
+
   /** Night-mode bit of the registered context; part of style cache keys. */
   fun appearanceKey(): Int {
     val context = contextRef?.get() ?: return 0

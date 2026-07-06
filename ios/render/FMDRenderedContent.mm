@@ -169,9 +169,10 @@
         break;
       }
 
-      const CGFloat cellPadH = block.cellPadding.left + block.cellPadding.right;
       std::vector<CGFloat> natural(columnCount, 0);
       for (FMDTableRow *row in block.tableRows) {
+        const UIEdgeInsets pad = row.isHeader ? block.headerCellPadding : block.cellPadding;
+        const CGFloat cellPadH = pad.left + pad.right;
         for (NSUInteger column = 0; column < row.cells.count; column++) {
           const CGFloat desired =
               [self textSize:row.cells[column] width:CGFLOAT_MAX].width + cellPadH;
@@ -197,11 +198,14 @@
         }
       }
 
-      const CGFloat cellPadV = block.cellPadding.top + block.cellPadding.bottom;
-      const CGFloat rowExtra = block.rowStyle.borderTopWidth + block.rowStyle.borderBottomWidth;
       NSMutableArray<NSNumber *> *rowHeights = [NSMutableArray new];
       CGFloat contentHeight = 0;
       for (FMDTableRow *row in block.tableRows) {
+        FMDLayoutStyle *rowStyle = row.isHeader ? block.headerRowStyle : block.bodyRowStyle;
+        const UIEdgeInsets pad = row.isHeader ? block.headerCellPadding : block.cellPadding;
+        const CGFloat cellPadH = pad.left + pad.right;
+        const CGFloat cellPadV = pad.top + pad.bottom;
+        const CGFloat rowExtra = rowStyle.borderTopWidth + rowStyle.borderBottomWidth;
         CGFloat rowHeight = 0;
         for (NSUInteger column = 0; column < row.cells.count; column++) {
           const CGFloat cellWidth = MAX(columnWidths[column] - cellPadH, 1);

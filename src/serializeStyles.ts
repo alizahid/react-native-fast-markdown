@@ -17,6 +17,8 @@ type Serialized = Record<string, unknown>;
 const MAIN_STYLE_KEYS = [
   "backgroundColor",
   "padding",
+  "paddingHorizontal",
+  "paddingVertical",
   "paddingLeft",
   "paddingRight",
   "paddingTop",
@@ -66,9 +68,11 @@ export interface MainStyle extends MarkdownTextStyle {
   gap?: number;
   padding?: number;
   paddingBottom?: number;
+  paddingHorizontal?: number;
   paddingLeft?: number;
   paddingRight?: number;
   paddingTop?: number;
+  paddingVertical?: number;
 }
 
 function put(out: Serialized, key: string, value: unknown): void {
@@ -98,20 +102,33 @@ function putColor(
   }
 }
 
-// Expands `padding` into explicit sides so native code never sees shorthand.
+// Expands `padding` shorthands into explicit sides so native code never
+// sees shorthand. Precedence: side > axis (Horizontal/Vertical) > padding.
 function putPadding(
   out: Serialized,
   style: {
     padding?: number;
+    paddingBottom?: number;
+    paddingHorizontal?: number;
     paddingLeft?: number;
     paddingRight?: number;
     paddingTop?: number;
-    paddingBottom?: number;
+    paddingVertical?: number;
   },
   sides: ReadonlyArray<"Left" | "Right" | "Top" | "Bottom">
 ): void {
+  const axis = {
+    Bottom: style.paddingVertical,
+    Left: style.paddingHorizontal,
+    Right: style.paddingHorizontal,
+    Top: style.paddingVertical,
+  } as const;
   for (const side of sides) {
-    put(out, `padding${side}`, style[`padding${side}`] ?? style.padding);
+    put(
+      out,
+      `padding${side}`,
+      style[`padding${side}`] ?? axis[side] ?? style.padding
+    );
   }
 }
 
@@ -228,6 +245,20 @@ export function serializeStyles(
       }
     }
     put(out, "tableRow", serializeLayout(styles.tableRow));
+    put(out, "tableHeaderRow", serializeLayout(styles.tableHeaderRow));
+    put(out, "tableBodyRow", serializeLayout(styles.tableBodyRow));
+    if (styles.tableHeaderCell != null) {
+      const headerCell = serializeText(styles.tableHeaderCell) ?? {};
+      putPadding(headerCell, styles.tableHeaderCell, [
+        "Left",
+        "Right",
+        "Top",
+        "Bottom",
+      ]);
+      if (Object.keys(headerCell).length > 0) {
+        out.tableHeaderCell = headerCell;
+      }
+    }
     if (styles.tableCell != null) {
       const cell = serializeText(styles.tableCell) ?? {};
       putPadding(cell, styles.tableCell, ["Left", "Right", "Top", "Bottom"]);
@@ -281,11 +312,20 @@ export function serializeStyles(
     }
     put(out, "listItem", serializeText(styles.listItem));
 
-    put(out, "link", serializeText(styles.link));
+    if (styles.link != null) {
+      const link = serializeText(styles.link) ?? {};
+      put(link, "borderRadius", styles.link.borderRadius);
+      put(link, "borderCurve", styles.link.borderCurve);
+      if (Object.keys(link).length > 0) {
+        out.link = link;
+      }
+    }
 
     if (styles.mention != null) {
       const { variants, ...base } = styles.mention;
       const mention = serializeText(base) ?? {};
+      put(mention, "borderRadius", styles.mention.borderRadius);
+      put(mention, "borderCurve", styles.mention.borderCurve);
       if (variants != null) {
         const ordered = Object.keys(variants)
           .sort((a, b) => b.length - a.length || a.localeCompare(b))
@@ -303,6 +343,7 @@ export function serializeStyles(
       const code = serializeText(styles.inlineCode) ?? {};
       putColor(code, "backgroundColor", styles.inlineCode.backgroundColor);
       put(code, "borderRadius", styles.inlineCode.borderRadius);
+      put(code, "borderCurve", styles.inlineCode.borderCurve);
       putPadding(code, styles.inlineCode, ["Left", "Right"]);
       if (Object.keys(code).length > 0) {
         out.inlineCode = code;

@@ -16,7 +16,6 @@ class RunSpan(
   private val fontFeatureSettings: String?,
   private val underline: Boolean,
   private val strikethrough: Boolean,
-  private val backgroundColor: Int?,
 ) : MetricAffectingSpan() {
 
   override fun updateMeasureState(paint: TextPaint) {
@@ -28,9 +27,6 @@ class RunSpan(
     paint.color = color
     paint.isUnderlineText = underline
     paint.isStrikeThruText = strikethrough
-    if (backgroundColor != null) {
-      paint.bgColor = backgroundColor
-    }
   }
 
   private fun applyMetrics(paint: TextPaint) {

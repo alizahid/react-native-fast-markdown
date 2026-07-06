@@ -96,9 +96,11 @@ export interface MarkdownLayoutStyle {
   borderWidth?: number;
   padding?: number;
   paddingBottom?: number;
+  paddingHorizontal?: number;
   paddingLeft?: number;
   paddingRight?: number;
   paddingTop?: number;
+  paddingVertical?: number;
 }
 
 export interface MarkdownImageStyle {
@@ -154,16 +156,43 @@ export interface MarkdownListMarkerStyle {
  * ```
  */
 export interface MarkdownMentionStyle extends MarkdownTextStyle {
+  /** iOS only; Android always renders circular corners. */
+  borderCurve?: "circular" | "continuous";
+  /** Rounds the `backgroundColor` chip behind the mention. */
+  borderRadius?: number;
   variants?: Record<string, MarkdownTextStyle>;
+}
+
+/** Link styling; `backgroundColor` renders as a chip behind the link. */
+export interface MarkdownLinkStyle extends MarkdownTextStyle {
+  /** iOS only; Android always renders circular corners. */
+  borderCurve?: "circular" | "continuous";
+  /** Rounds the `backgroundColor` chip behind the link. */
+  borderRadius?: number;
 }
 
 export interface MarkdownInlineCodeStyle extends MarkdownTextStyle {
   backgroundColor?: ColorValue;
+  /** iOS only; Android always renders circular corners. */
+  borderCurve?: "circular" | "continuous";
   borderRadius?: number;
   padding?: number;
+  paddingHorizontal?: number;
   paddingLeft?: number;
   paddingRight?: number;
 }
+
+export type MarkdownTableCellStyle = MarkdownTextStyle &
+  Pick<
+    MarkdownLayoutStyle,
+    | "padding"
+    | "paddingHorizontal"
+    | "paddingVertical"
+    | "paddingLeft"
+    | "paddingRight"
+    | "paddingTop"
+    | "paddingBottom"
+  >;
 
 export type MarkdownHeadingLevel = "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
 
@@ -181,7 +210,7 @@ export interface MarkdownStyles {
   image?: MarkdownImageStyle;
   inlineCode?: MarkdownInlineCodeStyle;
   italic?: MarkdownTextStyle;
-  link?: MarkdownTextStyle;
+  link?: MarkdownLinkStyle;
   list?: MarkdownListStyle;
   listItem?: MarkdownTextStyle;
   listMarker?: MarkdownListMarkerStyle;
@@ -192,15 +221,14 @@ export interface MarkdownStyles {
   subscript?: MarkdownTextStyle;
   superscript?: MarkdownTextStyle;
   table?: MarkdownTableStyle;
-  tableCell?: MarkdownTextStyle &
-    Pick<
-      MarkdownLayoutStyle,
-      | "padding"
-      | "paddingLeft"
-      | "paddingRight"
-      | "paddingTop"
-      | "paddingBottom"
-    >;
+  /** Body-row overrides layered on top of `tableRow`. */
+  tableBodyRow?: MarkdownLayoutStyle;
+  tableCell?: MarkdownTableCellStyle;
+  /** Header-cell overrides layered on top of `tableCell`. */
+  tableHeaderCell?: MarkdownTableCellStyle;
+  /** Header-row overrides layered on top of `tableRow`. */
+  tableHeaderRow?: MarkdownLayoutStyle;
+  /** Base style for every row; header/body variants layer on top. */
   tableRow?: MarkdownLayoutStyle;
 }
 
@@ -241,9 +269,11 @@ export interface MarkdownContainerStyle extends MarkdownTextStyle {
   maxHeight?: number;
   padding?: number;
   paddingBottom?: number;
+  paddingHorizontal?: number;
   paddingLeft?: number;
   paddingRight?: number;
   paddingTop?: number;
+  paddingVertical?: number;
 }
 
 /** Formatting active at the cursor / selection. */

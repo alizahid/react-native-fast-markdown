@@ -9,11 +9,14 @@ import android.text.Spanned
 import android.text.TextPaint
 import com.fastmarkdown.parser.MdNode
 import com.fastmarkdown.parser.MdNodeType
+import com.fastmarkdown.render.spans.ChipSpan
 import com.fastmarkdown.render.spans.LinkSpan
 import com.fastmarkdown.render.spans.MarkdownLineHeightSpan
 import com.fastmarkdown.render.spans.RunSpan
 import com.fastmarkdown.render.spans.SpoilerSpan
+import com.fastmarkdown.style.Fonts
 import com.fastmarkdown.style.LayoutStyleSpec
+import com.fastmarkdown.style.PlatformColorResolver
 import com.fastmarkdown.style.StyleConfig
 import com.fastmarkdown.style.TextStyleSpec
 import kotlin.math.ceil
@@ -51,6 +54,10 @@ object SpannableRenderer {
     val strikethrough: Boolean = false,
     val baselineShiftPx: Int = 0,
     val backgroundColor: Int? = null,
+    // Chip geometry for drawn run backgrounds (inlineCode/link/mention).
+    val chipRadiusPx: Float = 0f,
+    val chipPadLeftPx: Float = 0f,
+    val chipPadRightPx: Float = 0f,
     val linkUrl: String? = null,
     val spoilerId: Int? = null,
   )
@@ -291,7 +298,7 @@ object SpannableRenderer {
     val tableSection = styles.rawSection("table")
     val cellSection = styles.rawSection("tableCell")
 
-    val rowDefaults = PLAIN_LAYOUT
+    val headerCellSection = styles.rawSection("tableHeaderCell")
 
     val cellText = merge(inherited, styles.textStyleFor("tableCell"))
     var cellAttrs = ResolvedAttrs(fontSizePx = 16f * density * context.fontScale)
@@ -300,6 +307,15 @@ object SpannableRenderer {
     cellAttrs = context.apply(cellAttrs, cellText)
 
     val cellPadding = cellSection.optPadding(density, defaultAll = 0f)
+    // Header cells fall back to the body cell padding key-by-key.
+    val headerCellPadding = optPaddingWithFallback(headerCellSection, cellSection, density)
+
+    // Header/body rows layer on top of the shared tableRow base.
+    val rowBase = LayoutStyleSpec.from(styles.rawSection("tableRow"), PLAIN_LAYOUT)
+    val headerRowStyle =
+      LayoutStyleSpec.from(styles.rawSection("tableHeaderRow"), rowBase).scaled(density)
+    val bodyRowStyle =
+      LayoutStyleSpec.from(styles.rawSection("tableBodyRow"), rowBase).scaled(density)
 
     val rows = ArrayList<Block.TableRowData>()
     for (rowNode in node.children) {
@@ -312,7 +328,10 @@ object SpannableRenderer {
         .map { cell ->
           val builder = SpannableStringBuilder()
           val attrs = if (isHeader) {
-            context.apply(cellAttrs.copy(weight = 700), "tableCell")
+            context.apply(
+              context.apply(cellAttrs.copy(weight = 700), "tableCell"),
+              "tableHeaderCell",
+            )
           } else {
             cellAttrs
           }
@@ -326,15 +345,41 @@ object SpannableRenderer {
       rows = rows,
       cellPaint = basePaint(cellAttrs),
       style = context.layoutStyle("table", LayoutStyleSpec.EMPTY),
-      rowStyle = context.layoutStyle("tableRow", rowDefaults),
+      headerRowStyle = headerRowStyle,
+      bodyRowStyle = bodyRowStyle,
       cellPaddingLeftPx = cellPadding[0],
       cellPaddingRightPx = cellPadding[1],
       cellPaddingTopPx = cellPadding[2],
       cellPaddingBottomPx = cellPadding[3],
+      headerCellPaddingLeftPx = headerCellPadding[0],
+      headerCellPaddingRightPx = headerCellPadding[1],
+      headerCellPaddingTopPx = headerCellPadding[2],
+      headerCellPaddingBottomPx = headerCellPadding[3],
       // Unstyled columns take their natural widths; defaultStyles provides
       // the classic [44, 320] clamps.
       minColumnWidthPx = (tableSection?.optDpOr("minColumnWidth", 0f) ?: 0f) * density,
       maxColumnWidthPx = (tableSection?.optDpOr("maxColumnWidth", 0f) ?: 0f) * density,
+    )
+  }
+
+  /** Like optPadding but each key falls back to a second section. */
+  private fun optPaddingWithFallback(
+    primary: JSONObject?,
+    fallback: JSONObject?,
+    density: Float,
+  ): FloatArray {
+    fun side(key: String): Float {
+      val fromPrimary = primary?.optDpOr(key, Float.NaN) ?: Float.NaN
+      if (!fromPrimary.isNaN()) {
+        return fromPrimary * density
+      }
+      return (fallback?.optDpOr(key, 0f) ?: 0f) * density
+    }
+    return floatArrayOf(
+      side("paddingLeft"),
+      side("paddingRight"),
+      side("paddingTop"),
+      side("paddingBottom"),
     )
   }
 
@@ -449,16 +494,35 @@ object SpannableRenderer {
           val variant = context.styles.mentionVariants.firstOrNull {
             it.pattern.matcher(node.url).find()
           }
+          val sectionKey = if (variant != null) "mention" else "link"
           next = if (variant != null) {
             context.apply(context.apply(next, "mention"), variant.style)
           } else {
             context.apply(next, "link")
+          }
+          val section = context.styles.rawSection(sectionKey)
+          if (section != null) {
+            next = next.copy(
+              chipRadiusPx =
+                (section.optDpOr("borderRadius", 0f)) * context.density,
+            )
           }
           walk(builder, node, next, context)
         }
         MdNodeType.INLINE_CODE -> {
           var next = attrs.copy(family = "monospace")
           next = context.apply(next, "inlineCode")
+          val section = context.styles.rawSection("inlineCode")
+          if (section != null) {
+            next = next.copy(
+              chipRadiusPx =
+                (section.optDpOr("borderRadius", 0f)) * context.density,
+              chipPadLeftPx =
+                (section.optDpOr("paddingLeft", 0f)) * context.density,
+              chipPadRightPx =
+                (section.optDpOr("paddingRight", 0f)) * context.density,
+            )
+          }
           appendRun(builder, node.text, next)
         }
         MdNodeType.SUPERSCRIPT -> {
@@ -491,21 +555,44 @@ object SpannableRenderer {
     }
     val start = builder.length
     builder.append(text)
+    val typeface = buildTypeface(attrs)
     builder.setSpan(
       RunSpan(
-        typeface = buildTypeface(attrs),
+        typeface = typeface,
         textSizePx = attrs.fontSizePx,
         color = attrs.color,
         baselineShiftPx = attrs.baselineShiftPx,
         fontFeatureSettings = attrs.variants?.let(::featureSettings),
         underline = attrs.underline,
         strikethrough = attrs.strikethrough,
-        backgroundColor = attrs.backgroundColor,
       ),
       start,
       builder.length,
       Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
     )
+    if (attrs.backgroundColor != null) {
+      // Drawn chip metrics come from the run's real font so ascenders and
+      // descenders are always covered.
+      val metricsPaint = TextPaint().apply {
+        this.typeface = typeface
+        textSize = attrs.fontSizePx
+      }
+      val metrics = metricsPaint.fontMetrics
+      builder.setSpan(
+        ChipSpan(
+          color = attrs.backgroundColor,
+          radiusPx = attrs.chipRadiusPx,
+          padLeftPx = attrs.chipPadLeftPx,
+          padRightPx = attrs.chipPadRightPx,
+          ascentPx = metrics.ascent,
+          descentPx = metrics.descent,
+          baselineShiftPx = attrs.baselineShiftPx,
+        ),
+        start,
+        builder.length,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+    }
     if (attrs.lineHeightPx > 0) {
       builder.setSpan(
         MarkdownLineHeightSpan(attrs.lineHeightPx),
@@ -522,24 +609,8 @@ object SpannableRenderer {
     }
   }
 
-  private fun buildTypeface(attrs: ResolvedAttrs): Typeface {
-    val base = if (attrs.family != null) {
-      Typeface.create(attrs.family, Typeface.NORMAL)
-    } else {
-      Typeface.DEFAULT
-    }
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-      Typeface.create(base, attrs.weight, attrs.italic)
-    } else {
-      val style = when {
-        attrs.weight >= 600 && attrs.italic -> Typeface.BOLD_ITALIC
-        attrs.weight >= 600 -> Typeface.BOLD
-        attrs.italic -> Typeface.ITALIC
-        else -> Typeface.NORMAL
-      }
-      Typeface.create(base, style)
-    }
-  }
+  private fun buildTypeface(attrs: ResolvedAttrs): Typeface =
+    Fonts.resolve(PlatformColorResolver.current(), attrs.family, attrs.weight, attrs.italic)
 
   private fun featureSettings(variants: List<String>): String? {
     val features = variants.mapNotNull {

@@ -19,6 +19,18 @@ typedef NS_ENUM(NSInteger, FMDBlockKind) {
 /// Custom attributed-string keys carrying interaction data.
 FOUNDATION_EXPORT NSAttributedStringKey const FMDLinkURLAttributeName;
 FOUNDATION_EXPORT NSAttributedStringKey const FMDSpoilerIDAttributeName;
+/// Drawn run background ("chip"): value is an FMDRunBackground. Replaces
+/// NSBackgroundColor, whose rect misaligns under custom line heights.
+FOUNDATION_EXPORT NSAttributedStringKey const FMDRunBackgroundAttributeName;
+
+/// Geometry + fill for a drawn run background.
+@interface FMDRunBackground : NSObject
+@property (nonatomic, strong) UIColor *color;
+@property (nonatomic, assign) CGFloat radius;
+@property (nonatomic, assign) BOOL continuousCurve;
+@property (nonatomic, assign) CGFloat padLeft;
+@property (nonatomic, assign) CGFloat padRight;
+@end
 
 @interface FMDListRow : NSObject
 @property (nonatomic, strong) NSAttributedString *marker;
@@ -46,10 +58,14 @@ FOUNDATION_EXPORT NSAttributedStringKey const FMDSpoilerIDAttributeName;
 @property (nonatomic, strong, nullable) UIColor *dividerColor;
 @property (nonatomic, assign) CGFloat dividerThickness;
 
-// Table blocks.
+// Table blocks. Header/body row styles layer tableHeaderRow/tableBodyRow
+// over the shared tableRow base; header cells fall back to the body cell
+// padding key-by-key.
 @property (nonatomic, strong, nullable) NSArray<FMDTableRow *> *tableRows;
-@property (nonatomic, strong, nullable) FMDLayoutStyle *rowStyle;
+@property (nonatomic, strong, nullable) FMDLayoutStyle *headerRowStyle;
+@property (nonatomic, strong, nullable) FMDLayoutStyle *bodyRowStyle;
 @property (nonatomic, assign) UIEdgeInsets cellPadding;
+@property (nonatomic, assign) UIEdgeInsets headerCellPadding;
 @property (nonatomic, assign) CGFloat minColumnWidth;
 @property (nonatomic, assign) CGFloat maxColumnWidth;
 

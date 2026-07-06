@@ -45,14 +45,34 @@ sealed class Block {
     val rows: List<TableRowData>,
     val cellPaint: TextPaint,
     val style: LayoutStyleSpec,
-    val rowStyle: LayoutStyleSpec,
+    val headerRowStyle: LayoutStyleSpec,
+    val bodyRowStyle: LayoutStyleSpec,
     val cellPaddingLeftPx: Float,
     val cellPaddingRightPx: Float,
     val cellPaddingTopPx: Float,
     val cellPaddingBottomPx: Float,
+    val headerCellPaddingLeftPx: Float,
+    val headerCellPaddingRightPx: Float,
+    val headerCellPaddingTopPx: Float,
+    val headerCellPaddingBottomPx: Float,
     val minColumnWidthPx: Float,
     val maxColumnWidthPx: Float,
-  ) : Block()
+  ) : Block() {
+    fun rowStyle(isHeader: Boolean): LayoutStyleSpec =
+      if (isHeader) headerRowStyle else bodyRowStyle
+
+    fun padLeft(isHeader: Boolean): Float =
+      if (isHeader) headerCellPaddingLeftPx else cellPaddingLeftPx
+
+    fun padRight(isHeader: Boolean): Float =
+      if (isHeader) headerCellPaddingRightPx else cellPaddingRightPx
+
+    fun padTop(isHeader: Boolean): Float =
+      if (isHeader) headerCellPaddingTopPx else cellPaddingTopPx
+
+    fun padBottom(isHeader: Boolean): Float =
+      if (isHeader) headerCellPaddingBottomPx else cellPaddingBottomPx
+  }
 }
 
 /** Layout results for one block at one width. */
@@ -227,9 +247,9 @@ class RenderedContent(
       return MeasuredBlock(block, 0f, null, widthPx, emptyList(), emptyList(), emptyList())
     }
 
-    val cellPadH = block.cellPaddingLeftPx + block.cellPaddingRightPx
     val natural = FloatArray(columnCount)
     for (row in block.rows) {
+      val cellPadH = block.padLeft(row.isHeader) + block.padRight(row.isHeader)
       row.cells.forEachIndexed { column, cell ->
         // Ceil so the later int truncation of the cell width can't force
         // a wrap that the natural measurement said would fit.
@@ -262,9 +282,11 @@ class RenderedContent(
     val contentWidth = columnWidths.sum()
 
     val rowHeights = FloatArray(block.rows.size)
-    val cellPadV = block.cellPaddingTopPx + block.cellPaddingBottomPx
-    val rowExtra = block.rowStyle.borderBottomWidth + block.rowStyle.borderTopWidth
     val cellLayouts = block.rows.mapIndexed { rowIndex, row ->
+      val rowStyle = block.rowStyle(row.isHeader)
+      val cellPadH = block.padLeft(row.isHeader) + block.padRight(row.isHeader)
+      val cellPadV = block.padTop(row.isHeader) + block.padBottom(row.isHeader)
+      val rowExtra = rowStyle.borderBottomWidth + rowStyle.borderTopWidth
       val layouts = row.cells.mapIndexed { column, cell ->
         staticLayout(
           cell,

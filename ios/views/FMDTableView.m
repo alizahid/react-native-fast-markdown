@@ -46,12 +46,16 @@
 
 - (void)drawRect:(CGRect)rect {
   FMDBlock *block = _measured.block;
-  FMDLayoutStyle *rowStyle = block.rowStyle;
   CGContextRef context = UIGraphicsGetCurrentContext();
   const CGFloat width = _measured.contentWidth;
 
   CGFloat y = 0;
+  NSUInteger rowIndex = 0;
   for (NSNumber *rowHeight in _measured.rowHeights) {
+    const BOOL isHeader =
+        rowIndex < block.tableRows.count && block.tableRows[rowIndex].isHeader;
+    FMDLayoutStyle *rowStyle = isHeader ? block.headerRowStyle : block.bodyRowStyle;
+    rowIndex++;
     if (rowStyle.backgroundColor != nil) {
       CGContextSetFillColorWithColor(context, rowStyle.backgroundColor.CGColor);
       CGContextFillRect(context, CGRectMake(0, y, width, rowHeight.doubleValue));
@@ -77,12 +81,14 @@
 - (void)layoutSubviews {
   [super layoutSubviews];
   FMDBlock *block = _measured.block;
-  const CGFloat cellPadH = block.cellPadding.left + block.cellPadding.right;
 
   NSUInteger index = 0;
   CGFloat y = 0;
   for (NSUInteger rowIndex = 0; rowIndex < block.tableRows.count; rowIndex++) {
     FMDTableRow *row = block.tableRows[rowIndex];
+    FMDLayoutStyle *rowStyle = row.isHeader ? block.headerRowStyle : block.bodyRowStyle;
+    const UIEdgeInsets pad = row.isHeader ? block.headerCellPadding : block.cellPadding;
+    const CGFloat cellPadH = pad.left + pad.right;
     CGFloat x = 0;
     for (NSUInteger column = 0; column < row.cells.count; column++) {
       if (index >= self.subviews.count) {
@@ -90,11 +96,11 @@
       }
       const CGFloat columnWidth = _measured.columnWidths[column].doubleValue;
       const CGFloat cellHeight = _measured.rowHeights[rowIndex].doubleValue -
-          block.cellPadding.top - block.cellPadding.bottom -
-          block.rowStyle.borderTopWidth - block.rowStyle.borderBottomWidth;
+          pad.top - pad.bottom -
+          rowStyle.borderTopWidth - rowStyle.borderBottomWidth;
       self.subviews[index].frame = CGRectMake(
-          x + block.cellPadding.left,
-          y + block.cellPadding.top + block.rowStyle.borderTopWidth,
+          x + pad.left,
+          y + pad.top + rowStyle.borderTopWidth,
           MAX(columnWidth - cellPadH, 1),
           MAX(cellHeight, 0));
       index++;

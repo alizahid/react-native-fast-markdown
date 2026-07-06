@@ -8,6 +8,7 @@ using fastmarkdown::Node;
 using fastmarkdown::NodeType;
 
 NSAttributedStringKey const FMDLinkURLAttributeName = @"FMDLinkURL";
+NSAttributedStringKey const FMDRunBackgroundAttributeName = @"FMDRunBackground";
 NSAttributedStringKey const FMDSpoilerIDAttributeName = @"FMDSpoilerID";
 
 namespace {
@@ -70,6 +71,11 @@ struct ResolvedAttrs {
   NSString *__strong decorationStyle = nil;
   CGFloat baselineOffset = 0;
   UIColor *__strong backgroundColor = nil;
+  // Chip geometry for drawn run backgrounds (inlineCode/link/mention).
+  CGFloat chipRadius = 0;
+  bool chipContinuous = false;
+  CGFloat chipPadLeft = 0;
+  CGFloat chipPadRight = 0;
   NSString *__strong linkUrl = nil;
   NSInteger spoilerId = -1;
 };
@@ -108,6 +114,22 @@ void applyStyle(ResolvedAttrs &attrs, FMDTextStyle *style, CGFloat fontScale) {
   }
   if (style.backgroundColor != nil) {
     attrs.backgroundColor = style.backgroundColor;
+  }
+}
+
+void applyChipStyle(ResolvedAttrs &attrs, NSDictionary *section) {
+  if (section == nil) {
+    return;
+  }
+  if ([section[@"borderRadius"] isKindOfClass:[NSNumber class]]) {
+    attrs.chipRadius = [section[@"borderRadius"] doubleValue];
+  }
+  attrs.chipContinuous = [section[@"borderCurve"] isEqual:@"continuous"];
+  if ([section[@"paddingLeft"] isKindOfClass:[NSNumber class]]) {
+    attrs.chipPadLeft = [section[@"paddingLeft"] doubleValue];
+  }
+  if ([section[@"paddingRight"] isKindOfClass:[NSNumber class]]) {
+    attrs.chipPadRight = [section[@"paddingRight"] doubleValue];
   }
 }
 
@@ -245,7 +267,13 @@ NSDictionary *attributesDictionary(const ResolvedAttrs &attrs) {
     attributes[NSBaselineOffsetAttributeName] = @(baselineOffset);
   }
   if (attrs.backgroundColor != nil) {
-    attributes[NSBackgroundColorAttributeName] = attrs.backgroundColor;
+    FMDRunBackground *chip = [FMDRunBackground new];
+    chip.color = attrs.backgroundColor;
+    chip.radius = attrs.chipRadius;
+    chip.continuousCurve = attrs.chipContinuous;
+    chip.padLeft = attrs.chipPadLeft;
+    chip.padRight = attrs.chipPadRight;
+    attributes[FMDRunBackgroundAttributeName] = chip;
   }
   if (attrs.linkUrl != nil) {
     attributes[FMDLinkURLAttributeName] = attrs.linkUrl;
@@ -526,8 +554,12 @@ class BlockBuilder {
                   borderRadius:0
                borderLeftColor:nil
                borderLeftWidth:0];
-    FMDLayoutStyle *rowStyle =
+    FMDLayoutStyle *rowBase =
         [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"tableRow"] defaults:rowDefaults];
+    FMDLayoutStyle *headerRowStyle =
+        [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"tableHeaderRow"] defaults:rowBase];
+    FMDLayoutStyle *bodyRowStyle =
+        [FMDLayoutStyle fromJson:[styles_ rawSectionFor:@"tableBodyRow"] defaults:rowBase];
 
     ResolvedAttrs cellAttrs;
     cellAttrs.fontSize = 16 * fontScale_;
@@ -555,6 +587,7 @@ class BlockBuilder {
         if (row.isHeader) {
           attrs.weight = 700;
           applyStyle(attrs, [styles_ textStyleFor:@"tableCell"], fontScale_);
+          applyStyle(attrs, [styles_ textStyleFor:@"tableHeaderCell"], fontScale_);
         }
         NSMutableAttributedString *cell = [NSMutableAttributedString new];
         walk(cell, cellNode, attrs);
@@ -568,12 +601,26 @@ class BlockBuilder {
     block.kind = FMDBlockKindTable;
     block.tableRows = rows;
     block.layoutStyle = [FMDLayoutStyle fromJson:tableSection defaults:nil];
-    block.rowStyle = rowStyle;
+    block.headerRowStyle = headerRowStyle;
+    block.bodyRowStyle = bodyRowStyle;
     block.cellPadding = UIEdgeInsetsMake(
         number(cellSection, @"paddingTop", 0),
         number(cellSection, @"paddingLeft", 0),
         number(cellSection, @"paddingBottom", 0),
         number(cellSection, @"paddingRight", 0));
+    // Header cells fall back to the body cell padding key-by-key.
+    NSDictionary *headerCellSection = [styles_ rawSectionFor:@"tableHeaderCell"];
+    const auto headerNumber = [&](NSString *key) {
+      NSNumber *value = [headerCellSection[key] isKindOfClass:[NSNumber class]]
+          ? headerCellSection[key]
+          : nil;
+      return value != nil ? value.doubleValue : number(cellSection, key, 0);
+    };
+    block.headerCellPadding = UIEdgeInsetsMake(
+        headerNumber(@"paddingTop"),
+        headerNumber(@"paddingLeft"),
+        headerNumber(@"paddingBottom"),
+        headerNumber(@"paddingRight"));
     // Unstyled columns take their natural widths; defaultStyles provides the
     // classic [44, 320] clamps.
     block.minColumnWidth = number(tableSection, @"minColumnWidth", 0);
@@ -694,8 +741,10 @@ class BlockBuilder {
           if (isMention) {
             applyStyle(next, [styles_ textStyleFor:@"mention"], fontScale_);
             applyStyle(next, variantStyle, fontScale_);
+            applyChipStyle(next, [styles_ rawSectionFor:@"mention"]);
           } else {
             applyStyle(next, [styles_ textStyleFor:@"link"], fontScale_);
+            applyChipStyle(next, [styles_ rawSectionFor:@"link"]);
           }
           walk(output, node, next);
           break;
@@ -704,6 +753,7 @@ class BlockBuilder {
           ResolvedAttrs next = attrs;
           next.family = @"Menlo";
           applyStyle(next, [styles_ textStyleFor:@"inlineCode"], fontScale_);
+          applyChipStyle(next, [styles_ rawSectionFor:@"inlineCode"]);
           append(output, toNSString(node->text), next);
           break;
         }

@@ -1,5 +1,8 @@
 #import "FMDBlock.h"
 
+@implementation FMDRunBackground
+@end
+
 @implementation FMDListRow
 @end
 

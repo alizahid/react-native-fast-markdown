@@ -100,10 +100,11 @@ class TableGridView(context: Context) : ViewGroup(context) {
     val tree = measured ?: return
     val width = tree.contentWidthPx
     var y = 0f
-    tree.rowHeights.forEach { rowHeight ->
+    tree.rowHeights.forEachIndexed { rowIndex, rowHeight ->
+      val isHeader = table.rows.getOrNull(rowIndex)?.isHeader == true
       canvas.save()
       canvas.translate(0f, y)
-      BoxDrawing.draw(canvas, table.rowStyle, width, rowHeight)
+      BoxDrawing.draw(canvas, table.rowStyle(isHeader), width, rowHeight)
       canvas.restore()
       y += rowHeight
     }
@@ -117,10 +118,12 @@ class TableGridView(context: Context) : ViewGroup(context) {
     var y = 0f
     tree.cellLayouts.forEachIndexed { rowIndex, row ->
       var x = 0f
+      val isHeader = table.rows.getOrNull(rowIndex)?.isHeader == true
       row.forEachIndexed { column, cell ->
         val child = getChildAt(index++) ?: return@forEachIndexed
-        val cellLeft = (x + table.cellPaddingLeftPx).toInt()
-        val cellTop = (y + table.cellPaddingTopPx + table.rowStyle.borderTopWidth).toInt()
+        val cellLeft = (x + table.padLeft(isHeader)).toInt()
+        val cellTop =
+          (y + table.padTop(isHeader) + table.rowStyle(isHeader).borderTopWidth).toInt()
         child.measure(
           MeasureSpec.makeMeasureSpec(cell.width, MeasureSpec.EXACTLY),
           MeasureSpec.makeMeasureSpec(cell.height, MeasureSpec.EXACTLY),

@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import com.fastmarkdown.render.Block
+import com.fastmarkdown.render.spans.ChipSpan
 import com.fastmarkdown.render.spans.LinkSpan
 import com.fastmarkdown.render.spans.SpoilerSpan
 import kotlin.math.abs
@@ -28,6 +29,8 @@ class BlockTextView(context: Context) : View(context) {
 
   private val coverPaint = Paint(Paint.ANTI_ALIAS_FLAG)
   private val coverPath = Path()
+  private val chipPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val chipPath = Path()
 
   private var downX = 0f
   private var downY = 0f
@@ -68,8 +71,67 @@ class BlockTextView(context: Context) : View(context) {
 
   override fun onDraw(canvas: Canvas) {
     val text = layout ?: return
+    drawChips(canvas, text)
     text.draw(canvas)
     drawSpoilerCovers(canvas, text)
+  }
+
+  // Rounded run backgrounds (inlineCode/link/mention chips and plain text
+  // highlights), drawn UNDER the text. Vertical bounds come from the run's
+  // real font metrics anchored on the drawn baseline, so ascenders and
+  // descenders are always covered regardless of lineHeight.
+  private fun drawChips(canvas: Canvas, text: StaticLayout) {
+    val spanned = text.text as? Spanned ?: return
+    val spans = spanned.getSpans(0, spanned.length, ChipSpan::class.java)
+    if (spans.isEmpty()) {
+      return
+    }
+    chipPaint.style = Paint.Style.FILL
+    for (span in spans) {
+      val start = spanned.getSpanStart(span)
+      val end = spanned.getSpanEnd(span)
+      if (start >= end) {
+        continue
+      }
+      chipPaint.color = span.color
+      val firstLine = text.getLineForOffset(start)
+      val lastLine = text.getLineForOffset(end)
+      val lineRects = ArrayList<RectF>(lastLine - firstLine + 1)
+      for (line in firstLine..lastLine) {
+        val lineStart = maxOf(start, text.getLineStart(line))
+        val lineEnd = minOf(end, text.getLineEnd(line))
+        if (lineStart >= lineEnd) {
+          continue
+        }
+        val left = text.getPrimaryHorizontal(lineStart)
+        val right = if (lineEnd < text.getLineEnd(line)) {
+          text.getPrimaryHorizontal(lineEnd)
+        } else {
+          text.getLineRight(line)
+        }
+        val baseline = text.getLineBaseline(line).toFloat() + span.baselineShiftPx
+        val padLeft = if (line == firstLine) span.padLeftPx else 0f
+        val padRight = if (line == lastLine) span.padRightPx else 0f
+        lineRects.add(
+          RectF(
+            (minOf(left, right) - padLeft).coerceAtLeast(0f),
+            baseline + span.ascentPx - 1f,
+            (maxOf(left, right) + padRight).coerceAtMost(width.toFloat()),
+            baseline + span.descentPx + 1f,
+          ),
+        )
+      }
+      if (lineRects.isEmpty()) {
+        continue
+      }
+      chipPath.reset()
+      if (lineRects.size == 1) {
+        chipPath.addRoundRect(lineRects[0], span.radiusPx, span.radiusPx, Path.Direction.CW)
+      } else {
+        buildRoundedOutline(lineRects, span.radiusPx, chipPath)
+      }
+      canvas.drawPath(chipPath, chipPaint)
+    }
   }
 
   // One contiguous rounded polygon per spoiler (union of per-line run

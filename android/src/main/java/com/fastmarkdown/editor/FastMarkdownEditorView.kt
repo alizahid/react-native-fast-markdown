@@ -327,7 +327,9 @@ class FastMarkdownEditorView(context: Context) : EditText(context) {
 
     setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize * density)
     setTextColor(color)
-    typeface = fontFamily?.let { Typeface.create(it, Typeface.NORMAL) } ?: Typeface.DEFAULT
+    // ReactFontManager understands RN/Expo custom fonts; Typeface.create
+    // silently falls back to the system default for them.
+    typeface = com.fastmarkdown.style.Fonts.resolve(context, fontFamily, 400, italic = false)
     styles.textStyleFor("link")?.color?.let { linkColor = it }
 
     setPadding(
