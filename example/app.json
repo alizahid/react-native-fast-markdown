@@ -27,6 +27,75 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": ["./plugins/with-header-collision-canary.js", "expo-font"]
+    "plugins": [
+      "./plugins/with-header-collision-canary.js",
+      [
+        "expo-font",
+        {
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "Satoshi",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/Satoshi-Regular.otf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/Satoshi-Italic.otf",
+                    "weight": 400,
+                    "style": "italic"
+                  },
+                  {
+                    "path": "./assets/fonts/Satoshi-Bold.otf",
+                    "weight": 700
+                  },
+                  {
+                    "path": "./assets/fonts/Satoshi-BoldItalic.otf",
+                    "weight": 700,
+                    "style": "italic"
+                  }
+                ]
+              },
+              {
+                "fontFamily": "Zodiak",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/Zodiak-Regular.otf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/Zodiak-Italic.otf",
+                    "weight": 400,
+                    "style": "italic"
+                  },
+                  {
+                    "path": "./assets/fonts/Zodiak-Bold.otf",
+                    "weight": 700
+                  },
+                  {
+                    "path": "./assets/fonts/Zodiak-BoldItalic.otf",
+                    "weight": 700,
+                    "style": "italic"
+                  }
+                ]
+              }
+            ]
+          },
+          "ios": {
+            "fonts": [
+              "./assets/fonts/Satoshi-Regular.otf",
+              "./assets/fonts/Satoshi-Italic.otf",
+              "./assets/fonts/Satoshi-Bold.otf",
+              "./assets/fonts/Satoshi-BoldItalic.otf",
+              "./assets/fonts/Zodiak-Regular.otf",
+              "./assets/fonts/Zodiak-Italic.otf",
+              "./assets/fonts/Zodiak-Bold.otf",
+              "./assets/fonts/Zodiak-BoldItalic.otf"
+            ]
+          }
+        }
+      ]
+    ]
   }
 }

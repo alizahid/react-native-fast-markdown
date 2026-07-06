@@ -19,6 +19,7 @@ import {
 } from "react-native-gesture-handler";
 
 const markdownStyle: MarkdownContainerStyle = {
+  fontFamily: "Satoshi",
   padding: 14,
   gap: 8,
 };

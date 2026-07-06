@@ -150,7 +150,7 @@ export function KitchenSink() {
 const markdownStyle: MarkdownContainerStyle = {
   padding: 16,
   gap: 12,
-  fontFamily: "Inter Variable",
+  fontFamily: "Satoshi",
   lineHeight: 24,
 };
 

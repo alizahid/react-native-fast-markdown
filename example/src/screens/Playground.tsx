@@ -30,17 +30,25 @@ interface Theme {
 const THEMES: Record<string, Theme> = {
   // No styles prop at all: the viewer renders fully plain.
   None: {
-    container: { fontSize: 14, lineHeight: 20 },
+    container: {
+      fontFamily: "Satoshi",
+      fontSize: 14,
+      lineHeight: 20,
+    },
   },
   Default: {
-    container: { fontSize: 14, lineHeight: 20 },
+    container: {
+      fontFamily: "Satoshi",
+      fontSize: 14,
+      lineHeight: 20,
+    },
     styles: defaultStyles,
   },
   Serif: {
     // fontFamily/fontSize/color cascade into paragraphs, lists, quotes,
     // and headings — only deviations live in `styles`.
     container: {
-      fontFamily: "Georgia",
+      fontFamily: "Zodiak",
       fontSize: 14,
       lineHeight: 20,
       color: "#44403C",
@@ -63,7 +71,12 @@ const THEMES: Record<string, Theme> = {
     }),
   },
   Compact: {
-    container: { fontSize: 12, lineHeight: 16, color: "#111" },
+    container: {
+      fontFamily: "Satoshi",
+      fontSize: 12,
+      lineHeight: 16,
+      color: "#111",
+    },
     styles: mergeStyles({
       headings: { h1: { fontSize: 22 } },
       blockQuote: { color: "#666" },
