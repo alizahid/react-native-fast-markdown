@@ -103,25 +103,11 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
   return path;
 }
 
-// Chip band: cap height above the baseline, descender depth below.
-// Anchoring to the ink envelope keeps chips consistent for ANY font —
-// font-declared ascents vary wildly (Inter's is 0.97em, ~4pt above its
-// capitals at 16pt) and produce top-heavy chips. Padding is asymmetric:
-// descenders are rare, so the descender allowance already reads as bottom
-// padding on baseline-sitting text.
-static const CGFloat FMDChipPadTop = 3;
-static const CGFloat FMDChipPadBottom = 1;
-
-static void FMDChipMetrics(UIFont *font, CGFloat *outAscent, CGFloat *outDescent) {
-  *outAscent = font.capHeight;
-  *outDescent = -font.descender;
-}
-
 // Rounded run backgrounds (inlineCode/link/mention chips and plain text
-// highlights), drawn UNDER the text. Vertical bounds come from the run's
-// typographic metrics anchored on the drawn baseline (including the
-// lineHeight-centering baseline offset), so ascenders and descenders are
-// always covered — NSBackgroundColor misaligns under custom line heights.
+// highlights), drawn UNDER the text. Rects match what the platform's own
+// NSBackgroundColor fills — the run's slice of each line fragment box — so
+// backgrounds behave exactly like RN <Text> backgroundColor, with corner
+// radius on top.
 - (void)drawRunBackgrounds {
   if (_attributedText.length == 0) {
     return;
@@ -139,15 +125,6 @@ static void FMDChipMetrics(UIFont *font, CGFloat *outAscent, CGFloat *outDescent
                 if (chip == nil) {
                   return;
                 }
-                NSDictionary *attrs =
-                    [self->_attributedText attributesAtIndex:range.location
-                                              effectiveRange:nil];
-                UIFont *font = attrs[NSFontAttributeName]
-                    ?: [UIFont systemFontOfSize:UIFont.systemFontSize];
-                CGFloat chipAscent;
-                CGFloat chipDescent;
-                FMDChipMetrics(font, &chipAscent, &chipDescent);
-
                 const NSRange glyphRange =
                     [layoutManager glyphRangeForCharacterRange:range
                                           actualCharacterRange:nil];
@@ -177,16 +154,11 @@ static void FMDChipMetrics(UIFont *font, CGFloat *outAscent, CGFloat *outDescent
                         lineFragmentUsedRectForGlyphAtIndex:lineRange.location
                                              effectiveRange:nil]);
                   }
-                  // Drawn baseline: the typesetter already folds
-                  // NSBaselineOffset (lineHeight centering, sup/sub shifts)
-                  // into the glyph location — do NOT subtract it again.
-                  const CGFloat baselineY =
-                      fragment.origin.y + startLocation.y;
-                  const CGFloat top =
-                      MAX(baselineY - chipAscent - FMDChipPadTop, 0);
+                  // Full line fragment box, clamped to the view (the
+                  // measured height ends at the last drawn descent).
+                  const CGFloat top = MAX(fragment.origin.y, 0);
                   const CGFloat bottom =
-                      MIN(baselineY + chipDescent + FMDChipPadBottom,
-                          self.bounds.size.height);
+                      MIN(CGRectGetMaxY(fragment), self.bounds.size.height);
                   const CGFloat padLeft = firstLine ? chip.padLeft : 0;
                   const CGFloat padRight = lastLine ? chip.padRight : 0;
                   CGRect chipRect = CGRectMake(

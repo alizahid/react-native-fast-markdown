@@ -575,24 +575,12 @@ object SpannableRenderer {
       Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
     )
     if (attrs.backgroundColor != null) {
-      // Drawn chip metrics come from the run's real font so ascenders and
-      // descenders are always covered.
-      val metricsPaint = TextPaint().apply {
-        this.typeface = typeface
-        textSize = attrs.fontSizePx
-      }
-      val metrics = metricsPaint.fontMetrics
-      val capBounds = android.graphics.Rect()
-      metricsPaint.getTextBounds("H", 0, 1, capBounds)
       builder.setSpan(
         ChipSpan(
           color = attrs.backgroundColor,
           radiusPx = attrs.chipRadiusPx,
           padLeftPx = attrs.chipPadLeftPx,
           padRightPx = attrs.chipPadRightPx,
-          capHeightPx = capBounds.height().toFloat(),
-          descentPx = metrics.descent,
-          baselineShiftPx = attrs.baselineShiftPx,
         ),
         start,
         builder.length,
