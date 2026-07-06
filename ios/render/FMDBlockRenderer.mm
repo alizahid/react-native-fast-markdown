@@ -673,6 +673,8 @@ class BlockBuilder {
     block.spoilerColor = [FMDTextStyle colorFromJson:spoilerSection[@"backgroundColor"]]
         ?: UIColor.blackColor;
     block.spoilerRadius = spoilerRadius.doubleValue;
+    block.spoilerContinuous =
+        [spoilerSection[@"borderCurve"] isEqual:@"continuous"];
     return block;
   }
 

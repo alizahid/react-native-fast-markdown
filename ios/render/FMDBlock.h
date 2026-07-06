@@ -49,6 +49,7 @@ FOUNDATION_EXPORT NSAttributedStringKey const FMDRunBackgroundAttributeName;
 // Text blocks: spoiler cover styling.
 @property (nonatomic, strong, nullable) UIColor *spoilerColor;
 @property (nonatomic, assign) CGFloat spoilerRadius;
+@property (nonatomic, assign) BOOL spoilerContinuous;
 @property (nonatomic, strong, nullable) FMDLayoutStyle *layoutStyle;
 @property (nonatomic, strong, nullable) NSArray<FMDBlock *> *children;
 @property (nonatomic, strong, nullable) NSArray<FMDListRow *> *rows;

@@ -1,7 +1,6 @@
 #import "FMDBlockTextView.h"
 
-
-static UIBezierPath *FMDRoundedOutlinePath(NSArray<NSValue *> *lines, CGFloat radius);
+#import <CoreText/CoreText.h>
 
 @implementation FMDBlockTextView {
   NSLayoutManager *_layoutManager;
@@ -53,12 +52,49 @@ static UIBezierPath *FMDRoundedOutlinePath(NSArray<NSValue *> *lines, CGFloat ra
 }
 
 - (void)drawRect:(CGRect)rect {
-  [self drawRunBackgrounds];
-  [_attributedText drawWithRect:self.bounds
-                        options:NSStringDrawingUsesLineFragmentOrigin |
-                                NSStringDrawingUsesFontLeading
-                        context:nil];
+  NSAttributedString *display = [self displayText];
+  [self drawRunBackgroundsIn:display];
+  [display drawWithRect:self.bounds
+                options:NSStringDrawingUsesLineFragmentOrigin |
+                        NSStringDrawingUsesFontLeading
+                context:nil];
   [self drawSpoilerCovers];
+}
+
+// Unrevealed spoiler text draws fully transparent — the cover hugs the
+// glyph ink, so glyphs would leak around it if drawn. Color-only changes
+// keep the geometry identical to the layout manager's.
+- (NSAttributedString *)displayText {
+  if (self.host == nil) {
+    return _attributedText;
+  }
+  __block NSMutableAttributedString *copy = nil;
+  [_attributedText
+      enumerateAttribute:FMDSpoilerIDAttributeName
+                 inRange:NSMakeRange(0, _attributedText.length)
+                 options:0
+              usingBlock:^(NSNumber *spoilerId, NSRange range, BOOL *stop) {
+                if (spoilerId == nil ||
+                    [self.host isSpoilerRevealed:spoilerId.integerValue]) {
+                  return;
+                }
+                if (copy == nil) {
+                  copy = [self->_attributedText mutableCopy];
+                }
+                [copy addAttribute:NSForegroundColorAttributeName
+                             value:UIColor.clearColor
+                             range:range];
+                [copy addAttribute:NSUnderlineColorAttributeName
+                             value:UIColor.clearColor
+                             range:range];
+                [copy addAttribute:NSStrikethroughColorAttributeName
+                             value:UIColor.clearColor
+                             range:range];
+                // A chip under the cover would peek around it.
+                [copy removeAttribute:FMDRunBackgroundAttributeName
+                                range:range];
+              }];
+  return copy ?: _attributedText;
 }
 
 // Approximates iOS's continuous ("squircle") corner curve for a single
@@ -103,91 +139,116 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
   return path;
 }
 
-// Rounded run backgrounds (inlineCode/link/mention chips and plain text
-// highlights), drawn UNDER the text. Rects match what the platform's own
-// NSBackgroundColor fills — the run's slice of each line fragment box — so
-// backgrounds behave exactly like RN <Text> backgroundColor, with corner
-// radius on top.
-- (void)drawRunBackgrounds {
-  if (_attributedText.length == 0) {
+// Overlays hug the glyph ink. lineHeight moves line boxes around the text,
+// so any box derived from them inherits that skew; the ink bounding box
+// plus breathing padding is anchored on the drawn baseline and stays glued
+// to the glyphs no matter the line height.
+static const CGFloat FMDInkPad = 2;
+
+// Per-line ink rects for a character range: the tight glyph bounding box
+// of each line's segment, padded. Whitespace-only segments have no ink and
+// produce no rect.
+- (NSArray<NSValue *> *)inkRectsForRange:(NSRange)range
+                           layoutManager:(NSLayoutManager *)layoutManager
+                                 padLeft:(CGFloat)padLeft
+                                padRight:(CGFloat)padRight {
+  CGContextRef context = UIGraphicsGetCurrentContext();
+  // CTLineGetImageBounds reports bounds relative to the context's current
+  // text position, and NSStringDrawing leaves it wherever the last drawn
+  // line ended.
+  CGContextSetTextPosition(context, 0, 0);
+  const CGFloat maxWidth = self.bounds.size.width;
+  const CGFloat maxHeight = self.bounds.size.height;
+  const NSRange glyphRange =
+      [layoutManager glyphRangeForCharacterRange:range actualCharacterRange:nil];
+  NSMutableArray<NSValue *> *lineRects = [NSMutableArray new];
+  NSUInteger glyphIndex = glyphRange.location;
+  while (glyphIndex < NSMaxRange(glyphRange)) {
+    NSRange lineGlyphRange;
+    const CGRect fragment =
+        [layoutManager lineFragmentRectForGlyphAtIndex:glyphIndex
+                                        effectiveRange:&lineGlyphRange];
+    const NSRange lineRange = NSIntersectionRange(lineGlyphRange, glyphRange);
+    if (lineRange.length == 0) {
+      break;
+    }
+    const NSRange charRange =
+        [layoutManager characterRangeForGlyphRange:lineRange actualGlyphRange:nil];
+    const CGPoint startLocation =
+        [layoutManager locationForGlyphAtIndex:lineRange.location];
+    // The typesetter already folds NSBaselineOffset (lineHeight centering,
+    // sup/sub shifts) into the glyph location.
+    const CGFloat baselineY = fragment.origin.y + startLocation.y;
+    const CGFloat penX = fragment.origin.x + startLocation.x;
+
+    CTLineRef line = CTLineCreateWithAttributedString(
+        (__bridge CFAttributedStringRef)[self->_attributedText
+            attributedSubstringFromRange:charRange]);
+    const CGRect ink = CTLineGetImageBounds(line, context);
+    CFRelease(line);
+    if (!CGRectIsNull(ink) && ink.size.width > 0) {
+      // Both TextKit's glyph location and CTLine's image bounds fold in
+      // NSBaselineOffset; anchor the (offset-inclusive) ink on the
+      // un-offset baseline so it counts exactly once.
+      const CGFloat runOffset =
+          [[self->_attributedText attribute:NSBaselineOffsetAttributeName
+                                    atIndex:charRange.location
+                             effectiveRange:nil] doubleValue];
+      const CGFloat inkBaseline = baselineY + runOffset;
+      // Image bounds are baseline-relative with y up; flip into view space.
+      const CGFloat top = MAX(inkBaseline - CGRectGetMaxY(ink) - FMDInkPad, 0);
+      const CGFloat bottom =
+          MIN(inkBaseline - CGRectGetMinY(ink) + FMDInkPad, maxHeight);
+      const CGFloat left = MAX(penX + CGRectGetMinX(ink) - padLeft, 0);
+      const CGFloat right = MIN(penX + CGRectGetMaxX(ink) + padRight, maxWidth);
+      if (right > left && bottom > top) {
+        [lineRects addObject:[NSValue valueWithCGRect:CGRectMake(
+                                                          left, top,
+                                                          right - left,
+                                                          bottom - top)]];
+      }
+    }
+    glyphIndex = NSMaxRange(lineGlyphRange);
+  }
+  return lineRects;
+}
+
+// Run background chips (inlineCode/link/mention and plain highlights),
+// drawn UNDER the text; enumerates the display copy so chips hidden with
+// their spoiler don't draw.
+- (void)drawRunBackgroundsIn:(NSAttributedString *)display {
+  if (display.length == 0) {
     return;
   }
   NSLayoutManager *layoutManager = [self layoutManagerForBounds];
   if (layoutManager == nil) {
     return;
   }
-  const CGFloat maxWidth = self.bounds.size.width;
-  [_attributedText
+  [display
       enumerateAttribute:FMDRunBackgroundAttributeName
-                 inRange:NSMakeRange(0, _attributedText.length)
+                 inRange:NSMakeRange(0, display.length)
                  options:0
               usingBlock:^(FMDRunBackground *chip, NSRange range, BOOL *stop) {
                 if (chip == nil) {
                   return;
                 }
-                const NSRange glyphRange =
-                    [layoutManager glyphRangeForCharacterRange:range
-                                          actualCharacterRange:nil];
-                NSMutableArray<NSValue *> *lineRects = [NSMutableArray new];
-                NSUInteger glyphIndex = glyphRange.location;
-                BOOL firstLine = YES;
-                while (glyphIndex < NSMaxRange(glyphRange)) {
-                  NSRange lineGlyphRange;
-                  const CGRect fragment =
-                      [layoutManager lineFragmentRectForGlyphAtIndex:glyphIndex
-                                                      effectiveRange:&lineGlyphRange];
-                  const NSRange lineRange = NSIntersectionRange(lineGlyphRange, glyphRange);
-                  if (lineRange.length == 0) {
-                    break;
-                  }
-                  const BOOL lastLine =
-                      NSMaxRange(lineRange) >= NSMaxRange(glyphRange);
-                  const CGPoint startLocation =
-                      [layoutManager locationForGlyphAtIndex:lineRange.location];
-                  CGFloat left = fragment.origin.x + startLocation.x;
-                  CGFloat right;
-                  if (NSMaxRange(lineRange) < NSMaxRange(lineGlyphRange)) {
-                    right = fragment.origin.x +
-                        [layoutManager locationForGlyphAtIndex:NSMaxRange(lineRange)].x;
-                  } else {
-                    right = CGRectGetMaxX([layoutManager
-                        lineFragmentUsedRectForGlyphAtIndex:lineRange.location
-                                             effectiveRange:nil]);
-                  }
-                  // Full line fragment box, clamped to the view (the
-                  // measured height ends at the last drawn descent).
-                  const CGFloat top = MAX(fragment.origin.y, 0);
-                  const CGFloat bottom =
-                      MIN(CGRectGetMaxY(fragment), self.bounds.size.height);
-                  const CGFloat padLeft = firstLine ? chip.padLeft : 0;
-                  const CGFloat padRight = lastLine ? chip.padRight : 0;
-                  CGRect chipRect = CGRectMake(
-                      MAX(left - padLeft, 0),
-                      top,
-                      MIN(right + padRight, maxWidth) - MAX(left - padLeft, 0),
-                      bottom - top);
-                  if (chipRect.size.width > 0) {
-                    [lineRects addObject:[NSValue valueWithCGRect:chipRect]];
-                  }
-                  firstLine = NO;
-                  glyphIndex = NSMaxRange(lineGlyphRange);
-                }
-                if (lineRects.count == 0) {
-                  return;
-                }
+                NSArray<NSValue *> *rects = [self
+                    inkRectsForRange:range
+                       layoutManager:layoutManager
+                             padLeft:chip.padLeft > 0 ? chip.padLeft : FMDInkPad
+                            padRight:chip.padRight > 0 ? chip.padRight
+                                                       : FMDInkPad];
                 [chip.color setFill];
-                if (lineRects.count == 1) {
-                  [FMDChipPath(lineRects[0].CGRectValue, chip.radius,
+                for (NSValue *value in rects) {
+                  [FMDChipPath(value.CGRectValue, chip.radius,
                                chip.continuousCurve) fill];
-                } else {
-                  [FMDRoundedOutlinePath(lineRects, chip.radius) fill];
                 }
               }];
 }
 
-// One contiguous polygon per spoiler: the union outline of the per-line run
-// rects with every outline corner rounded, drawn over the text until
-// revealed. A wrapped spoiler reads as a single shape, not stacked pills.
+// Spoiler cover chips, drawn OVER the (transparent) text until revealed.
+// Same ink geometry as the run backgrounds so covers and backgrounds look
+// identical.
 - (void)drawSpoilerCovers {
   if (_attributedText.length == 0 || self.host == nil) {
     return;
@@ -196,9 +257,6 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
   if (layoutManager == nil) {
     return;
   }
-
-  const CGFloat maxWidth = self.bounds.size.width;
-  const CGFloat maxHeight = self.bounds.size.height;
   [_attributedText
       enumerateAttribute:FMDSpoilerIDAttributeName
                  inRange:NSMakeRange(0, _attributedText.length)
@@ -208,150 +266,17 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
                     [self.host isSpoilerRevealed:spoilerId.integerValue]) {
                   return;
                 }
-                NSMutableArray<NSValue *> *lineRects = [NSMutableArray new];
-                const NSRange glyphRange =
-                    [layoutManager glyphRangeForCharacterRange:range
-                                          actualCharacterRange:nil];
-                [layoutManager
-                    enumerateEnclosingRectsForGlyphRange:glyphRange
-                                withinSelectedGlyphRange:NSMakeRange(NSNotFound, 0)
-                                         inTextContainer:self->_textContainer
-                                              usingBlock:^(CGRect rect, BOOL *stopRects) {
-                                                CGRect expanded = CGRectInset(rect, -2, 0);
-                                                if (expanded.origin.x < 0) {
-                                                  expanded.size.width += expanded.origin.x;
-                                                  expanded.origin.x = 0;
-                                                }
-                                                if (CGRectGetMaxX(expanded) > maxWidth) {
-                                                  expanded.size.width =
-                                                      maxWidth - expanded.origin.x;
-                                                }
-                                                // The view is measured to the
-                                                // last drawn descent, which
-                                                // sits above the fragment
-                                                // bottom under a custom
-                                                // lineHeight — unclamped, the
-                                                // layer clips the bottom
-                                                // rounding flat.
-                                                if (expanded.origin.y < 0) {
-                                                  expanded.size.height +=
-                                                      expanded.origin.y;
-                                                  expanded.origin.y = 0;
-                                                }
-                                                if (CGRectGetMaxY(expanded) > maxHeight) {
-                                                  expanded.size.height =
-                                                      maxHeight - expanded.origin.y;
-                                                }
-                                                [lineRects
-                                                    addObject:[NSValue
-                                                                  valueWithCGRect:expanded]];
-                                              }];
-                UIBezierPath *path = FMDRoundedOutlinePath(lineRects, self.spoilerRadius);
+                NSArray<NSValue *> *rects =
+                    [self inkRectsForRange:range
+                             layoutManager:layoutManager
+                                   padLeft:FMDInkPad
+                                  padRight:FMDInkPad];
                 [self.spoilerColor ?: UIColor.darkGrayColor setFill];
-                [path fill];
+                for (NSValue *value in rects) {
+                  [FMDChipPath(value.CGRectValue, self.spoilerRadius,
+                               self.spoilerContinuous) fill];
+                }
               }];
-}
-
-// Union outline of vertically stacked per-line rects, rounded at every
-// outline corner (convex and concave). Consecutive lines are merged into
-// one shape only when they horizontally overlap; a wrapped run whose first
-// segment ends right of where the next begins (no shared x range) renders
-// as separate shapes — one polygon would self-intersect.
-static void FMDAppendRoundedOutline(UIBezierPath *path,
-                                    const CGRect *rects,
-                                    NSUInteger count,
-                                    CGFloat radius);
-
-static UIBezierPath *FMDRoundedOutlinePath(NSArray<NSValue *> *lines, CGFloat radius) {
-  UIBezierPath *path = [UIBezierPath bezierPath];
-  if (lines.count == 0) {
-    return path;
-  }
-  // Snap adjacent line rects into a contiguous stack so no hairline gaps or
-  // overlaps show between lines.
-  NSUInteger count = lines.count;
-  CGRect rects[count];
-  for (NSUInteger i = 0; i < count; i++) {
-    rects[i] = lines[i].CGRectValue;
-  }
-  for (NSUInteger i = 0; i + 1 < count; i++) {
-    const CGFloat boundary = (CGRectGetMaxY(rects[i]) + CGRectGetMinY(rects[i + 1])) / 2;
-    rects[i].size.height = boundary - rects[i].origin.y;
-    rects[i + 1].size.height = CGRectGetMaxY(rects[i + 1]) - boundary;
-    rects[i + 1].origin.y = boundary;
-  }
-
-  NSUInteger start = 0;
-  for (NSUInteger i = 1; i <= count; i++) {
-    BOOL split = i == count;
-    if (!split) {
-      const CGFloat overlap = MIN(CGRectGetMaxX(rects[i - 1]), CGRectGetMaxX(rects[i])) -
-          MAX(CGRectGetMinX(rects[i - 1]), CGRectGetMinX(rects[i]));
-      split = overlap <= 0.5;
-    }
-    if (split) {
-      FMDAppendRoundedOutline(path, rects + start, i - start, radius);
-      start = i;
-    }
-  }
-  return path;
-}
-
-static void FMDAppendRoundedOutline(UIBezierPath *path,
-                                    const CGRect *rects,
-                                    NSUInteger count,
-                                    CGFloat radius) {
-  if (count == 0) {
-    return;
-  }
-  // Clockwise: top edge, down the right side with a jog at each width
-  // change, bottom edge, back up the left side.
-  NSUInteger capacity = count * 4;
-  CGPoint pts[capacity];
-  NSUInteger n = 0;
-  pts[n++] = CGPointMake(CGRectGetMinX(rects[0]), CGRectGetMinY(rects[0]));
-  pts[n++] = CGPointMake(CGRectGetMaxX(rects[0]), CGRectGetMinY(rects[0]));
-  for (NSUInteger i = 0; i + 1 < count; i++) {
-    if (fabs(CGRectGetMaxX(rects[i + 1]) - CGRectGetMaxX(rects[i])) > 0.5) {
-      pts[n++] = CGPointMake(CGRectGetMaxX(rects[i]), CGRectGetMaxY(rects[i]));
-      pts[n++] = CGPointMake(CGRectGetMaxX(rects[i + 1]), CGRectGetMaxY(rects[i]));
-    }
-  }
-  pts[n++] = CGPointMake(CGRectGetMaxX(rects[count - 1]), CGRectGetMaxY(rects[count - 1]));
-  pts[n++] = CGPointMake(CGRectGetMinX(rects[count - 1]), CGRectGetMaxY(rects[count - 1]));
-  for (NSUInteger i = count - 1; i > 0; i--) {
-    if (fabs(CGRectGetMinX(rects[i - 1]) - CGRectGetMinX(rects[i])) > 0.5) {
-      pts[n++] = CGPointMake(CGRectGetMinX(rects[i]), CGRectGetMinY(rects[i]));
-      pts[n++] = CGPointMake(CGRectGetMinX(rects[i - 1]), CGRectGetMinY(rects[i]));
-    }
-  }
-
-  BOOL started = NO;
-  for (NSUInteger i = 0; i < n; i++) {
-    const CGPoint prev = pts[(i + n - 1) % n];
-    const CGPoint v = pts[i];
-    const CGPoint next = pts[(i + 1) % n];
-    const CGFloat inLen = hypot(v.x - prev.x, v.y - prev.y);
-    const CGFloat outLen = hypot(next.x - v.x, next.y - v.y);
-    if (inLen < 0.01 || outLen < 0.01) {
-      continue;
-    }
-    const CGFloat r = MIN(radius, MIN(inLen / 2, outLen / 2));
-    const CGPoint entry =
-        CGPointMake(v.x - (v.x - prev.x) / inLen * r, v.y - (v.y - prev.y) / inLen * r);
-    const CGPoint exit =
-        CGPointMake(v.x + (next.x - v.x) / outLen * r, v.y + (next.y - v.y) / outLen * r);
-    if (!started) {
-      [path moveToPoint:entry];
-      started = YES;
-    } else {
-      [path addLineToPoint:entry];
-    }
-    [path addQuadCurveToPoint:exit controlPoint:v];
-  }
-  if (started) {
-    [path closePath];
-  }
 }
 
 - (nullable NSDictionary *)attributesAtPoint:(CGPoint)point {

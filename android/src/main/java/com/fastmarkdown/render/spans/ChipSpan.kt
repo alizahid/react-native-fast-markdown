@@ -11,4 +11,7 @@ class ChipSpan(
   val radiusPx: Float,
   val padLeftPx: Float,
   val padRightPx: Float,
+  /** Run font, for measuring glyph ink bounds at draw time. */
+  val typeface: android.graphics.Typeface?,
+  val textSizePx: Float,
 )

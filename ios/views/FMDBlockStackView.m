@@ -30,6 +30,7 @@
       view.host = self.host;
       view.spoilerColor = measured.block.spoilerColor;
       view.spoilerRadius = measured.block.spoilerRadius;
+      view.spoilerContinuous = measured.block.spoilerContinuous;
       view.attributedText = measured.block.attributedText;
       return view;
     }

@@ -2,11 +2,13 @@ package com.fastmarkdown.views
 
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PointF
 import android.graphics.RectF
+import android.text.Spannable
 import android.text.Spanned
+import android.text.TextPaint
 import android.text.StaticLayout
 import android.view.MotionEvent
 import android.view.View
@@ -14,9 +16,9 @@ import android.view.ViewConfiguration
 import com.fastmarkdown.render.Block
 import com.fastmarkdown.render.spans.ChipSpan
 import com.fastmarkdown.render.spans.LinkSpan
+import com.fastmarkdown.render.spans.SpoilerHidingSpan
 import com.fastmarkdown.render.spans.SpoilerSpan
 import kotlin.math.abs
-import kotlin.math.hypot
 
 /**
  * Draws one block's StaticLayout plus spoiler covers, and hit-tests links,
@@ -71,15 +73,96 @@ class BlockTextView(context: Context) : View(context) {
 
   override fun onDraw(canvas: Canvas) {
     val text = layout ?: return
+    syncSpoilerHiding(text)
     drawChips(canvas, text)
     text.draw(canvas)
     drawSpoilerCovers(canvas, text)
   }
 
-  // Rounded run backgrounds (inlineCode/link/mention chips and plain text
-  // highlights), drawn UNDER the text. Vertical bounds come from the run's
-  // real font metrics anchored on the drawn baseline, so ascenders and
-  // descenders are always covered regardless of lineHeight.
+  // Unrevealed spoiler text draws fully transparent — the cover hugs the
+  // glyph ink, so glyphs would leak around it if drawn. Color-only spans
+  // apply at draw time without re-layout. Reconciles against the spannable
+  // itself: content is cached and shared across recycled views, so span
+  // bookkeeping must not live in view state.
+  private fun syncSpoilerHiding(text: StaticLayout) {
+    val spannable = text.text as? Spannable ?: return
+    val hostRef = host ?: return
+    val spoilers = spannable.getSpans(0, spannable.length, SpoilerSpan::class.java)
+    val hiding = spannable.getSpans(0, spannable.length, SpoilerHidingSpan::class.java)
+    if (spoilers.isEmpty() && hiding.isEmpty()) {
+      return
+    }
+    val hidden = HashSet<Int>()
+    for (span in hiding) {
+      if (hostRef.isSpoilerRevealed(span.id)) {
+        spannable.removeSpan(span)
+      } else {
+        hidden.add(span.id)
+      }
+    }
+    for ((id, group) in spoilers.groupBy { it.id }) {
+      if (hostRef.isSpoilerRevealed(id) || id in hidden) {
+        continue
+      }
+      spannable.setSpan(
+        SpoilerHidingSpan(id),
+        group.minOf { spannable.getSpanStart(it) },
+        group.maxOf { spannable.getSpanEnd(it) },
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+    }
+  }
+
+  // Overlays hug the glyph ink. lineHeight moves line boxes around the
+  // text, so any box derived from them inherits that skew; the ink bounding
+  // box plus breathing padding is anchored on the baseline and stays glued
+  // to the glyphs no matter the line height.
+  private val inkPadPx: Float
+    get() = 2f * resources.displayMetrics.density
+
+  private val inkPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
+  private val inkBounds = android.graphics.Rect()
+
+  /** Tight glyph ink rect for one line's segment of a run, padded. */
+  private fun inkRect(
+    text: StaticLayout,
+    line: Int,
+    segmentStart: Int,
+    segmentEnd: Int,
+    typeface: android.graphics.Typeface?,
+    textSizePx: Float,
+    padLeft: Float,
+    padRight: Float,
+  ): RectF? {
+    val chars = text.text.subSequence(segmentStart, segmentEnd).toString()
+    if (chars.isBlank()) {
+      return null
+    }
+    inkPaint.typeface = typeface
+    inkPaint.textSize = textSizePx
+    inkPaint.getTextBounds(chars, 0, chars.length, inkBounds)
+    if (inkBounds.isEmpty) {
+      return null
+    }
+    val penX = text.getPrimaryHorizontal(segmentStart)
+    val right = if (segmentEnd < text.getLineEnd(line)) {
+      text.getPrimaryHorizontal(segmentEnd)
+    } else {
+      text.getLineRight(line)
+    }
+    val baseline = text.getLineBaseline(line).toFloat()
+    val left = minOf(penX, right)
+    return RectF(
+      (left + inkBounds.left - padLeft).coerceAtLeast(0f),
+      (baseline + inkBounds.top - inkPadPx).coerceAtLeast(0f),
+      (left + inkBounds.right + padRight).coerceAtMost(width.toFloat()),
+      (baseline + inkBounds.bottom + inkPadPx).coerceAtMost(height.toFloat()),
+    )
+  }
+
+  // Run background chips (inlineCode/link/mention and plain highlights),
+  // drawn UNDER the text. Chips inside an unrevealed spoiler don't draw —
+  // they would peek around the cover.
   private fun drawChips(canvas: Canvas, text: StaticLayout) {
     val spanned = text.text as? Spanned ?: return
     val spans = spanned.getSpans(0, spanned.length, ChipSpan::class.java)
@@ -90,53 +173,44 @@ class BlockTextView(context: Context) : View(context) {
     for (span in spans) {
       val start = spanned.getSpanStart(span)
       val end = spanned.getSpanEnd(span)
-      if (start >= end) {
+      if (start >= end || isInsideHiddenSpoiler(spanned, start, end)) {
         continue
       }
       chipPaint.color = span.color
       val firstLine = text.getLineForOffset(start)
       val lastLine = text.getLineForOffset(end)
-      val lineRects = ArrayList<RectF>(lastLine - firstLine + 1)
       for (line in firstLine..lastLine) {
-        val lineStart = maxOf(start, text.getLineStart(line))
-        val lineEnd = minOf(end, text.getLineEnd(line))
-        if (lineStart >= lineEnd) {
+        val segmentStart = maxOf(start, text.getLineStart(line))
+        val segmentEnd = minOf(end, text.getLineEnd(line))
+        if (segmentStart >= segmentEnd) {
           continue
         }
-        val left = text.getPrimaryHorizontal(lineStart)
-        val right = if (lineEnd < text.getLineEnd(line)) {
-          text.getPrimaryHorizontal(lineEnd)
-        } else {
-          text.getLineRight(line)
-        }
-        val padLeft = if (line == firstLine) span.padLeftPx else 0f
-        val padRight = if (line == lastLine) span.padRightPx else 0f
-        // Full line box — what the platform's own BackgroundColorSpan and
-        // RN <Text> backgroundColor fill — with corner radius on top.
-        lineRects.add(
-          RectF(
-            (minOf(left, right) - padLeft).coerceAtLeast(0f),
-            text.getLineTop(line).toFloat(),
-            (maxOf(left, right) + padRight).coerceAtMost(width.toFloat()),
-            text.getLineBottom(line).toFloat(),
-          ),
-        )
+        val rect = inkRect(
+          text = text,
+          line = line,
+          segmentStart = segmentStart,
+          segmentEnd = segmentEnd,
+          typeface = span.typeface,
+          textSizePx = span.textSizePx,
+          padLeft = if (line == firstLine && span.padLeftPx > 0f) span.padLeftPx else inkPadPx,
+          padRight = if (line == lastLine && span.padRightPx > 0f) span.padRightPx else inkPadPx,
+        ) ?: continue
+        chipPath.reset()
+        chipPath.addRoundRect(rect, span.radiusPx, span.radiusPx, Path.Direction.CW)
+        canvas.drawPath(chipPath, chipPaint)
       }
-      if (lineRects.isEmpty()) {
-        continue
-      }
-      chipPath.reset()
-      if (lineRects.size == 1) {
-        chipPath.addRoundRect(lineRects[0], span.radiusPx, span.radiusPx, Path.Direction.CW)
-      } else {
-        buildRoundedOutline(lineRects, span.radiusPx, chipPath)
-      }
-      canvas.drawPath(chipPath, chipPaint)
     }
   }
 
-  // One contiguous rounded polygon per spoiler (union of per-line run
-  // rects), drawn over the text until revealed.
+  private fun isInsideHiddenSpoiler(spanned: Spanned, start: Int, end: Int): Boolean {
+    val hostRef = host ?: return false
+    return spanned.getSpans(start, end, SpoilerSpan::class.java)
+      .any { !hostRef.isSpoilerRevealed(it.id) }
+  }
+
+  // Spoiler cover chips, drawn OVER the (transparent) text until revealed.
+  // A spoiler with mixed inline styling carries one span per run (same id);
+  // per line the group's segment ink rects union into one cover.
   private fun drawSpoilerCovers(canvas: Canvas, text: StaticLayout) {
     val spanned = text.text as? Spanned ?: return
     val block = textBlock ?: return
@@ -149,119 +223,42 @@ class BlockTextView(context: Context) : View(context) {
     coverPaint.style = Paint.Style.FILL
     coverPaint.color = block.spoilerColor
 
-    for (span in spans) {
-      if (hostRef.isSpoilerRevealed(span.id)) {
+    for ((id, group) in spans.groupBy { it.id }) {
+      if (hostRef.isSpoilerRevealed(id)) {
         continue
       }
-      val start = spanned.getSpanStart(span)
-      val end = spanned.getSpanEnd(span)
+      val start = group.minOf { spanned.getSpanStart(it) }
+      val end = group.maxOf { spanned.getSpanEnd(it) }
+      if (start >= end) {
+        continue
+      }
       val firstLine = text.getLineForOffset(start)
       val lastLine = text.getLineForOffset(end)
-      val lineRects = ArrayList<RectF>(lastLine - firstLine + 1)
       for (line in firstLine..lastLine) {
-        val lineStart = maxOf(start, text.getLineStart(line))
-        val lineEnd = minOf(end, text.getLineEnd(line))
-        if (lineStart >= lineEnd) {
-          continue
+        var union: RectF? = null
+        for (span in group) {
+          val spanStart = maxOf(spanned.getSpanStart(span), text.getLineStart(line))
+          val spanEnd = minOf(spanned.getSpanEnd(span), text.getLineEnd(line))
+          if (spanStart >= spanEnd) {
+            continue
+          }
+          val rect = inkRect(
+            text = text,
+            line = line,
+            segmentStart = spanStart,
+            segmentEnd = spanEnd,
+            typeface = span.typeface,
+            textSizePx = span.textSizePx,
+            padLeft = inkPadPx,
+            padRight = inkPadPx,
+          ) ?: continue
+          union = union?.apply { union(rect) } ?: rect
         }
-        val left = text.getPrimaryHorizontal(lineStart)
-        // When the run continues past this line, primaryHorizontal(lineEnd)
-        // resolves on the NEXT line; the run visually ends at the line's
-        // right edge.
-        val right = if (lineEnd < text.getLineEnd(line)) {
-          text.getPrimaryHorizontal(lineEnd)
-        } else {
-          text.getLineRight(line)
-        }
-        lineRects.add(
-          RectF(
-            (minOf(left, right) - 2f).coerceAtLeast(0f),
-            text.getLineTop(line).toFloat(),
-            (maxOf(left, right) + 2f).coerceAtMost(width.toFloat()),
-            text.getLineBottom(line).toFloat(),
-          ),
-        )
+        val rect = union ?: continue
+        coverPath.reset()
+        coverPath.addRoundRect(rect, block.spoilerRadiusPx, block.spoilerRadiusPx, Path.Direction.CW)
+        canvas.drawPath(coverPath, coverPaint)
       }
-      buildRoundedOutline(lineRects, block.spoilerRadiusPx, coverPath)
-      canvas.drawPath(coverPath, coverPaint)
-    }
-  }
-
-  // Union outline of vertically stacked per-line rects with every outline
-  // corner (convex and concave) rounded, so a wrapped spoiler reads as one
-  // contiguous shape instead of stacked pills. Consecutive lines merge only
-  // when they horizontally overlap; a wrapped run whose first segment ends
-  // right of where the next begins renders as separate shapes — one polygon
-  // would self-intersect.
-  private fun buildRoundedOutline(lines: List<RectF>, radius: Float, path: Path) {
-    path.reset()
-    var start = 0
-    for (i in 1..lines.size) {
-      val split = i == lines.size ||
-        minOf(lines[i - 1].right, lines[i].right) -
-        maxOf(lines[i - 1].left, lines[i].left) <= 0.5f
-      if (split) {
-        appendRoundedOutline(lines.subList(start, i), radius, path)
-        start = i
-      }
-    }
-  }
-
-  private fun appendRoundedOutline(lines: List<RectF>, radius: Float, path: Path) {
-    if (lines.isEmpty()) {
-      return
-    }
-    val pts = ArrayList<PointF>(lines.size * 4)
-    val first = lines.first()
-    val last = lines.last()
-    // Clockwise: top edge, down the right side with a jog at each width
-    // change, bottom edge, back up the left side.
-    pts.add(PointF(first.left, first.top))
-    pts.add(PointF(first.right, first.top))
-    for (i in 0 until lines.size - 1) {
-      val cur = lines[i]
-      val next = lines[i + 1]
-      if (abs(next.right - cur.right) > 0.5f) {
-        pts.add(PointF(cur.right, cur.bottom))
-        pts.add(PointF(next.right, cur.bottom))
-      }
-    }
-    pts.add(PointF(last.right, last.bottom))
-    pts.add(PointF(last.left, last.bottom))
-    for (i in lines.size - 1 downTo 1) {
-      val cur = lines[i]
-      val prev = lines[i - 1]
-      if (abs(prev.left - cur.left) > 0.5f) {
-        pts.add(PointF(cur.left, cur.top))
-        pts.add(PointF(prev.left, cur.top))
-      }
-    }
-    var started = false
-    val n = pts.size
-    for (i in 0 until n) {
-      val prev = pts[(i + n - 1) % n]
-      val v = pts[i]
-      val next = pts[(i + 1) % n]
-      val inLen = hypot(v.x - prev.x, v.y - prev.y)
-      val outLen = hypot(next.x - v.x, next.y - v.y)
-      if (inLen < 0.01f || outLen < 0.01f) {
-        continue
-      }
-      val r = minOf(radius, inLen / 2f, outLen / 2f)
-      val entryX = v.x - (v.x - prev.x) / inLen * r
-      val entryY = v.y - (v.y - prev.y) / inLen * r
-      val exitX = v.x + (next.x - v.x) / outLen * r
-      val exitY = v.y + (next.y - v.y) / outLen * r
-      if (!started) {
-        path.moveTo(entryX, entryY)
-        started = true
-      } else {
-        path.lineTo(entryX, entryY)
-      }
-      path.quadTo(v.x, v.y, exitX, exitY)
-    }
-    if (started) {
-      path.close()
     }
   }
 

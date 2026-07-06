@@ -581,6 +581,8 @@ object SpannableRenderer {
           radiusPx = attrs.chipRadiusPx,
           padLeftPx = attrs.chipPadLeftPx,
           padRightPx = attrs.chipPadRightPx,
+          typeface = typeface,
+          textSizePx = attrs.fontSizePx,
         ),
         start,
         builder.length,
@@ -599,7 +601,12 @@ object SpannableRenderer {
       builder.setSpan(LinkSpan(attrs.linkUrl), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
     }
     if (attrs.spoilerId != null) {
-      builder.setSpan(SpoilerSpan(attrs.spoilerId), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+      builder.setSpan(
+        SpoilerSpan(attrs.spoilerId, typeface, attrs.fontSizePx),
+        start,
+        builder.length,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
     }
   }
 

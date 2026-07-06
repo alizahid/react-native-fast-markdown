@@ -13,6 +13,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak, nullable) id<FMDMarkdownHost> host;
 @property (nonatomic, strong, nullable) UIColor *spoilerColor;
 @property (nonatomic, assign) CGFloat spoilerRadius;
+@property (nonatomic, assign) BOOL spoilerContinuous;
 
 /// Attributed-string attributes at a point in this view's coordinates;
 /// nil when the point is not on a glyph. Used by the host for hit testing.
