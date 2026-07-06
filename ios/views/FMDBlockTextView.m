@@ -6,6 +6,7 @@
   NSLayoutManager *_layoutManager;
   NSTextContainer *_textContainer;
   NSTextStorage *_textStorage;
+  NSMutableSet<NSNumber *> *_hiddenSpoilers;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -26,6 +27,9 @@
   if (![_attributedText isEqualToAttributedString:attributedText]) {
     _attributedText = [attributedText copy];
     _layoutManager = nil;
+    // The hiding state lives in the storage, which is rebuilt (with the
+    // original colors) alongside the layout manager.
+    [_hiddenSpoilers removeAllObjects];
     self.isAccessibilityElement = YES;
     self.accessibilityLabel = attributedText.string;
     self.accessibilityTraits = UIAccessibilityTraitStaticText;
@@ -33,8 +37,9 @@
   }
 }
 
-// Lazy TextKit stack for hit-testing and spoiler-range geometry; drawing
-// stays on NSStringDrawing so measured heights match exactly.
+// Lazy TextKit stack shared by drawing, overlay geometry, and hit-testing
+// (and configured identically to the measurer's) — one engine, so they can
+// never disagree about line positions.
 - (NSLayoutManager *)layoutManagerForBounds {
   if (_layoutManager == nil && _attributedText != nil) {
     _textStorage = [[NSTextStorage alloc] initWithAttributedString:_attributedText];
@@ -52,49 +57,94 @@
 }
 
 - (void)drawRect:(CGRect)rect {
-  NSAttributedString *display = [self displayText];
-  [self drawRunBackgroundsIn:display];
-  [display drawWithRect:self.bounds
-                options:NSStringDrawingUsesLineFragmentOrigin |
-                        NSStringDrawingUsesFontLeading
-                context:nil];
-  [self drawSpoilerCovers];
+  NSLayoutManager *layoutManager = [self layoutManagerForBounds];
+  if (layoutManager == nil) {
+    return;
+  }
+  // One engine for everything: the same layout manager that positions the
+  // overlays also draws the glyphs. NSStringDrawing typesets separately and
+  // disagrees with NSLayoutManager about font leading under a lineHeight
+  // cap (fonts with a nonzero line gap drift ~gap pt per line), which
+  // misaligned overlays on wrapped lines.
+  [self syncSpoilerHiding:layoutManager];
+  [self drawRunBackgrounds:layoutManager];
+  const NSRange glyphRange =
+      [layoutManager glyphRangeForTextContainer:self->_textContainer];
+  [layoutManager drawBackgroundForGlyphRange:glyphRange atPoint:CGPointZero];
+  [layoutManager drawGlyphsForGlyphRange:glyphRange atPoint:CGPointZero];
+  [self drawSpoilerCovers:layoutManager];
 }
 
 // Unrevealed spoiler text draws fully transparent — the cover hugs the
-// glyph ink, so glyphs would leak around it if drawn. Color-only changes
-// keep the geometry identical to the layout manager's.
-- (NSAttributedString *)displayText {
-  if (self.host == nil) {
-    return _attributedText;
+// text, so glyphs would leak around it if drawn. Colors mutate on the
+// shared storage (color-only edits don't reflow); originals restore from
+// the immutable _attributedText on reveal.
+- (void)syncSpoilerHiding:(NSLayoutManager *)layoutManager {
+  if (self.host == nil || _attributedText.length == 0 || _textStorage == nil) {
+    return;
   }
-  __block NSMutableAttributedString *copy = nil;
+  if (_hiddenSpoilers == nil) {
+    _hiddenSpoilers = [NSMutableSet new];
+  }
+  [_textStorage beginEditing];
   [_attributedText
       enumerateAttribute:FMDSpoilerIDAttributeName
                  inRange:NSMakeRange(0, _attributedText.length)
                  options:0
               usingBlock:^(NSNumber *spoilerId, NSRange range, BOOL *stop) {
-                if (spoilerId == nil ||
-                    [self.host isSpoilerRevealed:spoilerId.integerValue]) {
+                if (spoilerId == nil) {
                   return;
                 }
-                if (copy == nil) {
-                  copy = [self->_attributedText mutableCopy];
+                const BOOL shouldHide =
+                    ![self.host isSpoilerRevealed:spoilerId.integerValue];
+                const BOOL isHidden =
+                    [self->_hiddenSpoilers containsObject:spoilerId];
+                if (shouldHide == isHidden) {
+                  return;
                 }
-                [copy addAttribute:NSForegroundColorAttributeName
-                             value:UIColor.clearColor
-                             range:range];
-                [copy addAttribute:NSUnderlineColorAttributeName
-                             value:UIColor.clearColor
-                             range:range];
-                [copy addAttribute:NSStrikethroughColorAttributeName
-                             value:UIColor.clearColor
-                             range:range];
-                // A chip under the cover would peek around it.
-                [copy removeAttribute:FMDRunBackgroundAttributeName
-                                range:range];
+                if (shouldHide) {
+                  [self->_textStorage addAttributes:@{
+                    NSForegroundColorAttributeName : UIColor.clearColor,
+                    NSUnderlineColorAttributeName : UIColor.clearColor,
+                    NSStrikethroughColorAttributeName : UIColor.clearColor,
+                  }
+                                              range:range];
+                  [self->_hiddenSpoilers addObject:spoilerId];
+                } else {
+                  [self->_attributedText
+                      enumerateAttributesInRange:range
+                                         options:0
+                                      usingBlock:^(NSDictionary *attrs,
+                                                   NSRange subRange,
+                                                   BOOL *stopInner) {
+                                        [self->_textStorage
+                                            setAttributes:attrs
+                                                    range:subRange];
+                                      }];
+                  [self->_hiddenSpoilers removeObject:spoilerId];
+                }
               }];
-  return copy ?: _attributedText;
+  [_textStorage endEditing];
+}
+
+// A chip inside an unrevealed spoiler would peek around the cover.
+- (BOOL)isRangeInsideHiddenSpoiler:(NSRange)range {
+  if (self.host == nil) {
+    return NO;
+  }
+  __block BOOL hidden = NO;
+  [_attributedText
+      enumerateAttribute:FMDSpoilerIDAttributeName
+                 inRange:range
+                 options:0
+              usingBlock:^(NSNumber *spoilerId, NSRange subRange, BOOL *stop) {
+                if (spoilerId != nil &&
+                    ![self.host isSpoilerRevealed:spoilerId.integerValue]) {
+                  hidden = YES;
+                  *stop = YES;
+                }
+              }];
+  return hidden;
 }
 
 // Approximates iOS's continuous ("squircle") corner curve for a single
@@ -213,20 +263,16 @@ static const CGFloat FMDInkPad = 2;
 // Run background chips (inlineCode/link/mention and plain highlights),
 // drawn UNDER the text; enumerates the display copy so chips hidden with
 // their spoiler don't draw.
-- (void)drawRunBackgroundsIn:(NSAttributedString *)display {
-  if (display.length == 0) {
+- (void)drawRunBackgrounds:(NSLayoutManager *)layoutManager {
+  if (_attributedText.length == 0) {
     return;
   }
-  NSLayoutManager *layoutManager = [self layoutManagerForBounds];
-  if (layoutManager == nil) {
-    return;
-  }
-  [display
+  [_attributedText
       enumerateAttribute:FMDRunBackgroundAttributeName
-                 inRange:NSMakeRange(0, display.length)
+                 inRange:NSMakeRange(0, _attributedText.length)
                  options:0
               usingBlock:^(FMDRunBackground *chip, NSRange range, BOOL *stop) {
-                if (chip == nil) {
+                if (chip == nil || [self isRangeInsideHiddenSpoiler:range]) {
                   return;
                 }
                 NSArray<NSValue *> *rects = [self
@@ -246,12 +292,8 @@ static const CGFloat FMDInkPad = 2;
 // Spoiler cover chips, drawn OVER the (transparent) text until revealed.
 // Same ink geometry as the run backgrounds so covers and backgrounds look
 // identical.
-- (void)drawSpoilerCovers {
+- (void)drawSpoilerCovers:(NSLayoutManager *)layoutManager {
   if (_attributedText.length == 0 || self.host == nil) {
-    return;
-  }
-  NSLayoutManager *layoutManager = [self layoutManagerForBounds];
-  if (layoutManager == nil) {
     return;
   }
   [_attributedText
