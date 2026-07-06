@@ -1,3 +1,4 @@
+import { useFonts } from "expo-font";
 import { useState } from "react";
 import {
   Platform,
@@ -21,6 +22,18 @@ type Tab = (typeof TABS)[number];
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("Kitchen Sink");
+  // Registered natively before first render so the markdown views (which
+  // resolve fonts natively) never measure with a fallback font.
+  const [fontsLoaded] = useFonts({
+    // biome-ignore lint/style/useNamingConvention: font family name
+    "Inter Variable": require("../assets/fonts/InterVariable.ttf"),
+    // biome-ignore lint/style/useNamingConvention: font family name
+    "Inter Variable Italic": require("../assets/fonts/InterVariable-Italic.ttf"),
+  });
+
+  if (!fontsLoaded) {
+    return null;
+  }
 
   return (
     <GestureHandlerRootView style={sheet.root}>
