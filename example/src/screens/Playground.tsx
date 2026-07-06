@@ -19,7 +19,7 @@ A paragraph with **bold**, _italic_, \`inline code\`, a [link](https://example.c
 
 ||A spoiler to reveal||
 
-Lorem ipsum dolor sit amet, >!consectetur adipiscing elit. Mauris eget felis ut mi vehicula condimentum!<. Donec molestie erat sodales nisi viverra varius`;
+Lorem ipsum dolor sit amet, >!consectetur adipiscing elit. Mauris eget felis ut mi!< vehicula ||condimentum. Donec molestie erat sodales nisi|| viverra varius`;
 
 interface Theme {
   /** Base text styles: cascade into every text element from the style prop. */
@@ -29,12 +29,22 @@ interface Theme {
 
 const THEMES: Record<string, Theme> = {
   // No styles prop at all: the viewer renders fully plain.
-  None: {},
-  Default: { styles: defaultStyles },
+  None: {
+    container: { fontSize: 14, lineHeight: 20 },
+  },
+  Default: {
+    container: { fontSize: 14, lineHeight: 20 },
+    styles: defaultStyles,
+  },
   Serif: {
     // fontFamily/fontSize/color cascade into paragraphs, lists, quotes,
     // and headings — only deviations live in `styles`.
-    container: { fontFamily: "Georgia", fontSize: 17, color: "#44403C" },
+    container: {
+      fontFamily: "Georgia",
+      fontSize: 14,
+      lineHeight: 20,
+      color: "#44403C",
+    },
     styles: mergeStyles({
       headings: {
         h1: { color: "#7C2D12" },
@@ -53,7 +63,7 @@ const THEMES: Record<string, Theme> = {
     }),
   },
   Compact: {
-    container: { fontSize: 13, color: "#111" },
+    container: { fontSize: 12, lineHeight: 16, color: "#111" },
     styles: mergeStyles({
       headings: { h1: { fontSize: 22 } },
       blockQuote: { color: "#666" },

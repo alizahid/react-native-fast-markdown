@@ -115,9 +115,9 @@ class BlockTextView(context: Context) : View(context) {
         lineRects.add(
           RectF(
             (minOf(left, right) - padLeft).coerceAtLeast(0f),
-            baseline + span.ascentPx - 1f,
+            (baseline + span.ascentPx - 1f).coerceAtLeast(0f),
             (maxOf(left, right) + padRight).coerceAtMost(width.toFloat()),
-            baseline + span.descentPx + 1f,
+            (baseline + span.descentPx + 1f).coerceAtMost(height.toFloat()),
           ),
         )
       }

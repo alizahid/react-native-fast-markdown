@@ -165,8 +165,10 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
                   // applied by NSBaselineOffset at draw time.
                   const CGFloat baselineY =
                       fragment.origin.y + startLocation.y - baselineShift;
-                  const CGFloat top = baselineY - font.ascender - 1;
-                  const CGFloat bottom = baselineY - font.descender + 1;
+                  const CGFloat top =
+                      MAX(baselineY - font.ascender - 1, 0);
+                  const CGFloat bottom =
+                      MIN(baselineY - font.descender + 1, self.bounds.size.height);
                   const CGFloat padLeft = firstLine ? chip.padLeft : 0;
                   const CGFloat padRight = lastLine ? chip.padRight : 0;
                   CGRect chipRect = CGRectMake(
@@ -206,6 +208,7 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
   }
 
   const CGFloat maxWidth = self.bounds.size.width;
+  const CGFloat maxHeight = self.bounds.size.height;
   [_attributedText
       enumerateAttribute:FMDSpoilerIDAttributeName
                  inRange:NSMakeRange(0, _attributedText.length)
@@ -232,6 +235,22 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
                                                 if (CGRectGetMaxX(expanded) > maxWidth) {
                                                   expanded.size.width =
                                                       maxWidth - expanded.origin.x;
+                                                }
+                                                // The view is measured to the
+                                                // last drawn descent, which
+                                                // sits above the fragment
+                                                // bottom under a custom
+                                                // lineHeight — unclamped, the
+                                                // layer clips the bottom
+                                                // rounding flat.
+                                                if (expanded.origin.y < 0) {
+                                                  expanded.size.height +=
+                                                      expanded.origin.y;
+                                                  expanded.origin.y = 0;
+                                                }
+                                                if (CGRectGetMaxY(expanded) > maxHeight) {
+                                                  expanded.size.height =
+                                                      maxHeight - expanded.origin.y;
                                                 }
                                                 [lineRects
                                                     addObject:[NSValue
