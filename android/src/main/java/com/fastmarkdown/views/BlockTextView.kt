@@ -112,12 +112,16 @@ class BlockTextView(context: Context) : View(context) {
         val baseline = text.getLineBaseline(line).toFloat() + span.baselineShiftPx
         val padLeft = if (line == firstLine) span.padLeftPx else 0f
         val padRight = if (line == lastLine) span.padRightPx else 0f
+        // Cap height above the baseline, descender depth below, padded
+        // equally: air above capitals stays equal to air below descenders
+        // for any font — declared ascents vary wildly and skew top-heavy.
+        val pad = 2f * resources.displayMetrics.density
         lineRects.add(
           RectF(
             (minOf(left, right) - padLeft).coerceAtLeast(0f),
-            (baseline + span.ascentPx - 1f).coerceAtLeast(0f),
+            (baseline - span.capHeightPx - pad).coerceAtLeast(0f),
             (maxOf(left, right) + padRight).coerceAtMost(width.toFloat()),
-            (baseline + span.descentPx + 1f).coerceAtMost(height.toFloat()),
+            (baseline + span.descentPx + pad).coerceAtMost(height.toFloat()),
           ),
         )
       }

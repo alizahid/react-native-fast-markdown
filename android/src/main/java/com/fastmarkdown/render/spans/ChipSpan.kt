@@ -11,8 +11,9 @@ class ChipSpan(
   val radiusPx: Float,
   val padLeftPx: Float,
   val padRightPx: Float,
-  /** Negative, from Paint.FontMetrics. */
-  val ascentPx: Float,
+  /** Height of a capital H in the run's font, from Paint.getTextBounds. */
+  val capHeightPx: Float,
+  /** Positive, from Paint.FontMetrics. */
   val descentPx: Float,
   val baselineShiftPx: Int,
 )

@@ -582,13 +582,15 @@ object SpannableRenderer {
         textSize = attrs.fontSizePx
       }
       val metrics = metricsPaint.fontMetrics
+      val capBounds = android.graphics.Rect()
+      metricsPaint.getTextBounds("H", 0, 1, capBounds)
       builder.setSpan(
         ChipSpan(
           color = attrs.backgroundColor,
           radiusPx = attrs.chipRadiusPx,
           padLeftPx = attrs.chipPadLeftPx,
           padRightPx = attrs.chipPadRightPx,
-          ascentPx = metrics.ascent,
+          capHeightPx = capBounds.height().toFloat(),
           descentPx = metrics.descent,
           baselineShiftPx = attrs.baselineShiftPx,
         ),

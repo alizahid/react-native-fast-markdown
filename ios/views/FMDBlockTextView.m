@@ -1,6 +1,5 @@
 #import "FMDBlockTextView.h"
 
-#import <CoreText/CoreText.h>
 
 static UIBezierPath *FMDRoundedOutlinePath(NSArray<NSValue *> *lines, CGFloat radius);
 
@@ -104,34 +103,16 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
   return path;
 }
 
-// Vertical chip metrics matching Android (Minikin): the OS/2 typographic
-// ascent/descent when the font sets USE_TYPO_METRICS (fsSelection bit 7),
-// else the hhea values UIFont exposes. Fonts like Inter carry a legacy hhea
-// ascent (~0.97em) far above their typographic ascent (0.8em) — using hhea
-// floats the chip high above the glyphs while Android hugs them.
+// Chip band: cap height above the baseline, descender depth below, padded
+// equally. Anchoring to the ink envelope keeps the air above capitals equal
+// to the air below descenders for ANY font — font-declared ascents vary
+// wildly (Inter's is 0.97em, ~4pt above its capitals at 16pt) and produce
+// top-heavy chips.
+static const CGFloat FMDChipPad = 2;
+
 static void FMDChipMetrics(UIFont *font, CGFloat *outAscent, CGFloat *outDescent) {
-  *outAscent = font.ascender;
+  *outAscent = font.capHeight;
   *outDescent = -font.descender;
-  CTFontRef ctFont = (__bridge CTFontRef)font;
-  NSData *os2 = (__bridge_transfer NSData *)CTFontCopyTable(
-      ctFont, kCTFontTableOS2, kCTFontTableOptionNoOptions);
-  if (os2.length < 72) {
-    return;
-  }
-  const uint8_t *bytes = os2.bytes;
-  const uint16_t fsSelection = (uint16_t)((bytes[62] << 8) | bytes[63]);
-  if ((fsSelection & 0x80) == 0) { // USE_TYPO_METRICS
-    return;
-  }
-  const CGFloat unitsPerEm = CTFontGetUnitsPerEm(ctFont);
-  if (unitsPerEm <= 0) {
-    return;
-  }
-  const int16_t typoAscender = (int16_t)((bytes[68] << 8) | bytes[69]);
-  const int16_t typoDescender = (int16_t)((bytes[70] << 8) | bytes[71]);
-  const CGFloat scale = font.pointSize / unitsPerEm;
-  *outAscent = typoAscender * scale;
-  *outDescent = -typoDescender * scale; // negative in the table
 }
 
 // Rounded run backgrounds (inlineCode/link/mention chips and plain text
@@ -161,8 +142,6 @@ static void FMDChipMetrics(UIFont *font, CGFloat *outAscent, CGFloat *outDescent
                                               effectiveRange:nil];
                 UIFont *font = attrs[NSFontAttributeName]
                     ?: [UIFont systemFontOfSize:UIFont.systemFontSize];
-                const CGFloat baselineShift =
-                    [attrs[NSBaselineOffsetAttributeName] doubleValue];
                 CGFloat chipAscent;
                 CGFloat chipDescent;
                 FMDChipMetrics(font, &chipAscent, &chipDescent);
@@ -196,13 +175,15 @@ static void FMDChipMetrics(UIFont *font, CGFloat *outAscent, CGFloat *outDescent
                         lineFragmentUsedRectForGlyphAtIndex:lineRange.location
                                              effectiveRange:nil]);
                   }
-                  // Drawn baseline: TextKit's glyph location plus the raise
-                  // applied by NSBaselineOffset at draw time.
+                  // Drawn baseline: the typesetter already folds
+                  // NSBaselineOffset (lineHeight centering, sup/sub shifts)
+                  // into the glyph location — do NOT subtract it again.
                   const CGFloat baselineY =
-                      fragment.origin.y + startLocation.y - baselineShift;
-                  const CGFloat top = MAX(baselineY - chipAscent - 1, 0);
-                  const CGFloat bottom =
-                      MIN(baselineY + chipDescent + 1, self.bounds.size.height);
+                      fragment.origin.y + startLocation.y;
+                  const CGFloat top =
+                      MAX(baselineY - chipAscent - FMDChipPad, 0);
+                  const CGFloat bottom = MIN(baselineY + chipDescent + FMDChipPad,
+                                             self.bounds.size.height);
                   const CGFloat padLeft = firstLine ? chip.padLeft : 0;
                   const CGFloat padRight = lastLine ? chip.padRight : 0;
                   CGRect chipRect = CGRectMake(
