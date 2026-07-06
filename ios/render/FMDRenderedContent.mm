@@ -85,11 +85,21 @@
 }
 
 - (CGSize)textSize:(NSAttributedString *)text width:(CGFloat)width {
-  CGRect rect = [text boundingRectWithSize:CGSizeMake(width, CGFLOAT_MAX)
-                                   options:NSStringDrawingUsesLineFragmentOrigin |
-                                           NSStringDrawingUsesFontLeading
-                                   context:nil];
-  return CGSizeMake(ceil(rect.size.width), ceil(rect.size.height));
+  // Measured with TextKit, not NSStringDrawing: boundingRect stops at the
+  // last line's drawn descent, dropping the bottom of the final line box
+  // under a custom lineHeight. The full box keeps overlays (spoiler covers,
+  // run background chips) from being clipped at the view's bottom edge and
+  // matches how RN's <Text> and the Android renderer measure.
+  NSTextStorage *storage = [[NSTextStorage alloc] initWithAttributedString:text];
+  NSLayoutManager *layoutManager = [NSLayoutManager new];
+  NSTextContainer *container = [[NSTextContainer alloc]
+      initWithSize:CGSizeMake(MIN(width, (CGFloat)1e6), CGFLOAT_MAX)];
+  container.lineFragmentPadding = 0;
+  [layoutManager addTextContainer:container];
+  [storage addLayoutManager:layoutManager];
+  [layoutManager ensureLayoutForTextContainer:container];
+  const CGRect used = [layoutManager usedRectForTextContainer:container];
+  return CGSizeMake(ceil(used.size.width), ceil(used.size.height));
 }
 
 - (FMDMeasuredBlock *)measureBlock:(FMDBlock *)block
