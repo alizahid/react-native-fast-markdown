@@ -55,6 +55,9 @@ object SpannableRenderer {
     val baselineShiftPx: Int = 0,
     val backgroundColor: Int? = null,
     // Chip geometry for drawn run backgrounds (inlineCode/link/mention).
+    // A link/mention node attaches ONE ChipSpan over its whole range so a
+    // mixed-styling link doesn't fragment into seamed per-run chips.
+    val suppressRunChip: Boolean = false,
     val chipRadiusPx: Float = 0f,
     val chipPadLeftPx: Float = 0f,
     val chipPadRightPx: Float = 0f,
@@ -511,7 +514,28 @@ object SpannableRenderer {
                 (section.optDpOr("borderRadius", 0f)) * context.density,
             )
           }
-          walk(builder, node, next, context)
+          val nodeChipColor = next.backgroundColor
+          if (nodeChipColor != null) {
+            val chipStart = builder.length
+            walk(builder, node, next.copy(suppressRunChip = true), context)
+            if (builder.length > chipStart) {
+              builder.setSpan(
+                ChipSpan(
+                  color = nodeChipColor,
+                  radiusPx = next.chipRadiusPx,
+                  padLeftPx = next.chipPadLeftPx,
+                  padRightPx = next.chipPadRightPx,
+                  typeface = buildTypeface(next),
+                  textSizePx = next.fontSizePx,
+                ),
+                chipStart,
+                builder.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+              )
+            }
+          } else {
+            walk(builder, node, next, context)
+          }
         }
         MdNodeType.INLINE_CODE -> {
           var next = attrs.copy(family = "monospace")
@@ -574,7 +598,7 @@ object SpannableRenderer {
       builder.length,
       Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
     )
-    if (attrs.backgroundColor != null) {
+    if (attrs.backgroundColor != null && !attrs.suppressRunChip) {
       builder.setSpan(
         ChipSpan(
           color = attrs.backgroundColor,

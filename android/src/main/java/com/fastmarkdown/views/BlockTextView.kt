@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.text.Spannable
 import android.text.Spanned
 import android.text.TextPaint
 import android.text.StaticLayout
@@ -16,7 +15,6 @@ import android.view.ViewConfiguration
 import com.fastmarkdown.render.Block
 import com.fastmarkdown.render.spans.ChipSpan
 import com.fastmarkdown.render.spans.LinkSpan
-import com.fastmarkdown.render.spans.SpoilerHidingSpan
 import com.fastmarkdown.render.spans.SpoilerSpan
 import kotlin.math.abs
 
@@ -73,45 +71,68 @@ class BlockTextView(context: Context) : View(context) {
 
   override fun onDraw(canvas: Canvas) {
     val text = layout ?: return
-    syncSpoilerHiding(text)
     drawChips(canvas, text)
-    text.draw(canvas)
+    drawTextHidingSpoilers(canvas, text)
     drawSpoilerCovers(canvas, text)
   }
 
-  // Unrevealed spoiler text draws fully transparent — the cover hugs the
-  // glyph ink, so glyphs would leak around it if drawn. Color-only spans
-  // apply at draw time without re-layout. Reconciles against the spannable
-  // itself: content is cached and shared across recycled views, so span
-  // bookkeeping must not live in view state.
-  private fun syncSpoilerHiding(text: StaticLayout) {
-    val spannable = text.text as? Spannable ?: return
-    val hostRef = host ?: return
-    val spoilers = spannable.getSpans(0, spannable.length, SpoilerSpan::class.java)
-    val hiding = spannable.getSpans(0, spannable.length, SpoilerHidingSpan::class.java)
-    if (spoilers.isEmpty() && hiding.isEmpty()) {
+  // Unrevealed spoiler text is hidden by clipping its line-box slices out
+  // of the text draw. Purely draw-time, per-view state: the spannable is
+  // shared through the content cache and read by the Fabric layout thread,
+  // so it must never be mutated from the view.
+  private fun drawTextHidingSpoilers(canvas: Canvas, text: StaticLayout) {
+    val spanned = text.text as? Spanned
+    val hostRef = host
+    val spans = if (spanned != null && hostRef != null) {
+      spanned.getSpans(0, spanned.length, SpoilerSpan::class.java)
+        .filter { !hostRef.isSpoilerRevealed(it.id) }
+    } else {
+      emptyList()
+    }
+    if (spans.isEmpty() || spanned == null) {
+      text.draw(canvas)
       return
     }
-    val hidden = HashSet<Int>()
-    for (span in hiding) {
-      if (hostRef.isSpoilerRevealed(span.id)) {
-        spannable.removeSpan(span)
-      } else {
-        hidden.add(span.id)
-      }
-    }
-    for ((id, group) in spoilers.groupBy { it.id }) {
-      if (hostRef.isSpoilerRevealed(id) || id in hidden) {
+    canvas.save()
+    for (span in spans) {
+      val start = spanned.getSpanStart(span)
+      val end = spanned.getSpanEnd(span)
+      if (start >= end) {
         continue
       }
-      spannable.setSpan(
-        SpoilerHidingSpan(id),
-        group.minOf { spannable.getSpanStart(it) },
-        group.maxOf { spannable.getSpanEnd(it) },
-        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
-      )
+      val firstLine = text.getLineForOffset(start)
+      val lastLine = text.getLineForOffset(end)
+      for (line in firstLine..lastLine) {
+        val segmentStart = maxOf(start, text.getLineStart(line))
+        val segmentEnd = minOf(end, text.getLineEnd(line))
+        if (segmentStart >= segmentEnd) {
+          continue
+        }
+        val left = text.getPrimaryHorizontal(segmentStart)
+        val right = if (segmentEnd < text.getLineEnd(line)) {
+          text.getPrimaryHorizontal(segmentEnd)
+        } else {
+          text.getLineRight(line)
+        }
+        // Full line box, padded past side bearings and italic overhang.
+        val rect = RectF(
+          minOf(left, right) - 2f,
+          text.getLineTop(line).toFloat(),
+          maxOf(left, right) + 2f,
+          text.getLineBottom(line).toFloat(),
+        )
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+          canvas.clipOutRect(rect)
+        } else {
+          @Suppress("DEPRECATION")
+          canvas.clipRect(rect, android.graphics.Region.Op.DIFFERENCE)
+        }
+      }
     }
+    text.draw(canvas)
+    canvas.restore()
   }
+
 
   // Overlays hug the text. lineHeight moves line boxes around the text, so
   // any box derived from them inherits that skew; these rects anchor on the
@@ -218,7 +239,6 @@ class BlockTextView(context: Context) : View(context) {
   // per line the group's segment ink rects union into one cover.
   private fun drawSpoilerCovers(canvas: Canvas, text: StaticLayout) {
     val spanned = text.text as? Spanned ?: return
-    val block = textBlock ?: return
     val hostRef = host ?: return
     val spans = spanned.getSpans(0, spanned.length, SpoilerSpan::class.java)
     if (spans.isEmpty()) {
@@ -226,7 +246,10 @@ class BlockTextView(context: Context) : View(context) {
     }
 
     coverPaint.style = Paint.Style.FILL
-    coverPaint.color = block.spoilerColor
+    // Table cells carry no Block.Text; fall back to the functional floor
+    // (plain black, no radius) like iOS does.
+    coverPaint.color = textBlock?.spoilerColor ?: Color.BLACK
+    val coverRadiusPx = textBlock?.spoilerRadiusPx ?: 0f
 
     for ((id, group) in spans.groupBy { it.id }) {
       if (hostRef.isSpoilerRevealed(id)) {
@@ -261,7 +284,7 @@ class BlockTextView(context: Context) : View(context) {
         }
         val rect = union ?: continue
         coverPath.reset()
-        coverPath.addRoundRect(rect, block.spoilerRadiusPx, block.spoilerRadiusPx, Path.Direction.CW)
+        coverPath.addRoundRect(rect, coverRadiusPx, coverRadiusPx, Path.Direction.CW)
         canvas.drawPath(coverPath, coverPaint)
       }
     }

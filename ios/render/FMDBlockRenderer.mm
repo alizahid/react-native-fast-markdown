@@ -80,6 +80,10 @@ struct ResolvedAttrs {
   bool chipContinuous = false;
   CGFloat chipPadLeft = 0;
   CGFloat chipPadRight = 0;
+  // One chip object per link/mention node, shared by its child runs so
+  // enumerateAttribute coalesces them into ONE chip — per-run instances
+  // fragment a mixed-styling link into seamed per-run rects.
+  FMDRunBackground *__strong chipInstance = nil;
   NSString *__strong linkUrl = nil;
   NSInteger spoilerId = -1;
 };
@@ -279,7 +283,9 @@ NSDictionary *attributesDictionary(const ResolvedAttrs &attrs) {
   if (baselineOffset != 0) {
     attributes[NSBaselineOffsetAttributeName] = @(baselineOffset);
   }
-  if (attrs.backgroundColor != nil) {
+  if (attrs.chipInstance != nil) {
+    attributes[FMDRunBackgroundAttributeName] = attrs.chipInstance;
+  } else if (attrs.backgroundColor != nil) {
     FMDRunBackground *chip = [FMDRunBackground new];
     chip.color = attrs.backgroundColor;
     chip.radius = attrs.chipRadius;
@@ -392,6 +398,7 @@ class BlockBuilder {
           applyStyle(attrs, style, fontScale_);
         }
         applyStyle(attrs, FMDTextStyleWithoutBackground(styles_, @"codeBlock"), fontScale_);
+        applyCenteringOffset(attrs);
 
         std::string text = node->text;
         while (!text.empty() && text.back() == '\n') {
@@ -767,6 +774,15 @@ class BlockBuilder {
           } else {
             applyStyle(next, [styles_ textStyleFor:@"link"], fontScale_);
             applyChipStyle(next, [styles_ rawSectionFor:@"link"]);
+          }
+          if (next.backgroundColor != nil) {
+            FMDRunBackground *chip = [FMDRunBackground new];
+            chip.color = next.backgroundColor;
+            chip.radius = next.chipRadius;
+            chip.continuousCurve = next.chipContinuous;
+            chip.padLeft = next.chipPadLeft;
+            chip.padRight = next.chipPadRight;
+            next.chipInstance = chip;
           }
           walk(output, node, next);
           break;
