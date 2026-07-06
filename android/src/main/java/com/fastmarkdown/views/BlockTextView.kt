@@ -113,17 +113,20 @@ class BlockTextView(context: Context) : View(context) {
     }
   }
 
-  // Overlays hug the glyph ink. lineHeight moves line boxes around the
-  // text, so any box derived from them inherits that skew; the ink bounding
-  // box plus breathing padding is anchored on the baseline and stays glued
-  // to the glyphs no matter the line height.
+  // Overlays hug the text. lineHeight moves line boxes around the text, so
+  // any box derived from them inherits that skew; these rects anchor on the
+  // baseline instead. Horizontal comes from the segment's glyph ink;
+  // vertical is the FONT's ink envelope (cap height above the baseline,
+  // descender depth below) so every run of a font renders the same height
+  // whether or not its particular glyphs have capitals or descenders.
   private val inkPadPx: Float
     get() = 2f * resources.displayMetrics.density
 
   private val inkPaint = TextPaint(Paint.ANTI_ALIAS_FLAG)
   private val inkBounds = android.graphics.Rect()
+  private val capBounds = android.graphics.Rect()
 
-  /** Tight glyph ink rect for one line's segment of a run, padded. */
+  /** Overlay rect for one line's segment of a run, padded. */
   private fun inkRect(
     text: StaticLayout,
     line: Int,
@@ -144,6 +147,8 @@ class BlockTextView(context: Context) : View(context) {
     if (inkBounds.isEmpty) {
       return null
     }
+    inkPaint.getTextBounds("H", 0, 1, capBounds)
+    val descent = inkPaint.fontMetrics.descent
     val penX = text.getPrimaryHorizontal(segmentStart)
     val right = if (segmentEnd < text.getLineEnd(line)) {
       text.getPrimaryHorizontal(segmentEnd)
@@ -154,9 +159,9 @@ class BlockTextView(context: Context) : View(context) {
     val left = minOf(penX, right)
     return RectF(
       (left + inkBounds.left - padLeft).coerceAtLeast(0f),
-      (baseline + inkBounds.top - inkPadPx).coerceAtLeast(0f),
+      (baseline - capBounds.height() - inkPadPx).coerceAtLeast(0f),
       (left + inkBounds.right + padRight).coerceAtMost(width.toFloat()),
-      (baseline + inkBounds.bottom + inkPadPx).coerceAtMost(height.toFloat()),
+      (baseline + descent + inkPadPx).coerceAtMost(height.toFloat()),
     )
   }
 

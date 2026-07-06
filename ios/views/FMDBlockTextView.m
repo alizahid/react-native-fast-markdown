@@ -139,15 +139,16 @@ static UIBezierPath *FMDChipPath(CGRect rect, CGFloat radius, BOOL continuous) {
   return path;
 }
 
-// Overlays hug the glyph ink. lineHeight moves line boxes around the text,
-// so any box derived from them inherits that skew; the ink bounding box
-// plus breathing padding is anchored on the drawn baseline and stays glued
-// to the glyphs no matter the line height.
+// Overlays hug the text. lineHeight moves line boxes around the text, so
+// any box derived from them inherits that skew; these rects anchor on the
+// drawn baseline instead. Horizontal comes from the segment's glyph ink;
+// vertical is the FONT's ink envelope (cap height above the baseline,
+// descender depth below) so every run of a font renders the same height
+// whether or not its particular glyphs have capitals or descenders.
 static const CGFloat FMDInkPad = 2;
 
-// Per-line ink rects for a character range: the tight glyph bounding box
-// of each line's segment, padded. Whitespace-only segments have no ink and
-// produce no rect.
+// Per-line overlay rects for a character range. Whitespace-only segments
+// have no ink and produce no rect.
 - (NSArray<NSValue *> *)inkRectsForRange:(NSRange)range
                            layoutManager:(NSLayoutManager *)layoutManager
                                  padLeft:(CGFloat)padLeft
@@ -187,18 +188,14 @@ static const CGFloat FMDInkPad = 2;
     const CGRect ink = CTLineGetImageBounds(line, context);
     CFRelease(line);
     if (!CGRectIsNull(ink) && ink.size.width > 0) {
-      // Both TextKit's glyph location and CTLine's image bounds fold in
-      // NSBaselineOffset; anchor the (offset-inclusive) ink on the
-      // un-offset baseline so it counts exactly once.
-      const CGFloat runOffset =
-          [[self->_attributedText attribute:NSBaselineOffsetAttributeName
-                                    atIndex:charRange.location
-                             effectiveRange:nil] doubleValue];
-      const CGFloat inkBaseline = baselineY + runOffset;
-      // Image bounds are baseline-relative with y up; flip into view space.
-      const CGFloat top = MAX(inkBaseline - CGRectGetMaxY(ink) - FMDInkPad, 0);
+      UIFont *font =
+          [self->_attributedText attribute:NSFontAttributeName
+                                   atIndex:charRange.location
+                            effectiveRange:nil]
+              ?: [UIFont systemFontOfSize:UIFont.systemFontSize];
+      const CGFloat top = MAX(baselineY - font.capHeight - FMDInkPad, 0);
       const CGFloat bottom =
-          MIN(inkBaseline - CGRectGetMinY(ink) + FMDInkPad, maxHeight);
+          MIN(baselineY - font.descender + FMDInkPad, maxHeight);
       const CGFloat left = MAX(penX + CGRectGetMinX(ink) - padLeft, 0);
       const CGFloat right = MIN(penX + CGRectGetMaxX(ink) + padRight, maxWidth);
       if (right > left && bottom > top) {
