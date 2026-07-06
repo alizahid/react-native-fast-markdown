@@ -70,6 +70,10 @@ struct ResolvedAttrs {
   UIColor *__strong decorationColor = nil;
   NSString *__strong decorationStyle = nil;
   CGFloat baselineOffset = 0;
+  // lineHeight-centering raise, computed ONCE from the block's base font so
+  // every run on a line shares the same shift (per-run deltas cancel sub/sup
+  // offsets and split mixed-font runs onto different visual baselines).
+  CGFloat centeringOffset = 0;
   UIColor *__strong backgroundColor = nil;
   // Chip geometry for drawn run backgrounds (inlineCode/link/mention).
   CGFloat chipRadius = 0;
@@ -233,23 +237,32 @@ NSUnderlineStyle decorationMask(NSString *style) {
   return NSUnderlineStyleSingle;
 }
 
+// RN semantics: the line box is exactly lineHeight tall and glyphs center
+// vertically inside it. The raise derives from the BLOCK's base font; call
+// once wherever block-level attrs are finalized.
+void applyCenteringOffset(ResolvedAttrs &attrs) {
+  attrs.centeringOffset = 0;
+  if (attrs.lineHeight <= 0) {
+    return;
+  }
+  UIFont *font = buildFont(attrs);
+  const CGFloat delta = attrs.lineHeight - font.lineHeight;
+  if (delta > 0) {
+    attrs.centeringOffset = delta / 2;
+  }
+}
+
 NSDictionary *attributesDictionary(const ResolvedAttrs &attrs) {
   NSMutableDictionary *attributes = [NSMutableDictionary new];
   UIFont *font = buildFont(attrs);
   attributes[NSFontAttributeName] = font;
   attributes[NSForegroundColorAttributeName] = attrs.color ?: UIColor.blackColor;
-  CGFloat baselineOffset = attrs.baselineOffset;
+  CGFloat baselineOffset = attrs.baselineOffset + attrs.centeringOffset;
   if (attrs.lineHeight > 0) {
-    // RN semantics: the line box is exactly lineHeight tall and glyphs
-    // center vertically inside it.
     NSMutableParagraphStyle *paragraph = [NSMutableParagraphStyle new];
     paragraph.minimumLineHeight = attrs.lineHeight;
     paragraph.maximumLineHeight = attrs.lineHeight;
     attributes[NSParagraphStyleAttributeName] = paragraph;
-    const CGFloat delta = attrs.lineHeight - font.lineHeight;
-    if (delta > 0) {
-      baselineOffset += delta / 2;
-    }
   }
   if (attrs.underline) {
     attributes[NSUnderlineStyleAttributeName] = @(decorationMask(attrs.decorationStyle));
@@ -514,6 +527,7 @@ class BlockBuilder {
     if (markerColor != nil) {
       markerAttrs.color = markerColor;
     }
+    applyCenteringOffset(markerAttrs);
 
     NSMutableArray<FMDListRow *> *rows = [NSMutableArray new];
     int index = node->startIndex;
@@ -589,6 +603,7 @@ class BlockBuilder {
           applyStyle(attrs, [styles_ textStyleFor:@"tableCell"], fontScale_);
           applyStyle(attrs, [styles_ textStyleFor:@"tableHeaderCell"], fontScale_);
         }
+        applyCenteringOffset(attrs);
         NSMutableAttributedString *cell = [NSMutableAttributedString new];
         walk(cell, cellNode, attrs);
         [cells addObject:cell];
@@ -657,6 +672,7 @@ class BlockBuilder {
       }
     }
 
+    applyCenteringOffset(base);
     walk(output, node, base);
 
     NSDictionary *spoilerSection = [styles_ rawSectionFor:@"spoiler"];
